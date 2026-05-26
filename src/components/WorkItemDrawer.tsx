@@ -121,7 +121,7 @@ function DrawerContent({
       {/* Parent */}
       {item.parent && (
         <Section title="Parent">
-          <RefRow ref={item.parent} onNavigate={onNavigate} />
+          <RefRow item={item.parent} onNavigate={onNavigate} />
         </Section>
       )}
 
@@ -149,7 +149,7 @@ function DrawerContent({
         <Section title={`${item.children.length} child item${item.children.length === 1 ? '' : 's'}`}>
           <div className="ember-drawer-refs">
             {item.children.map(c => (
-              <RefRow key={c.id} ref={c} onNavigate={onNavigate} />
+              <RefRow key={c.id} item={c} onNavigate={onNavigate} />
             ))}
           </div>
         </Section>
@@ -160,7 +160,7 @@ function DrawerContent({
         <Section title="Related">
           <div className="ember-drawer-refs">
             {item.related.map(r => (
-              <RefRow key={`${r.id}-${r.rel}`} ref={r} onNavigate={onNavigate} />
+              <RefRow key={`${r.id}-${r.rel}`} item={r} onNavigate={onNavigate} />
             ))}
           </div>
         </Section>
@@ -214,14 +214,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function RefRow({ ref, onNavigate }: { ref: ApiWorkItemRef; onNavigate: (id: string) => void }) {
+function RefRow({ item, onNavigate }: { item: ApiWorkItemRef; onNavigate: (id: string) => void }) {
   return (
-    <button className="ember-drawer-ref" onClick={() => onNavigate(String(ref.id))}>
-      <Mono className="ember-drawer-ref-id">#{ref.id}</Mono>
-      <span className="ember-drawer-ref-title">{ref.title}</span>
+    <button className="ember-drawer-ref" onClick={() => onNavigate(String(item.id))}>
+      <Mono className="ember-drawer-ref-id">#{item.id}</Mono>
+      <span className="ember-drawer-ref-title">{item.title}</span>
       <span className="ember-drawer-ref-meta dim-small">
-        {ref.type}
-        {ref.state && ` · ${ref.state}`}
+        {item.type}
+        {item.state && ` · ${item.state}`}
       </span>
     </button>
   );
