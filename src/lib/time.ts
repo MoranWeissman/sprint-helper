@@ -50,6 +50,15 @@ function startOfDay(d: Date): Date {
   return c;
 }
 
+/** "Good morning" / "Good afternoon" / "Good evening" / "Working late" based on local hour. */
+export function greetingForHour(d: Date): string {
+  const h = d.getHours();
+  if (h >= 5 && h < 12) return 'Good morning';
+  if (h >= 12 && h < 17) return 'Good afternoon';
+  if (h >= 17 && h < 22) return 'Good evening';
+  return 'Working late';
+}
+
 /** Returns each day of the sprint with its weekday letter and state for the rail. */
 export function sprintDays(sprint: SprintContext, now: Date): SprintDay[] {
   const todayIdx = dayOfSprint(sprint, now) - 1;
