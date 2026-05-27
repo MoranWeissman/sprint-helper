@@ -134,6 +134,141 @@ export async function setRemaining(workItemId: number, hours: number): Promise<v
 }
 
 /* ============================================================ */
+/*  Create                                                       */
+/* ============================================================ */
+
+export interface CreateTaskInput {
+  title: string;
+  description?: string;
+  parentStoryId?: number;
+  estimateHours?: number;
+  /** Tags applied as a list — ADO stores them semicolon-delimited. */
+  tags?: string[];
+}
+
+export interface CreatedTask {
+  id: number;
+  title: string;
+  type: string;
+  state: string;
+  url: string;
+  webUrl: string;
+  parentId?: number;
+}
+
+/**
+ * Create a new Task in ADO. Defaults: assignee = current user, iteration =
+ * current sprint, area = project default. If `parentStoryId` is given, links
+ * the new task as a child of that work item.
+ */
+export async function createTask(input: CreateTaskInput): Promise<CreatedTask> {
+  const cfg = await loadAdoConfig();
+  // Resolve current iteration so newly-created tasks land in this sprint.
+  const iteration = await getCurrentIterationPath();
+  if (!iteration) throw new Error('No active sprint found — cannot place new task.');
+
+  const remaining = input.estimateHours ?? 0;
+  const patch: Array<Record<string, unknown>> = [
+    { op: 'add', path: '/fields/System.Title', value: input.title },
+    { op: 'add', path: '/fields/System.AssignedTo', value: cfg.user },
+    { op: 'add', path: '/fields/System.IterationPath', value: iteration },
+  ];
+  if (input.description) {
+    patch.push({
+      op: 'add',
+      path: '/fields/System.Description',
+      // ADO accepts plain text in HTML field; escape minimally to be safe.
+      value: escapeHtml(input.description),
+    });
+  }
+  if (input.estimateHours != null) {
+    patch.push({
+      op: 'add',
+      path: '/fields/Microsoft.VSTS.Scheduling.OriginalEstimate',
+      value: round2(input.estimateHours),
+    });
+    patch.push({
+      op: 'add',
+      path: '/fields/Microsoft.VSTS.Scheduling.RemainingWork',
+      value: round2(remaining),
+    });
+  }
+  if (input.tags && input.tags.length > 0) {
+    patch.push({
+      op: 'add',
+      path: '/fields/System.Tags',
+      value: input.tags.join('; '),
+    });
+  }
+  if (input.parentStoryId) {
+    patch.push({
+      op: 'add',
+      path: '/relations/-',
+      value: {
+        rel: 'System.LinkTypes.Hierarchy-Reverse',
+        url: `${cfg.organization}/_apis/wit/workItems/${input.parentStoryId}`,
+      },
+    });
+  }
+
+  const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitems/$Task?api-version=7.1`;
+  const { stdout } = await azStdin(
+    [
+      'rest',
+      '--method', 'POST',
+      '--uri', uri,
+      '--resource', ADO_RESOURCE,
+      '--headers', 'Content-Type=application/json-patch+json',
+      '--body', '@-',
+    ],
+    JSON.stringify(patch),
+  );
+
+  const created = JSON.parse(stdout) as {
+    id: number;
+    fields: {
+      'System.Title': string;
+      'System.WorkItemType': string;
+      'System.State': string;
+    };
+    url: string;
+    _links?: { html?: { href?: string } };
+  };
+
+  return {
+    id: created.id,
+    title: created.fields['System.Title'],
+    type: created.fields['System.WorkItemType'],
+    state: created.fields['System.State'],
+    url: created.url,
+    webUrl:
+      created._links?.html?.href ??
+      `${cfg.organization}/${encodeURIComponent(cfg.project)}/_workitems/edit/${created.id}`,
+    parentId: input.parentStoryId,
+  };
+}
+
+async function getCurrentIterationPath(): Promise<string | null> {
+  const cfg = await loadAdoConfig();
+  const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/${encodeURIComponent(cfg.team)}/_apis/work/teamsettings/iterations?$timeframe=current&api-version=7.1`;
+  try {
+    const { stdout } = await azExec(['rest', '--method', 'GET', '--uri', uri, '--resource', ADO_RESOURCE]);
+    const parsed = JSON.parse(stdout) as { value?: Array<{ path: string }> };
+    return parsed.value?.[0]?.path ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>');
+}
+
+/* ============================================================ */
 /*  Low-level                                                    */
 /* ============================================================ */
 

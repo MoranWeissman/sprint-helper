@@ -19,6 +19,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 
 import { buildDashboard } from '../server/dashboard.js';
+import { sprintCheckIn } from '../server/guardrail.js';
 import {
   endSession,
   isSessionEventType,
@@ -27,6 +28,7 @@ import {
 } from '../server/sessions.js';
 import * as timerService from '../server/timer-service.js';
 import {
+  createTask,
   setEstimate,
   setRemaining,
   setStateBucket,
@@ -241,6 +243,68 @@ server.registerTool(
         applied.remainingWork = remainingWork;
       }
       return jsonResult({ applied });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+/* ============================================================ */
+/*  Sprint guardrail                                             */
+/* ============================================================ */
+
+server.registerTool(
+  'sprint_check_in',
+  {
+    title: 'Sprint check-in (guardrail)',
+    description:
+      "Before starting a stretch of work, check whether it's in Moran's current sprint. Pass a short natural description of what she wants to do. Returns matching work items (if any), plus a `nextStep` field telling you what to do: 'confirm_match' (one strong candidate — confirm with her then session_start), 'choose_match' (a few possibilities — ask which), or 'no_match' (nothing matches — ask if it's a quick ad-hoc thing or needs a new story, then task_create). ALWAYS call this before opening a new session against work you didn't pick from sprint_snapshot.",
+    inputSchema: {
+      description: z
+        .string()
+        .min(1)
+        .describe('A short, natural description of what Moran is about to work on.'),
+    },
+  },
+  async ({ description }) => jsonResult(await sprintCheckIn(description)),
+);
+
+server.registerTool(
+  'task_create',
+  {
+    title: 'Create an ADO task in the current sprint',
+    description:
+      "Create a new Task in Azure DevOps, placed in Moran's current sprint and assigned to her. Use after sprint_check_in returned `no_match` AND Moran confirmed she wants this work tracked. Pass `adHoc: true` for the quick 1–2 hour case (tags it 'ad-hoc'). Pass `parentStoryId` to nest under an existing user story when known. Returns the new task's id and URL.",
+    inputSchema: {
+      title: z.string().min(1).describe('Task title — short and specific.'),
+      description: z.string().optional().describe('Optional details. Plain text or simple HTML.'),
+      parentStoryId: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe('Optional user story id to link this task under.'),
+      estimateHours: z
+        .number()
+        .min(0)
+        .optional()
+        .describe('Estimated hours (1 ADO point = 1 hour by team convention).'),
+      adHoc: z
+        .boolean()
+        .optional()
+        .describe('True if this is unplanned ad-hoc work — adds the "ad-hoc" tag for visibility.'),
+    },
+  },
+  async ({ title, description, parentStoryId, estimateHours, adHoc }) => {
+    try {
+      const created = await createTask({
+        title,
+        description,
+        parentStoryId,
+        estimateHours,
+        tags: adHoc ? ['ad-hoc'] : undefined,
+      });
+      return jsonResult(created);
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
