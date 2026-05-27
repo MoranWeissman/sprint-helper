@@ -1,10 +1,12 @@
 /**
  * Local SQLite store at ~/.sprint-helper/data.db.
  *
- * Holds time-tracking state that doesn't belong in Azure DevOps:
+ * Holds state that doesn't belong in Azure DevOps:
  *  - time_entries: every start/stop session per work item (multiple per item).
  *  - pending_changes: changes we tried to push to ADO and failed; retry queue.
  *  - settings: misc key/value config.
+ *  - sessions / session_events: Claude Code sessions reported via MCP — what
+ *    Moran is working on right now, plus summaries, blockers, decisions.
  *
  * Connection is opened lazily and cached for the life of the process.
  */
@@ -59,6 +61,34 @@ function migrate(db: DB) {
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id           TEXT PRIMARY KEY,
+      work_item_id INTEGER NOT NULL,
+      started_at   TEXT NOT NULL,
+      ended_at     TEXT,
+      client       TEXT NOT NULL DEFAULT 'claude-code',
+      summary      TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sessions_wi
+      ON sessions(work_item_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_active
+      ON sessions(work_item_id) WHERE ended_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS session_events (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      work_item_id INTEGER NOT NULL,
+      type         TEXT NOT NULL,
+      text         TEXT NOT NULL,
+      created_at   TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_session_events_wi
+      ON session_events(work_item_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_session_events_session
+      ON session_events(session_id);
   `);
 }
 

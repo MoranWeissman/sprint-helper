@@ -21,10 +21,18 @@ import {
 } from './ceremony';
 import { loadAdoConfig } from './config';
 import {
+  getActiveSessionMap,
+  getRecentEventsMap,
+  type Session,
+  type SessionEvent,
+} from './sessions';
+import {
   getPendingChangesCount,
   getRunningStartsMap,
   getUncapturedSecondsMap,
 } from './timers';
+
+export type { SessionEvent, SessionEventType, Session } from './sessions';
 
 export interface DashboardWorkItem {
   id: string;
@@ -54,6 +62,14 @@ export interface DashboardWorkItem {
   localUncapturedSeconds: number;
   /** ISO timestamp of the running session's start, if a timer is currently running. */
   runningSince?: string;
+  /**
+   * Claude Code session against this item, if one is active right now. The MCP
+   * plugin opens these via `session_start`; the Day dashboard surfaces them so
+   * Moran can see Claude Code is actively reporting in.
+   */
+  activeSession?: { id: string; startedAt: string };
+  /** Newest-first session events (focus / summary / blocker / decision / note). */
+  recentActivity: SessionEvent[];
   url: string;
 }
 
@@ -87,6 +103,13 @@ export interface UserStoryGroup {
   remainingHours: number;
   /** Counts for quick glance. */
   counts: { inProgress: number; upNext: number; done: number };
+  /**
+   * Newest-first session events rolled up across the story's tasks. Capped at
+   * 5 — full history is on individual tasks.
+   */
+  recentActivity: SessionEvent[];
+  /** True if any child task has a live Claude Code session right now. */
+  hasActiveSession: boolean;
 }
 
 export interface DashboardPayload {
@@ -116,6 +139,8 @@ export interface DashboardPayload {
   };
   /** Count of local edits that haven't reached ADO yet. */
   pendingChanges: number;
+  /** Number of live Claude Code sessions reporting in right now. */
+  activeSessions: number;
   /**
    * Upcoming ceremony occurrences within the next ~2 weeks, plus a
    * "suggested" mode if any is happening right now (15 min before → 60 min
@@ -167,6 +192,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
       userStories: [],
       capacity: { remainingHours: 0, completedHours: 0, totalEstimateHours: 0 },
       pendingChanges: getPendingChangesCount(),
+      activeSessions: 0,
       ceremonies: buildCeremonyBlock(null, null),
       fetchedAt: new Date().toISOString(),
     };
@@ -178,12 +204,17 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
   const uncaptured = getUncapturedSecondsMap();
   const running = getRunningStartsMap();
 
+  // Pull MCP session state — active sessions + recent events per work item.
+  const itemIds = items.map(w => w.id);
+  const activeSessions = getActiveSessionMap();
+  const recentEvents = getRecentEventsMap(itemIds, 5);
+
   const inProgress: DashboardWorkItem[] = [];
   const upNext: DashboardWorkItem[] = [];
   const done: DashboardWorkItem[] = [];
 
   for (const w of items) {
-    const projected = projectWorkItem(w, uncaptured, running);
+    const projected = projectWorkItem(w, uncaptured, running, activeSessions, recentEvents);
     if (DONE_STATES.has(w.state)) done.push(projected);
     else if (ACTIVE_STATES.has(w.state)) inProgress.push(projected);
     else upNext.push(projected);
@@ -221,6 +252,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     userStories,
     capacity,
     pendingChanges: getPendingChangesCount(),
+    activeSessions: activeSessions.size,
     ceremonies: buildCeremonyBlock(
       new Date(iteration.startDate),
       new Date(iteration.finishDate),
@@ -313,6 +345,12 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
       upNext: tasks.filter(t => !ACTIVE_STATES.has(t.state) && !DONE_STATES.has(t.state)).length,
       done: tasks.filter(t => DONE_STATES.has(t.state)).length,
     };
+    // Roll up activity: merge per-task events, sort by recency, cap at 5.
+    const recentActivity = tasks
+      .flatMap(t => t.recentActivity)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .slice(0, 5);
+    const hasActiveSession = tasks.some(t => t.activeSession != null);
     return {
       id: parent.id,
       title: parent.title,
@@ -328,6 +366,8 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
       completedHours,
       remainingHours,
       counts,
+      recentActivity,
+      hasActiveSession,
     };
   });
 
@@ -357,11 +397,14 @@ function projectWorkItem(
   w: WorkItem,
   uncaptured: Map<number, number>,
   running: Map<number, string>,
+  activeSessions: Map<number, Session>,
+  recentEvents: Map<number, SessionEvent[]>,
 ): DashboardWorkItem {
   const lastIterSegment = w.iterationPath.split('\\').pop() ?? w.iterationPath;
   const story = w.parentTitle
     ? `${w.parentTitle} · ${lastIterSegment}`
     : `${w.type} · ${lastIterSegment}`;
+  const session = activeSessions.get(w.id);
   return {
     id: String(w.id),
     title: w.title,
@@ -384,6 +427,8 @@ function projectWorkItem(
     area: lastPathSegment(w.areaPath),
     localUncapturedSeconds: uncaptured.get(w.id) ?? 0,
     runningSince: running.get(w.id),
+    activeSession: session ? { id: session.id, startedAt: session.startedAt } : undefined,
+    recentActivity: recentEvents.get(w.id) ?? [],
     url: humanUrl(w.url),
   };
 }

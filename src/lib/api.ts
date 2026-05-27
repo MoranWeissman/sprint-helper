@@ -10,6 +10,22 @@ export interface ApiParent {
   url: string;
 }
 
+export type SessionEventType = 'focus' | 'summary' | 'blocker' | 'decision' | 'note';
+
+export interface ApiSessionEvent {
+  id: number;
+  sessionId: string;
+  workItemId: number;
+  type: SessionEventType;
+  text: string;
+  createdAt: string;
+}
+
+export interface ApiActiveSession {
+  id: string;
+  startedAt: string;
+}
+
 export interface ApiWorkItem {
   id: string;
   title: string;
@@ -26,6 +42,10 @@ export interface ApiWorkItem {
   localUncapturedSeconds: number;
   /** ISO timestamp of the currently-running timer's start, if any. */
   runningSince?: string;
+  /** Live Claude Code session against this item, if one is open right now. */
+  activeSession?: ApiActiveSession;
+  /** Newest-first session events reported by Claude Code via MCP. */
+  recentActivity: ApiSessionEvent[];
   url: string;
 }
 
@@ -62,6 +82,10 @@ export interface ApiUserStoryGroup {
   completedHours: number;
   remainingHours: number;
   counts: { inProgress: number; upNext: number; done: number };
+  /** Newest-first session events rolled up across child tasks. Capped at 5. */
+  recentActivity: ApiSessionEvent[];
+  /** True if any child task has a live Claude Code session right now. */
+  hasActiveSession: boolean;
 }
 
 export type CeremonyId = 'daily' | 'preplan' | 'plan' | 'demo' | 'retro';
@@ -91,6 +115,8 @@ export interface ApiPayload {
     totalEstimateHours: number;
   };
   pendingChanges: number;
+  /** Number of live Claude Code sessions reporting in right now. */
+  activeSessions: number;
   ceremonies: {
     upcoming: ApiUpcomingCeremony[];
     next: ApiUpcomingCeremony | null;
