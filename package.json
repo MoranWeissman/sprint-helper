@@ -6,11 +6,13 @@
   "description": "Personal agile workspace — Azure DevOps + GitHub integration, time tracking, ceremony support.",
   "scripts": {
     "dev": "vite",
+    "mcp": "tsx mcp/server.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/dompurify": "^3.0.5",
     "better-sqlite3": "^11.10.0",
     "dompurify": "^3.4.6",
@@ -23,6 +25,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "tsx": "^4.22.3",
     "typescript": "^5.6.3",
     "vite": "^5.4.11"
   }
