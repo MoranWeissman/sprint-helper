@@ -13,7 +13,18 @@ import {
   type Iteration,
   type WorkItem,
 } from './ado';
+import {
+  computeUpcomingCeremonies,
+  modeForCeremony,
+  type ModeId,
+  type UpcomingCeremony,
+} from './ceremony';
 import { loadAdoConfig } from './config';
+import {
+  getPendingChangesCount,
+  getRunningStartsMap,
+  getUncapturedSecondsMap,
+} from './timers';
 
 export interface DashboardWorkItem {
   id: string;
@@ -30,7 +41,19 @@ export interface DashboardWorkItem {
   };
   originalEstimate?: number;
   remainingWork?: number;
+  /** ADO's CompletedWork — purely what the server has stored. */
   completedWork?: number;
+  /** Short plain-text preview for the expand panel. */
+  descriptionPreview?: string;
+  /** Last segment of the area path. */
+  area?: string;
+  /**
+   * Seconds tracked locally that aren't reflected in ADO yet (closed
+   * unsynced entries + any currently-running session's elapsed at fetch time).
+   */
+  localUncapturedSeconds: number;
+  /** ISO timestamp of the running session's start, if a timer is currently running. */
+  runningSince?: string;
   url: string;
 }
 
@@ -50,6 +73,12 @@ export interface UserStoryGroup {
   type: string;            // typically "User Story" but could be "Feature", "Bug", etc.
   state: string;
   url: string;
+  /** Short plain-text preview for the expand panel. */
+  descriptionPreview?: string;
+  area?: string;
+  /** Direct effort fields on the parent itself (separate from rolled-up task hours). */
+  parentEstimate?: number;
+  parentRemaining?: number;
   /** Tasks (or other child items) assigned to the user that belong to this parent. */
   tasks: DashboardWorkItem[];
   /** Aggregate effort across this group's tasks (in hours). */
@@ -84,6 +113,18 @@ export interface DashboardPayload {
     remainingHours: number;
     completedHours: number;
     totalEstimateHours: number;
+  };
+  /** Count of local edits that haven't reached ADO yet. */
+  pendingChanges: number;
+  /**
+   * Upcoming ceremony occurrences within the next ~2 weeks, plus a
+   * "suggested" mode if any is happening right now (15 min before → 60 min
+   * after start). The dashboard uses this to highlight the right tab.
+   */
+  ceremonies: {
+    upcoming: UpcomingCeremony[];
+    next: UpcomingCeremony | null;
+    suggestedModeId: ModeId | null;
   };
   fetchedAt: string;
 }
@@ -125,28 +166,36 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
       workItems: { inProgress: [], upNext: [], done: [] },
       userStories: [],
       capacity: { remainingHours: 0, completedHours: 0, totalEstimateHours: 0 },
+      pendingChanges: getPendingChangesCount(),
+      ceremonies: buildCeremonyBlock(null, null),
       fetchedAt: new Date().toISOString(),
     };
   }
 
   const items = await getMyWorkItems(iteration.path);
 
+  // Pull local timer state. Each map is keyed by numeric work item id.
+  const uncaptured = getUncapturedSecondsMap();
+  const running = getRunningStartsMap();
+
   const inProgress: DashboardWorkItem[] = [];
   const upNext: DashboardWorkItem[] = [];
   const done: DashboardWorkItem[] = [];
 
   for (const w of items) {
-    const projected = projectWorkItem(w);
+    const projected = projectWorkItem(w, uncaptured, running);
     if (DONE_STATES.has(w.state)) done.push(projected);
     else if (ACTIVE_STATES.has(w.state)) inProgress.push(projected);
     else upNext.push(projected);
   }
 
-  // Capacity numbers from ADO's effort fields (1 point = 1 hour in this team's convention).
+  // Capacity: ADO effort fields + local-uncaptured seconds (so the dashboard
+  // shows what the user actually worked, even before they sync).
   const capacity = items.reduce(
     (acc, w) => {
+      const localHours = (uncaptured.get(w.id) ?? 0) / 3600;
       acc.remainingHours += w.remainingWork ?? 0;
-      acc.completedHours += w.completedWork ?? 0;
+      acc.completedHours += (w.completedWork ?? 0) + localHours;
       acc.totalEstimateHours += w.originalEstimate ?? 0;
       return acc;
     },
@@ -171,7 +220,29 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     workItems: { inProgress, upNext, done },
     userStories,
     capacity,
+    pendingChanges: getPendingChangesCount(),
+    ceremonies: buildCeremonyBlock(
+      new Date(iteration.startDate),
+      new Date(iteration.finishDate),
+    ),
     fetchedAt: new Date().toISOString(),
+  };
+}
+
+function buildCeremonyBlock(
+  sprintStart: Date | null,
+  sprintFinish: Date | null,
+): DashboardPayload['ceremonies'] {
+  const now = new Date();
+  const upcoming = computeUpcomingCeremonies({ sprintStart, sprintFinish, now });
+  const suggested = upcoming.find(u => u.isSuggested) ?? null;
+  // "next" is either the suggested one (so the UI surfaces what's happening
+  // right now), or the first non-elapsed future occurrence.
+  const next = suggested ?? upcoming.find(u => u.minutesUntil >= 0) ?? null;
+  return {
+    upcoming,
+    next,
+    suggestedModeId: suggested ? modeForCeremony(suggested.id) : null,
   };
 }
 
@@ -200,6 +271,10 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
         type: raw.parentType ?? 'User Story',
         state: raw.parentState ?? '',
         url: raw.parentUrl ?? '',
+        descriptionPreview: htmlPreview(raw.parentDescription),
+        area: lastPathSegment(raw.parentAreaPath ?? ''),
+        parentEstimate: raw.parentOriginalEstimate,
+        parentRemaining: raw.parentRemainingWork,
       };
     } else {
       // No parent — treat the item itself as its own "story".
@@ -209,6 +284,10 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
         type: raw.type,
         state: raw.state,
         url: humanUrl(raw.url),
+        descriptionPreview: htmlPreview(raw.description),
+        area: lastPathSegment(raw.areaPath),
+        parentEstimate: raw.originalEstimate,
+        parentRemaining: raw.remainingWork,
       };
     }
     const key = parent.id;
@@ -216,11 +295,19 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
     buckets.get(key)!.tasks.push(projectedItem);
   }
 
-  // Roll up effort + counts per bucket.
+  // Roll up effort + counts per bucket. Local-uncaptured time is added
+  // into completedHours and subtracted from remainingHours so the story
+  // reflects reality even before changes are pushed to ADO.
   const groups: UserStoryGroup[] = Array.from(buckets.values()).map(({ parent, tasks }) => {
     const totalEstimateHours = tasks.reduce((s, t) => s + (t.originalEstimate ?? 0), 0);
-    const completedHours = tasks.reduce((s, t) => s + (t.completedWork ?? 0), 0);
-    const remainingHours = tasks.reduce((s, t) => s + (t.remainingWork ?? 0), 0);
+    const completedHours = tasks.reduce(
+      (s, t) => s + (t.completedWork ?? 0) + t.localUncapturedSeconds / 3600,
+      0,
+    );
+    const remainingHours = tasks.reduce(
+      (s, t) => s + Math.max(0, (t.remainingWork ?? 0) - t.localUncapturedSeconds / 3600),
+      0,
+    );
     const counts = {
       inProgress: tasks.filter(t => ACTIVE_STATES.has(t.state)).length,
       upNext: tasks.filter(t => !ACTIVE_STATES.has(t.state) && !DONE_STATES.has(t.state)).length,
@@ -232,6 +319,10 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
       type: parent.type,
       state: parent.state,
       url: parent.url,
+      descriptionPreview: parent.descriptionPreview,
+      area: parent.area,
+      parentEstimate: parent.parentEstimate,
+      parentRemaining: parent.parentRemaining,
       tasks,
       totalEstimateHours,
       completedHours,
@@ -256,9 +347,17 @@ interface ParentInfo {
   type: string;
   state: string;
   url: string;
+  descriptionPreview?: string;
+  area?: string;
+  parentEstimate?: number;
+  parentRemaining?: number;
 }
 
-function projectWorkItem(w: WorkItem): DashboardWorkItem {
+function projectWorkItem(
+  w: WorkItem,
+  uncaptured: Map<number, number>,
+  running: Map<number, string>,
+): DashboardWorkItem {
   const lastIterSegment = w.iterationPath.split('\\').pop() ?? w.iterationPath;
   const story = w.parentTitle
     ? `${w.parentTitle} · ${lastIterSegment}`
@@ -281,8 +380,37 @@ function projectWorkItem(w: WorkItem): DashboardWorkItem {
     originalEstimate: w.originalEstimate,
     remainingWork: w.remainingWork,
     completedWork: w.completedWork,
+    descriptionPreview: htmlPreview(w.description),
+    area: lastPathSegment(w.areaPath),
+    localUncapturedSeconds: uncaptured.get(w.id) ?? 0,
+    runningSince: running.get(w.id),
     url: humanUrl(w.url),
   };
+}
+
+/** Strip HTML tags + entities, collapse whitespace, truncate to 280 chars. */
+function htmlPreview(html: string | undefined): string | undefined {
+  if (!html) return undefined;
+  const text = html
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/p>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return undefined;
+  return text.length > 280 ? text.slice(0, 277).trimEnd() + '…' : text;
+}
+
+function lastPathSegment(path: string): string | undefined {
+  if (!path) return undefined;
+  const seg = path.split('\\').pop();
+  return seg && seg !== path ? seg : undefined;
 }
 
 /** ADO `url` field points at the REST API; convert to the human-facing URL. */

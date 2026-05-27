@@ -1,0 +1,71 @@
+/**
+ * Local SQLite store at ~/.sprint-helper/data.db.
+ *
+ * Holds time-tracking state that doesn't belong in Azure DevOps:
+ *  - time_entries: every start/stop session per work item (multiple per item).
+ *  - pending_changes: changes we tried to push to ADO and failed; retry queue.
+ *  - settings: misc key/value config.
+ *
+ * Connection is opened lazily and cached for the life of the process.
+ */
+import Database, { type Database as DB } from 'better-sqlite3';
+import { mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
+let cached: DB | null = null;
+
+export function getDb(): DB {
+  if (cached) return cached;
+  const dir = join(homedir(), '.sprint-helper');
+  mkdirSync(dir, { recursive: true });
+  const dbPath = join(dir, 'data.db');
+  const db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+  migrate(db);
+  cached = db;
+  return db;
+}
+
+function migrate(db: DB) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS time_entries (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      work_item_id  INTEGER NOT NULL,
+      started_at    TEXT NOT NULL,
+      ended_at      TEXT,
+      note          TEXT,
+      synced_to_ado INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_time_entries_wi
+      ON time_entries(work_item_id);
+
+    CREATE TABLE IF NOT EXISTS pending_changes (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      work_item_id INTEGER NOT NULL,
+      kind         TEXT NOT NULL,
+      payload      TEXT NOT NULL,
+      created_at   TEXT NOT NULL,
+      applied_at   TEXT,
+      error        TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_pending_open
+      ON pending_changes(work_item_id) WHERE applied_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+  `);
+}
+
+/** For tests or graceful shutdown. */
+export function closeDb() {
+  if (cached) {
+    cached.close();
+    cached = null;
+  }
+}

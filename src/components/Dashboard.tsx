@@ -1,23 +1,39 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   nameFromEmail,
+  timerDone,
+  timerPause,
+  timerStart,
+  timerSync,
+  updateWorkItem,
   useDashboardData,
   type ApiPayload,
   type ApiUserStoryGroup,
   type ApiWorkItem,
+  type StateBucket,
 } from '../lib/api';
 import {
   dayOfSprint,
   fmtEstimate,
+  fmtHM,
   formatClock,
   formatLongDate,
   greetingForHour,
   sprintDays,
   useNow,
+  useTick,
 } from '../lib/time';
+import { useEditable } from '../lib/useEditable';
+import { useMode } from '../lib/useMode';
 import type { SprintContext } from '../lib/types';
 import { Dot } from './Dot';
+import { ModePlaceholder } from './ModePlaceholder';
+import { ModeRail } from './ModeRail';
 import { Mono } from './Mono';
+import { ScheduleModal } from './ScheduleModal';
+import { StatePicker } from './StatePicker';
+import { Stepper } from './Stepper';
+import { UpNextTile } from './UpNextTile';
 import { WorkItemDrawer } from './WorkItemDrawer';
 
 export function Dashboard() {
@@ -82,10 +98,18 @@ function DashboardLive({
 
   // Active story: defaults to first (already sorted: in-progress first).
   const [activeStoryId, setActiveStoryId] = useState<string | undefined>(stories[0]?.id);
+  // Expanded chip is independent of the focused active story — you can
+  // quick-edit a non-focused story without losing your current focus.
+  const [expandedChipId, setExpandedChipId] = useState<string | null>(null);
   // Work item drawer state — null means closed.
   const [viewingItemId, setViewingItemId] = useState<string | null>(null);
   const openItem = (id: string) => setViewingItemId(id);
   const closeItem = () => setViewingItemId(null);
+
+  // Mode shell + schedule editor state.
+  const [mode, setMode] = useMode();
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const ceremonies = data.ceremonies;
 
   // Re-sync active story when the data changes (e.g., sprint switch).
   useEffect(() => {
@@ -93,10 +117,19 @@ function DashboardLive({
       setActiveStoryId(stories[0]?.id);
     }
   }, [stories, activeStoryId]);
+  useEffect(() => {
+    if (expandedChipId && !stories.some(s => s.id === expandedChipId)) {
+      setExpandedChipId(null);
+    }
+  }, [stories, expandedChipId]);
 
   const activeStory = useMemo(
     () => stories.find(s => s.id === activeStoryId) ?? stories[0],
     [stories, activeStoryId],
+  );
+  const expandedChip = useMemo(
+    () => stories.find(s => s.id === expandedChipId) ?? null,
+    [stories, expandedChipId],
   );
 
   const sprintLeftHours = `${Math.round(data.capacity.remainingHours)}h`;
@@ -106,7 +139,7 @@ function DashboardLive({
   const sprintLabel = data.sprint?.name ?? '—';
 
   return (
-    <div className="ember">
+    <div className="ember has-rail">
       <div className="ember-glow ember-glow-1" aria-hidden="true" />
       <div className="ember-glow ember-glow-2" aria-hidden="true" />
       <div className="ember-grain" aria-hidden="true" />
@@ -149,6 +182,13 @@ function DashboardLive({
       </header>
 
       <div className="ember-main">
+        <ModeRail
+          active={mode}
+          suggested={ceremonies.suggestedModeId}
+          onPick={setMode}
+          onOpenSchedule={() => setScheduleOpen(true)}
+        />
+
         {/* SIDEBAR */}
         <aside className="ember-side">
           <p className="ember-date">{date}</p>
@@ -189,6 +229,14 @@ function DashboardLive({
             </p>
           )}
 
+          {/* Up next tile */}
+          <UpNextTile
+            next={ceremonies.next}
+            upcoming={ceremonies.upcoming}
+            onJump={setMode}
+            onOpenSchedule={() => setScheduleOpen(true)}
+          />
+
           {/* sprint rail */}
           {sprintCtx && (
             <div className="ember-rail">
@@ -221,6 +269,8 @@ function DashboardLive({
 
         {/* CONTENT */}
         <div className="ember-content">
+          {mode !== 'day' ? <ModePlaceholder mode={mode} /> : (
+          <>
           {/* GLANCE STATS */}
           <section className="ember-stats">
             {[
@@ -247,50 +297,44 @@ function DashboardLive({
               <div className="ember-stories-head">
                 <h3 className="ember-section-title">My user stories</h3>
                 <span className="dim-small">
-                  <Mono style={{ color: 'var(--ink-1)' }}>{stories.length}</Mono>&nbsp;in this sprint · click one to focus
+                  <Mono style={{ color: 'var(--ink-1)' }}>{stories.length}</Mono>&nbsp;in this sprint · click to focus · <Mono style={{ color: 'var(--ink-2)' }}>›</Mono> for quick edits
                 </span>
               </div>
-              <div className="ember-stories-grid">
+              <div className="ember-stories-grid chips-grid">
                 {stories.map(s => (
-                  <button
+                  <StoryChip
                     key={s.id}
-                    className={`ember-story-chip ${activeStory?.id === s.id ? 'active' : ''}`}
-                    onClick={() => setActiveStoryId(s.id)}
-                    aria-pressed={activeStory?.id === s.id}
-                  >
-                    <div className="ember-story-chip-head">
-                      <span className="ember-story-chip-type">{s.type}</span>
-                      <span className="ember-story-chip-id">#{s.id}</span>
-                    </div>
-                    <span className="ember-story-chip-title">{s.title}</span>
-                    <div className="ember-story-chip-meta">
-                      {s.counts.inProgress > 0 && (
-                        <span className="ember-story-chip-pill going">
-                          <Mono>{s.counts.inProgress}</Mono> going
-                        </span>
-                      )}
-                      {s.counts.upNext > 0 && (
-                        <span className="ember-story-chip-pill">
-                          <Mono>{s.counts.upNext}</Mono> waiting
-                        </span>
-                      )}
-                      {s.counts.done > 0 && (
-                        <span className="ember-story-chip-pill">
-                          <Mono>{s.counts.done}</Mono> done
-                        </span>
-                      )}
-                      <span style={{ marginLeft: 'auto' }}>
-                        <Mono>{Math.round(s.remainingHours)}h</Mono> left
-                      </span>
-                    </div>
-                  </button>
+                    story={s}
+                    active={activeStory?.id === s.id}
+                    open={expandedChipId === s.id}
+                    onFocus={() => setActiveStoryId(s.id)}
+                    onToggleExpand={() => setExpandedChipId(id => (id === s.id ? null : s.id))}
+                  />
                 ))}
+                <div className={`chip-expand-wrap va ${expandedChip ? 'is-open' : ''}`}>
+                  <div className="chip-expand">
+                    {expandedChip && (
+                      <StoryChipExpand
+                        story={expandedChip}
+                        onOpen={() => openItem(expandedChip.id)}
+                        onAfterChange={onRefresh}
+                      />
+                    )}
+                  </div>
+                </div>
               </div>
             </section>
           )}
 
           {/* ACTIVE STORY focus */}
-          {activeStory && <ActiveStoryCard story={activeStory} onOpenItem={openItem} />}
+          {activeStory && (
+            <ActiveStoryCard
+              story={activeStory}
+              onOpenItem={openItem}
+              onAfterChange={onRefresh}
+              fetchedAt={data.fetchedAt}
+            />
+          )}
 
           {/* STANDUP + LISTS */}
           <div className="ember-grid">
@@ -364,14 +408,20 @@ function DashboardLive({
             </section>
           </div>
 
-          {/* SYNC BANNER — placeholder until slice 2 wires real pending changes */}
+          {/* SYNC BANNER */}
           <section className="ember-sync-banner">
             <div className="ember-sync-left">
-              <Mono className="ember-sync-n">0</Mono>
+              <Mono className="ember-sync-n">{data.pendingChanges}</Mono>
               <div className="ember-sync-text">
-                <span className="ember-sync-headline">no pending changes</span>
+                <span className="ember-sync-headline">
+                  {data.pendingChanges === 0
+                    ? 'all caught up with azure devops'
+                    : `${data.pendingChanges} task${data.pendingChanges === 1 ? '' : 's'} with unsynced time`}
+                </span>
                 <span className="ember-sync-detail">
-                  read-only mode · time logging and edits arrive in the next slice
+                  {data.pendingChanges === 0
+                    ? 'logged time is pushed when you sync or mark a task done'
+                    : 'press ↑ on a task to sync, or ✓ to mark it done'}
                 </span>
               </div>
             </div>
@@ -386,8 +436,16 @@ function DashboardLive({
               <span aria-hidden="true" className="ember-cta-arrow">↗</span>
             </a>
           </section>
+          </>
+          )}
         </div>
       </div>
+
+      <ScheduleModal
+        open={scheduleOpen}
+        onClose={() => setScheduleOpen(false)}
+        onSaved={onRefresh}
+      />
 
       <WorkItemDrawer
         itemId={viewingItemId}
@@ -443,10 +501,26 @@ function SprintPicker({
 function ActiveStoryCard({
   story,
   onOpenItem,
+  onAfterChange,
+  fetchedAt,
 }: {
   story: ApiUserStoryGroup;
   onOpenItem: (id: string) => void;
+  onAfterChange: () => void;
+  fetchedAt: string;
 }) {
+  // Live tick — re-render once per second so running timers' counters advance.
+  useTick();
+  const fetchedAtMs = useMemo(() => new Date(fetchedAt).getTime(), [fetchedAt]);
+  // Seconds elapsed since the server's snapshot — added to each running task's logged total.
+  const driftSec = Math.max(0, Math.floor((Date.now() - fetchedAtMs) / 1000));
+
+  const storyLiveHours = story.completedHours + (story.tasks.filter(t => t.runningSince).length * driftSec) / 3600;
+  const storyLiveRemaining = Math.max(
+    0,
+    story.remainingHours - (story.tasks.filter(t => t.runningSince).length * driftSec) / 3600,
+  );
+
   return (
     <section className="ember-active-story">
       <div className="ember-active-story-head">
@@ -473,11 +547,11 @@ function ActiveStoryCard({
       </h2>
 
       <div className="ember-active-story-numbers">
-        <NumberBlock label="logged" value={story.completedHours} accent />
+        <NumberBlock label="logged" value={storyLiveHours} accent />
         <Divider />
         <NumberBlock label="estimate" value={story.totalEstimateHours} dim />
         <Divider />
-        <NumberBlock label="remaining" value={story.remainingHours} dim />
+        <NumberBlock label="remaining" value={storyLiveRemaining} dim />
       </div>
 
       <div className="ember-active-story-tasks">
@@ -492,42 +566,17 @@ function ActiveStoryCard({
           </span>
         </div>
         {story.tasks.map(task => (
-          <button
+          <TaskRow
             key={task.id}
-            onClick={() => onOpenItem(task.id)}
-            className={`ember-active-story-task ${stateClass(task.state)}`}
-            style={{ textDecoration: 'none', textAlign: 'inherit', font: 'inherit', cursor: 'pointer' }}
-            title="View task details"
-          >
-            <Mono className="ember-task-id">#{task.id}</Mono>
-            <span className="ember-task-title">{task.title}</span>
-            <span className="ember-task-meta">
-              <Mono>{loggedFor(task)}</Mono>&nbsp;<span className="dim">/</span>&nbsp;<Mono style={{ color: 'var(--ink-2)' }}>{estimateFor(task)}</Mono>
-            </span>
-            <span className="ember-task-state">{taskStateLabel(task.state)}</span>
-          </button>
+            task={task}
+            driftSec={driftSec}
+            onOpen={() => onOpenItem(task.id)}
+            onAfterChange={onAfterChange}
+          />
         ))}
       </div>
 
       <div className="ember-active-story-actions">
-        <button
-          className="ember-act"
-          aria-disabled="true"
-          title="Start timer on the first running task — slice 2"
-          onClick={e => e.preventDefault()}
-        >
-          start timer
-          <span className="ember-act-soon">soon</span>
-        </button>
-        <span className="ember-act-sep">·</span>
-        <button
-          className="ember-act"
-          aria-disabled="true"
-          title="Pause active timer — slice 2"
-          onClick={e => e.preventDefault()}
-        >
-          pause
-        </button>
         <a className="ember-act ember-act-ghost" href={story.url} target="_blank" rel="noreferrer">
           open story in Azure DevOps <span aria-hidden="true">↗</span>
         </a>
@@ -536,16 +585,333 @@ function ActiveStoryCard({
   );
 }
 
-function stateClass(state: string): string {
-  if (DONE_STATES_FRONT.has(state)) return 'done';
-  if (ACTIVE_STATES_FRONT.has(state)) return 'running';
-  return 'queued';
+function TaskRow({
+  task,
+  driftSec,
+  onOpen,
+  onAfterChange,
+}: {
+  task: ApiWorkItem;
+  driftSec: number;
+  onOpen: () => void;
+  onAfterChange: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [timerPending, setTimerPending] = useState<null | 'start' | 'pause' | 'sync' | 'done'>(null);
+  const [timerError, setTimerError] = useState<string | null>(null);
+
+  const stateEdit = useEditable<StateBucket>(bucketForState(task.state));
+  const estimateEdit = useEditable<number>(task.originalEstimate ?? 0);
+  const remainingEdit = useEditable<number>(task.remainingWork ?? 0);
+
+  const isDone = stateEdit.display === 'done';
+  const running = !!task.runningSince;
+  const hasUnsynced = task.localUncapturedSeconds > 0 || running;
+
+  const baseLoggedSec = Math.round((task.completedWork ?? 0) * 3600) + task.localUncapturedSeconds;
+  const liveLoggedSec = baseLoggedSec + (running ? driftSec : 0);
+  const loggedDisplay = fmtHM(liveLoggedSec, 0);
+
+  async function doTimerAction(kind: 'start' | 'pause' | 'sync' | 'done') {
+    setTimerPending(kind);
+    setTimerError(null);
+    try {
+      switch (kind) {
+        case 'start': await timerStart(task.id); break;
+        case 'pause': await timerPause(task.id); break;
+        case 'sync':  await timerSync(task.id); break;
+        case 'done':  await timerDone(task.id); break;
+      }
+      onAfterChange();
+    } catch (e) {
+      setTimerError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTimerPending(null);
+    }
+  }
+
+  const errorMsg = timerError ?? stateEdit.error ?? estimateEdit.error ?? remainingEdit.error;
+
+  const toggle = () => setExpanded(v => !v);
+  const stop = (fn: () => void) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    fn();
+  };
+
+  return (
+    <>
+      <div
+        className={`ember-active-story-task task-row state-${stateEdit.display} ${running ? 'is-running' : ''} ${expanded ? 'is-open' : ''}`}
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        aria-label={`Task #${task.id} ${task.title} — ${expanded ? 'collapse' : 'expand'}`}
+        onClick={toggle}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggle();
+          }
+        }}
+      >
+        <span className="ember-task-id task-id">#{task.id}</span>
+        <span className="ember-task-title task-title">{task.title}</span>
+        <span className="ember-task-meta task-effort">
+          <Mono className={running ? 'accent' : undefined}>{loggedDisplay}</Mono>
+          &nbsp;<span className="of">/</span>&nbsp;
+          <Mono style={{ color: 'var(--ink-2)' }}>{estimateFor(task)}</Mono>
+        </span>
+        <span className="ember-task-state task-state">{bucketLabel(stateEdit.display)}</span>
+        <span className="ember-task-controls task-quickacts">
+          {!isDone && !running && (
+            <button className="ember-task-btn task-quick" onClick={stop(() => doTimerAction('start'))} disabled={timerPending !== null} title="Start timer">
+              <span className="task-quick-glyph">▶</span> start
+            </button>
+          )}
+          {!isDone && running && (
+            <button className="ember-task-btn pause task-quick" onClick={stop(() => doTimerAction('pause'))} disabled={timerPending !== null} title="Pause timer">
+              <span className="task-quick-glyph">⏸</span> pause
+            </button>
+          )}
+          {!isDone && hasUnsynced && !running && (
+            <button className="ember-task-btn sync task-quick" onClick={stop(() => doTimerAction('sync'))} disabled={timerPending !== null} title="Push logged time to Azure DevOps">
+              <span className="task-quick-glyph">↑</span> sync
+            </button>
+          )}
+          {!isDone && (
+            <button className="ember-task-btn done task-quick" onClick={stop(() => doTimerAction('done'))} disabled={timerPending !== null} title="Mark done in Azure DevOps">
+              <span className="task-quick-glyph">✓</span> done
+            </button>
+          )}
+        </span>
+        <span
+          className={`chev ${expanded ? 'is-open' : ''}`}
+          aria-hidden="true"
+          title={expanded ? 'collapse' : 'expand'}
+        >
+          ›
+        </span>
+      </div>
+
+      <div className={`task-expand-wrap va ${expanded ? 'is-open' : ''}`}>
+        <div className="task-expand">
+          <div className="task-expand-inner">
+            {task.parent && (
+              <div className="task-expand-context">
+                <span>{task.parent.type}</span>
+                <span className="dot">·</span>
+                <span className="tag-id">#{task.parent.id}</span>
+                <span className="dot">·</span>
+                <span className="tag-title">{task.parent.title}</span>
+              </div>
+            )}
+            {task.descriptionPreview && (
+              <p className="task-expand-desc">{task.descriptionPreview}</p>
+            )}
+            <div className="task-expand-strip">
+              <div className="group">
+                <span className="label">STATE</span>
+                <StatePicker
+                  value={stateEdit.display}
+                  disabled={stateEdit.saving}
+                  onChange={next => stateEdit.save(next, n =>
+                    updateWorkItem(task.id, { state: n }).then(() => onAfterChange()),
+                  )}
+                />
+              </div>
+              <div className="group">
+                <span className="label">ESTIMATE</span>
+                <Stepper
+                  value={estimateEdit.display}
+                  disabled={estimateEdit.saving}
+                  onChange={next => estimateEdit.save(next, n =>
+                    updateWorkItem(task.id, { originalEstimate: n }).then(() => onAfterChange()),
+                  )}
+                />
+              </div>
+              <div className="group">
+                <span className="label">REMAINING</span>
+                <Stepper
+                  value={remainingEdit.display}
+                  disabled={remainingEdit.saving}
+                  onChange={next => remainingEdit.save(next, n =>
+                    updateWorkItem(task.id, { remainingWork: n }).then(() => onAfterChange()),
+                  )}
+                />
+              </div>
+            </div>
+            <div className="task-expand-foot">
+              <span className="pushnote">edits push to Azure DevOps when you click away</span>
+              <button className="ghost" onClick={onOpen}>see full description and comments →</button>
+            </div>
+            {errorMsg && (
+              <div className="task-expand-error" role="alert">
+                {errorMsg}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
 }
 
-function taskStateLabel(state: string): string {
+function bucketForState(state: string): StateBucket {
   if (DONE_STATES_FRONT.has(state)) return 'done';
   if (ACTIVE_STATES_FRONT.has(state)) return 'going';
   return 'waiting';
+}
+
+function bucketLabel(b: StateBucket): string {
+  return b === 'going' ? 'GOING' : b === 'done' ? 'DONE' : 'WAITING';
+}
+
+function StoryChip({
+  story,
+  active,
+  open,
+  onFocus,
+  onToggleExpand,
+}: {
+  story: ApiUserStoryGroup;
+  active: boolean;
+  open: boolean;
+  onFocus: () => void;
+  onToggleExpand: () => void;
+}) {
+  return (
+    <div
+      className={`ember-story-chip chip ${active ? 'active' : ''} ${open ? 'is-open' : ''}`}
+      role="button"
+      tabIndex={0}
+      aria-pressed={active}
+      onClick={onFocus}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onFocus();
+        }
+      }}
+    >
+      <div className="ember-story-chip-head chip-head">
+        <span className="ember-story-chip-type">{story.type}</span>
+        <span className="ember-story-chip-id">#{story.id}</span>
+        <button
+          className={`chip-chev ${open ? 'is-open' : ''}`}
+          onClick={e => {
+            e.stopPropagation();
+            onToggleExpand();
+          }}
+          aria-expanded={open}
+          aria-label={open ? 'collapse quick edits' : 'expand quick edits'}
+          title={open ? 'collapse quick edits' : 'expand for quick edits'}
+        >
+          ›
+        </button>
+      </div>
+      <span className="ember-story-chip-title">{story.title}</span>
+      <div className="ember-story-chip-meta">
+        {story.counts.inProgress > 0 && (
+          <span className="ember-story-chip-pill going">
+            <Mono>{story.counts.inProgress}</Mono> going
+          </span>
+        )}
+        {story.counts.upNext > 0 && (
+          <span className="ember-story-chip-pill">
+            <Mono>{story.counts.upNext}</Mono> waiting
+          </span>
+        )}
+        {story.counts.done > 0 && (
+          <span className="ember-story-chip-pill">
+            <Mono>{story.counts.done}</Mono> done
+          </span>
+        )}
+        <span style={{ marginLeft: 'auto' }}>
+          <Mono>{Math.round(story.remainingHours)}h</Mono> left
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function StoryChipExpand({
+  story,
+  onOpen,
+  onAfterChange,
+}: {
+  story: ApiUserStoryGroup;
+  onOpen: () => void;
+  onAfterChange: () => void;
+}) {
+  const stateEdit = useEditable<StateBucket>(bucketForState(story.state));
+  const estimateEdit = useEditable<number>(story.parentEstimate ?? 0);
+  const remainingEdit = useEditable<number>(story.parentRemaining ?? 0);
+  const totalChildren = story.counts.inProgress + story.counts.upNext + story.counts.done;
+  const errorMsg = stateEdit.error ?? estimateEdit.error ?? remainingEdit.error;
+
+  return (
+    <div className="chip-expand-inner">
+      <div className="chip-expand-meta">
+        <span>{story.type}</span>
+        <span className="sep">·</span>
+        <Mono className="v">#{story.id}</Mono>
+        <span className="sep">·</span>
+        <span className="v">{bucketLabel(stateEdit.display).toLowerCase()}</span>
+        {story.area && (
+          <>
+            <span className="sep">·</span>
+            <span>{story.area}</span>
+          </>
+        )}
+        <span className="sep">·</span>
+        <span>{totalChildren} child task{totalChildren === 1 ? '' : 's'} assigned to you</span>
+      </div>
+      {story.descriptionPreview && (
+        <p className="chip-expand-desc">{story.descriptionPreview}</p>
+      )}
+      <div className="chip-expand-strip">
+        <div className="group">
+          <span className="label">STATE</span>
+          <StatePicker
+            value={stateEdit.display}
+            disabled={stateEdit.saving}
+            onChange={next => stateEdit.save(next, n =>
+              updateWorkItem(story.id, { state: n }).then(() => onAfterChange()),
+            )}
+          />
+        </div>
+        <div className="group">
+          <span className="label">ESTIMATE</span>
+          <Stepper
+            value={estimateEdit.display}
+            disabled={estimateEdit.saving}
+            onChange={next => estimateEdit.save(next, n =>
+              updateWorkItem(story.id, { originalEstimate: n }).then(() => onAfterChange()),
+            )}
+          />
+        </div>
+        <div className="group">
+          <span className="label">REMAINING</span>
+          <Stepper
+            value={remainingEdit.display}
+            disabled={remainingEdit.saving}
+            onChange={next => remainingEdit.save(next, n =>
+              updateWorkItem(story.id, { remainingWork: n }).then(() => onAfterChange()),
+            )}
+          />
+        </div>
+      </div>
+      <div className="chip-expand-foot">
+        <span>edits push to Azure DevOps when you click away</span>
+        <button className="ghost" onClick={onOpen}>open story details →</button>
+      </div>
+      {errorMsg && (
+        <div className="task-expand-error" role="alert">
+          {errorMsg}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const DONE_STATES_FRONT = new Set(['Done', 'Closed', 'Resolved', 'Completed', 'Removed']);

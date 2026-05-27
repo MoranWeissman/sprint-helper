@@ -24,11 +24,17 @@ export interface WorkItem {
   type: string;
   title: string;
   state: string;
+  description?: string;       // HTML (raw); UI strips to plain-text preview
+  areaPath: string;
   parentId?: number;
   parentTitle?: string;
   parentType?: string;
   parentState?: string;
   parentUrl?: string;
+  parentDescription?: string;
+  parentAreaPath?: string;
+  parentOriginalEstimate?: number;
+  parentRemainingWork?: number;
   assignedTo?: string;
   iterationPath: string;
   originalEstimate?: number;
@@ -44,6 +50,8 @@ const WORK_ITEM_FIELDS = [
   'System.WorkItemType',
   'System.Title',
   'System.State',
+  'System.Description',
+  'System.AreaPath',
   'System.Parent',
   'System.AssignedTo',
   'System.IterationPath',
@@ -299,6 +307,10 @@ export async function getMyWorkItems(iterationPath: string): Promise<WorkItem[]>
         i.parentType = p.type;
         i.parentState = p.state;
         i.parentUrl = humanWorkItemUrl(p.url, p.id);
+        i.parentDescription = p.description;
+        i.parentAreaPath = p.areaPath;
+        i.parentOriginalEstimate = p.originalEstimate;
+        i.parentRemainingWork = p.remainingWork;
       }
     }
   }
@@ -356,6 +368,8 @@ function mapWorkItem(w: { id: number; rev: number; url: string; fields: Record<s
     type: String(f['System.WorkItemType'] ?? ''),
     title: String(f['System.Title'] ?? ''),
     state: String(f['System.State'] ?? ''),
+    description: typeof f['System.Description'] === 'string' ? (f['System.Description'] as string) : undefined,
+    areaPath: String(f['System.AreaPath'] ?? ''),
     parentId: typeof f['System.Parent'] === 'number' ? (f['System.Parent'] as number) : undefined,
     assignedTo,
     iterationPath: String(f['System.IterationPath'] ?? ''),

@@ -20,6 +20,12 @@ export interface ApiWorkItem {
   originalEstimate?: number;
   remainingWork?: number;
   completedWork?: number;
+  descriptionPreview?: string;
+  area?: string;
+  /** Seconds tracked locally that ADO doesn't know about yet. */
+  localUncapturedSeconds: number;
+  /** ISO timestamp of the currently-running timer's start, if any. */
+  runningSince?: string;
   url: string;
 }
 
@@ -47,11 +53,26 @@ export interface ApiUserStoryGroup {
   type: string;
   state: string;
   url: string;
+  descriptionPreview?: string;
+  area?: string;
+  parentEstimate?: number;
+  parentRemaining?: number;
   tasks: ApiWorkItem[];
   totalEstimateHours: number;
   completedHours: number;
   remainingHours: number;
   counts: { inProgress: number; upNext: number; done: number };
+}
+
+export type CeremonyId = 'daily' | 'preplan' | 'plan' | 'demo' | 'retro';
+export type ModeId = 'day' | 'preplan' | 'plan' | 'demo' | 'retro';
+
+export interface ApiUpcomingCeremony {
+  id: CeremonyId;
+  label: string;
+  startsAt: string;        // ISO
+  minutesUntil: number;
+  isSuggested: boolean;
 }
 
 export interface ApiPayload {
@@ -69,7 +90,48 @@ export interface ApiPayload {
     completedHours: number;
     totalEstimateHours: number;
   };
+  pendingChanges: number;
+  ceremonies: {
+    upcoming: ApiUpcomingCeremony[];
+    next: ApiUpcomingCeremony | null;
+    suggestedModeId: ModeId | null;
+  };
   fetchedAt: string;
+}
+
+/** Schedule API — same vocabulary as the mode ids, with `daily` for the Daily event. */
+export type CeremonyRecurrence =
+  | { kind: 'weekdays'; time: string }
+  | { kind: 'sprint_relative'; weekOfSprint: 1 | 2; dayOfWeek: number; time: string };
+
+export interface CeremonyConfig {
+  id: CeremonyId;
+  label: string;
+  enabled: boolean;
+  recurrence: CeremonyRecurrence;
+}
+
+export interface CeremonySchedule {
+  version: 1;
+  ceremonies: CeremonyConfig[];
+}
+
+export async function getSchedule(): Promise<CeremonySchedule> {
+  const r = await fetch('/api/schedule', { cache: 'no-store' });
+  const body = await r.json();
+  if (!r.ok || 'error' in body) throw new Error(body.error ?? 'Could not load schedule');
+  return body as CeremonySchedule;
+}
+
+export async function putSchedule(schedule: CeremonySchedule): Promise<CeremonySchedule> {
+  const r = await fetch('/api/schedule', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(schedule),
+  });
+  const body = await r.json();
+  if (!r.ok || 'error' in body) throw new Error(body.error ?? 'Could not save schedule');
+  return body as CeremonySchedule;
 }
 
 export interface ApiError {
@@ -204,4 +266,63 @@ export function nameFromEmail(email: string): string {
   const local = email.split('@')[0] ?? email;
   const first = local.split(/[._-]/)[0] ?? local;
   return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Timer mutations                                                           */
+/* -------------------------------------------------------------------------- */
+
+export interface TimerActionResponse {
+  action: 'started' | 'already_running' | 'paused' | 'not_running' | 'synced' | 'marked_done';
+  syncedSeconds?: number;
+  newCompletedHours?: number;
+  newState?: string;
+  warning?: string;
+}
+
+async function timerCall(path: string, workItemId: string): Promise<TimerActionResponse> {
+  const r = await fetch(`/api/timer/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workItemId: Number(workItemId) }),
+  });
+  const body = await r.json();
+  if (!r.ok || 'error' in body) {
+    const msg = body.error ?? `Timer ${path} failed`;
+    throw new Error(msg);
+  }
+  return body as TimerActionResponse;
+}
+
+export const timerStart = (id: string) => timerCall('start', id);
+export const timerPause = (id: string) => timerCall('pause', id);
+export const timerSync = (id: string) => timerCall('sync', id);
+export const timerDone = (id: string) => timerCall('done', id);
+
+/* -------------------------------------------------------------------------- */
+/*  Work item edits                                                           */
+/* -------------------------------------------------------------------------- */
+
+export type StateBucket = 'waiting' | 'going' | 'done';
+
+export interface WorkItemEditPayload {
+  state?: StateBucket;
+  originalEstimate?: number;
+  remainingWork?: number;
+}
+
+export async function updateWorkItem(
+  workItemId: string,
+  payload: WorkItemEditPayload,
+): Promise<{ applied: { state?: string; originalEstimate?: number; remainingWork?: number } }> {
+  const r = await fetch(`/api/workitem/${encodeURIComponent(workItemId)}/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const body = await r.json();
+  if (!r.ok || 'error' in body) {
+    throw new Error(body.error ?? 'Edit failed');
+  }
+  return body;
 }

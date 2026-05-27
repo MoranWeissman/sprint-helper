@@ -50,12 +50,17 @@ function startOfDay(d: Date): Date {
   return c;
 }
 
-/** "Good morning" / "Good afternoon" / "Good evening" / "Working late" based on local hour. */
+/**
+ * Greeting based on local hour.
+ * 12:00–13:59 is "around noon" — Moran specifically noted that "afternoon"
+ * at 13:33 felt too late.
+ */
 export function greetingForHour(d: Date): string {
   const h = d.getHours();
   if (h >= 5 && h < 12) return 'Good morning';
-  if (h >= 12 && h < 17) return 'Good afternoon';
-  if (h >= 17 && h < 22) return 'Good evening';
+  if (h >= 12 && h < 14) return 'Around noon';
+  if (h >= 14 && h < 18) return 'Good afternoon';
+  if (h >= 18 && h < 22) return 'Good evening';
   return 'Working late';
 }
 
