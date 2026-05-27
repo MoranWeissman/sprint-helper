@@ -10,7 +10,7 @@ export interface ApiParent {
   url: string;
 }
 
-export type SessionEventType = 'focus' | 'summary' | 'blocker' | 'decision' | 'note';
+export type SessionEventType = 'focus' | 'progress' | 'blocker' | 'decision' | 'note';
 
 export interface ApiSessionEvent {
   id: number;

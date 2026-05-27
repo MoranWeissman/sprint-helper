@@ -26,7 +26,10 @@ import {
 import { useEditable } from '../lib/useEditable';
 import { useMode } from '../lib/useMode';
 import type { SprintContext } from '../lib/types';
+import { ActivityFeed } from './ActivityFeed';
 import { Dot } from './Dot';
+import { LiveMarker } from './LiveMarker';
+import { LiveNowTile, type LiveNowSession } from './LiveNowTile';
 import { ModePlaceholder } from './ModePlaceholder';
 import { ModeRail } from './ModeRail';
 import { Mono } from './Mono';
@@ -132,6 +135,32 @@ function DashboardLive({
     [stories, expandedChipId],
   );
 
+  // Derive the live sessions list from the dashboard payload — every work
+  // item with an active Claude Code session, in any state bucket. Each row
+  // resolves its parent story title for the sidebar caption.
+  const allItems = useMemo(
+    () => [...inProgress, ...upNext, ...done],
+    [inProgress, upNext, done],
+  );
+  const liveSessions: LiveNowSession[] = useMemo(() => {
+    return allItems
+      .filter(w => !!w.activeSession)
+      .map(w => ({
+        workItemId: w.id,
+        taskTitle: w.title,
+        parentTitle: w.parent?.title,
+        startedAt: w.activeSession!.startedAt,
+      }));
+  }, [allItems]);
+  const jumpToLiveSession = (workItemId: string) => {
+    const item = allItems.find(w => w.id === workItemId);
+    const parentId = item?.parent?.id ?? workItemId;
+    if (stories.some(s => s.id === parentId)) {
+      setActiveStoryId(parentId);
+      setExpandedChipId(parentId);
+    }
+  };
+
   const sprintLeftHours = `${Math.round(data.capacity.remainingHours)}h`;
   const completedHours = `${Math.round(data.capacity.completedHours)}h`;
   const totalEstimateHours = `${Math.round(data.capacity.totalEstimateHours)}h`;
@@ -228,6 +257,9 @@ function DashboardLive({
               No active stories in this sprint. Pick one in Azure DevOps and assign yourself a task.
             </p>
           )}
+
+          {/* Live now — only renders when at least one session is open */}
+          <LiveNowTile sessions={liveSessions} onJump={jumpToLiveSession} />
 
           {/* Up next tile */}
           <UpNextTile
@@ -683,6 +715,11 @@ function TaskRow({
               <span className="task-quick-glyph">✓</span> done
             </button>
           )}
+          {task.activeSession && (
+            <span className="task-live-slot">
+              <LiveMarker />
+            </span>
+          )}
         </span>
         <span
           className={`chev ${expanded ? 'is-open' : ''}`}
@@ -740,6 +777,8 @@ function TaskRow({
                 />
               </div>
             </div>
+            <div className="expand-divider" />
+            <ActivityFeed events={task.recentActivity} scope="task" />
             <div className="task-expand-foot">
               <span className="pushnote">edits push to Azure DevOps when you click away</span>
               <button className="ghost" onClick={onOpen}>see full description and comments →</button>
@@ -796,6 +835,11 @@ function StoryChip({
       <div className="ember-story-chip-head chip-head">
         <span className="ember-story-chip-type">{story.type}</span>
         <span className="ember-story-chip-id">#{story.id}</span>
+        {story.hasActiveSession && (
+          <span className="chip-live-slot">
+            <LiveMarker rollup />
+          </span>
+        )}
         <button
           className={`chip-chev ${open ? 'is-open' : ''}`}
           onClick={e => {
@@ -901,6 +945,12 @@ function StoryChipExpand({
           />
         </div>
       </div>
+      <div className="expand-divider" />
+      <ActivityFeed
+        events={story.recentActivity}
+        scope="chip"
+        rolledUpFromTasks={story.tasks.length}
+      />
       <div className="chip-expand-foot">
         <span>edits push to Azure DevOps when you click away</span>
         <button className="ghost" onClick={onOpen}>open story details →</button>

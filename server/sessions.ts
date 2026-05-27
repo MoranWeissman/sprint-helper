@@ -8,9 +8,9 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from './db';
 
-export type SessionEventType = 'focus' | 'summary' | 'blocker' | 'decision' | 'note';
+export type SessionEventType = 'focus' | 'progress' | 'blocker' | 'decision' | 'note';
 
-const EVENT_TYPES: SessionEventType[] = ['focus', 'summary', 'blocker', 'decision', 'note'];
+const EVENT_TYPES: SessionEventType[] = ['focus', 'progress', 'blocker', 'decision', 'note'];
 
 export function isSessionEventType(v: unknown): v is SessionEventType {
   return typeof v === 'string' && (EVENT_TYPES as string[]).includes(v);
@@ -139,7 +139,7 @@ export function endSession({
     sessionId,
   );
   if (summary && summary.trim().length > 0) {
-    logEvent({ sessionId, type: 'summary', text: summary });
+    logEvent({ sessionId, type: 'progress', text: summary });
   }
   return { ...toSession(row), endedAt, summary: summary ?? row.summary };
 }

@@ -338,10 +338,10 @@ server.registerTool(
   {
     title: 'Log a session event',
     description:
-      "Record an event in an open session. Types: 'focus' (switching attention), 'summary' (what got done so far), 'blocker' (something getting in the way), 'decision' (a tradeoff Moran chose), 'note' (anything else). These surface in her Day dashboard.",
+      "Record an event in an open session. Types: 'focus' (switching attention), 'progress' (what got done so far), 'blocker' (something getting in the way), 'decision' (a tradeoff Moran chose), 'note' (anything else). These surface in her Day dashboard.",
     inputSchema: {
       sessionId: z.string().describe('Session id returned by session_start.'),
-      type: z.enum(['focus', 'summary', 'blocker', 'decision', 'note']),
+      type: z.enum(['focus', 'progress', 'blocker', 'decision', 'note']),
       text: z.string().min(1),
     },
   },
