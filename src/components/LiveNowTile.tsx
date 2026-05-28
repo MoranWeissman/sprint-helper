@@ -1,4 +1,3 @@
-import { useTick } from '../lib/time';
 import { Mono } from './Mono';
 
 export interface LiveNowSession {
@@ -22,9 +21,6 @@ export function LiveNowTile({
   /** Click handler — jumps to the story + expands the task. */
   onJump?: (workItemId: string) => void;
 }) {
-  // Re-render every second so elapsed times tick.
-  useTick();
-
   if (sessions.length === 0) return null;
 
   const title = sessions.length === 1
