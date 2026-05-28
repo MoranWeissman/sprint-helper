@@ -28,6 +28,9 @@ To remove later: `claude mcp remove sprint-helper`.
 | `session_start` | Open a session against a work item. Returns a `sessionId` and silently starts tracking time. Idempotent. |
 | `session_log` | Record an event in a session: `focus` / `progress` / `blocker` / `decision` / `note`. |
 | `session_end` | Close a session with a one-line summary. Pauses the silent timer. Pass `done: true` (only after Moran confirms) to push the tracked time to Azure DevOps and close the task. |
+| `helper_notes_get` | Read what's in Moran's "helper's notes" space now: the living summary + her open nudges. Call before writing to avoid repeats. |
+| `helper_note_set_summary` | Rewrite the always-current 1–3 sentence read of the sprint at the top of her notes space. Replaces the previous summary; empty string clears it. |
+| `helper_note_add` | Drop one short, casual plain-English nudge into her notes space. She ticks them off herself — don't spam. Never writes to ADO. |
 
 ## Recommended flow at session start
 
@@ -46,6 +49,13 @@ To remove later: `claude mcp remove sprint-helper`.
    - Stopping → `session_end` with a summary (time pauses, nothing written to ADO).
    - Done → confirm first, then `session_end` with `done: true` + a summary
      (pushes the tracked time and closes the task).
+
+Throughout, keep Moran's "helper's notes" space current: rewrite the living
+summary (`helper_note_set_summary`) as the picture changes, and drop the
+occasional nudge (`helper_note_add`) when you spot something worth her attention
+— a low estimate, a stalled task, a clear day for deep work. Check
+`helper_notes_get` first so you don't repeat yourself. These are just your read
+for her; they never touch Azure DevOps.
 
 ## Notes
 

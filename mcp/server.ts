@@ -8,6 +8,7 @@
  *  - guardrail: sprint_check_in, task_create
  *  - edits:     workitem_edit
  *  - sessions:  session_start, session_log, session_end
+ *  - notes:     helper_notes_get, helper_note_set_summary, helper_note_add
  *
  * Time is tracked silently by the session lifecycle: session_start begins the
  * timer, session_end pauses it — or, with done=true (only after Moran confirms),
@@ -21,6 +22,7 @@ import { z } from 'zod';
 
 import { buildDashboard } from '../server/dashboard.js';
 import { sprintCheckIn } from '../server/guardrail.js';
+import { addNote, getHelperNotes, setSummary } from '../server/helper-notes.js';
 import {
   endSession,
   isSessionEventType,
@@ -73,6 +75,19 @@ WHEN WORK WRAPS UP — always ask first:
     summary. This is the only time you write to Azure DevOps automatically, and
     only after she has said yes — it pushes the tracked time and closes the
     task. Never set done=true without her explicit confirmation.
+
+KEEPING MORAN'S NOTES (her dashboard's "helper's notes" space):
+  This is where you talk TO Moran about her sprint, in plain casual English.
+  - Keep a living summary current with \`helper_note_set_summary\`: 1-3 sentences
+    on how the sprint is really going and what today is good for. Rewrite it when
+    the picture changes (e.g. at the start of work, after closing a task).
+  - Drop a nudge with \`helper_note_add\` when you notice something worth her
+    attention: an estimate that looks too small for the real work, tasks with no
+    movement for days, a light calendar day that's good for deep work. One thought
+    per nudge. She ticks them off herself, so don't spam — only genuinely useful
+    things. Call \`helper_notes_get\` first to avoid repeating a nudge.
+  - Never write effort or status to Azure DevOps from a note — notes are just your
+    read for her; ADO writes still only happen via the confirm-first close-the-loop.
 
 Call \`sprint_snapshot\` whenever you need to see what's in the current sprint
 and what's already live. Use plain English with Moran — never say "ceremony",
@@ -372,6 +387,47 @@ server.registerTool(
       return errorResult(e instanceof Error ? e.message : String(e));
     }
   },
+);
+
+/* ============================================================ */
+/*  Helper's notes                                               */
+/* ============================================================ */
+
+server.registerTool(
+  'helper_notes_get',
+  {
+    title: "Get the helper's notes",
+    description:
+      "Read what's currently in Moran's helper-notes space on her dashboard: the living summary plus her open (not-yet-cleared) nudges. Call this before writing so you don't repeat a nudge that's already there.",
+    inputSchema: {},
+  },
+  async () => jsonResult(getHelperNotes()),
+);
+
+server.registerTool(
+  'helper_note_set_summary',
+  {
+    title: "Set the helper's living summary",
+    description:
+      "Rewrite the one short, always-current plain-English read of Moran's sprint shown at the top of her notes space. Keep it to 1-3 casual sentences — how the sprint is really going, what today is good for. This REPLACES the previous summary. Pass an empty string to clear it.",
+    inputSchema: {
+      summary: z.string().describe('1-3 casual, plain-English sentences. Empty string clears it.'),
+    },
+  },
+  async ({ summary }) => jsonResult(setSummary(summary)),
+);
+
+server.registerTool(
+  'helper_note_add',
+  {
+    title: "Add a nudge to the helper's notes",
+    description:
+      "Drop a single short nudge into Moran's notes space — something you noticed worth her attention (an estimate that looks low, tasks gone quiet, a good day for deep work). Plain, casual English, one thought per note. She ticks these off herself once handled, so only add things that are genuinely actionable or worth seeing.",
+    inputSchema: {
+      body: z.string().min(1).describe('One short, casual, plain-English nudge.'),
+    },
+  },
+  async ({ body }) => jsonResult(addNote(body)),
 );
 
 /* ============================================================ */
