@@ -2231,3 +2231,25 @@ html, body {
 .r21-ev-type.t-decision { color: var(--ev-decision); }
 .r21-ev-type.t-note { color: var(--ev-note); }
 .r21-ev-body { font-size: 13.5px; color: var(--ink-1); line-height: 1.5; text-wrap: pretty; }
+
+/* Moran's chosen tweaks (locked from Claude Design): generous density + whisper focal. */
+.r21-app[data-density="generous"] .r21-overview { padding: 60px 88px 44px; gap: 56px; }
+.r21-app[data-density="generous"] .r21-focal { padding: 88px 128px 56px; }
+.r21-app[data-density="generous"] .r21-headline-big { font-size: 108px; }
+.r21-app[data-density="generous"] .r21-headline-big .unit { font-size: 44px; }
+.r21-app[data-density="generous"] .r21-focal-title { font-size: 56px; line-height: 1.05; }
+.r21-app[data-density="generous"] .r21-stories-grid { gap: 22px; }
+.r21-app[data-density="generous"] .r21-storychip { min-height: 140px; padding: 22px 22px 18px; gap: 14px; }
+.r21-app[data-density="generous"] .r21-storychip-title { font-size: 15px; }
+.r21-app[data-density="generous"] .r21-side { padding: 52px 32px 32px; gap: 32px; }
+.r21-app[data-density="generous"] .r21-side-greet { font-size: 36px; }
+.r21-app[data-density="generous"] .r21-lists { gap: 64px; padding-top: 28px; }
+.r21-app[data-density="generous"] .r21-focal-meta { gap: 32px; padding-bottom: 28px; margin-top: 32px; }
+
+/* whisper — gentler Focus takeover: the board lingers softly instead of vanishing */
+.r21-app[data-focal="whisper"].is-focus .r21-side { opacity: 0.22; transform: none; pointer-events: none; filter: saturate(0.7); }
+.r21-app[data-focal="whisper"].is-focus .r21-topwrap { background: var(--bg-0); border-bottom-color: var(--line-hair); }
+.r21-app[data-focal="whisper"] .r21-focal-title { font-size: 36px; max-width: 22ch; }
+.r21-app[data-focal="whisper"] .r21-focal { padding: 48px 72px 28px; position: relative; }
+.r21-app[data-focal="whisper"] .r21-num .val { font-size: 16px; }
+.r21-app[data-focal="whisper"] .r21-focal::before { content: ""; position: absolute; pointer-events: none; inset: 0; background: radial-gradient(ellipse at center top, transparent 40%, oklch(0.135 0.028 260 / 0.4) 100%); }

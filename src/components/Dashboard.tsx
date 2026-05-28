@@ -140,7 +140,7 @@ function DashboardLive({
   const sprintLabel = data.sprint?.name ?? '—';
 
   return (
-    <div className={`r21-app ${isFocus ? 'is-focus' : 'is-overview'}`}>
+    <div className={`r21-app ${isFocus ? 'is-focus' : 'is-overview'}`} data-density="generous" data-focal="whisper" data-feed="ruled">
       <R21Rail
         active={mode}
         suggested={ceremonies.suggestedModeId}
