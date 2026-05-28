@@ -371,8 +371,11 @@ server.registerTool(
         .describe('Optional client identifier. Defaults to "claude-code".'),
     },
   },
-  async ({ workItemId, client }) =>
-    jsonResult(startSession({ workItemId, client })),
+  async ({ workItemId, client }) => {
+    const session = startSession({ workItemId, client });
+    timerService.start(workItemId); // silent time tracking begins with the session
+    return jsonResult(session);
+  },
 );
 
 server.registerTool(
@@ -400,16 +403,27 @@ server.registerTool(
   {
     title: 'End a Claude Code session',
     description:
-      'Close a session, optionally with a final summary of what got done. Surfaces in her dashboard and feeds future Demo prep recall.',
+      'Close a session with a one-line summary of what got done. Set done=true ONLY after Moran has confirmed the task is finished — that pushes the tracked time to Azure DevOps and closes the task. Omit done (or pass false) when she is just stopping for now: the silent timer pauses and NOTHING is written to Azure DevOps, so she can pick it back up later.',
     inputSchema: {
       sessionId: z.string(),
       summary: z.string().optional(),
+      done: z
+        .boolean()
+        .optional()
+        .describe('True only when Moran has explicitly confirmed the task is complete. Pushes tracked time + closes the task in Azure DevOps.'),
     },
   },
-  async ({ sessionId, summary }) => {
-    const result = endSession({ sessionId, summary });
-    if (!result) return errorResult(`Session not found: ${sessionId}`);
-    return jsonResult(result);
+  async ({ sessionId, summary, done }) => {
+    const session = endSession({ sessionId, summary });
+    if (!session) return errorResult(`Session not found: ${sessionId}`);
+    try {
+      const timer = done
+        ? await timerService.markDone(session.workItemId)
+        : timerService.pause(session.workItemId);
+      return jsonResult({ session, timer });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
   },
 );
 
