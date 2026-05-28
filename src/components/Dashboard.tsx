@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   nameFromEmail,
-  timerDone,
-  timerPause,
-  timerStart,
-  timerSync,
   updateWorkItem,
   useDashboardData,
   type ApiPayload,
@@ -21,7 +17,6 @@ import {
   greetingForHour,
   sprintDays,
   useNow,
-  useTick,
 } from '../lib/time';
 import { useEditable } from '../lib/useEditable';
 import { useMode } from '../lib/useMode';
@@ -364,7 +359,6 @@ function DashboardLive({
               story={activeStory}
               onOpenItem={openItem}
               onAfterChange={onRefresh}
-              fetchedAt={data.fetchedAt}
             />
           )}
 
@@ -534,24 +528,14 @@ function ActiveStoryCard({
   story,
   onOpenItem,
   onAfterChange,
-  fetchedAt,
 }: {
   story: ApiUserStoryGroup;
   onOpenItem: (id: string) => void;
   onAfterChange: () => void;
-  fetchedAt: string;
 }) {
-  // Live tick — re-render once per second so running timers' counters advance.
-  useTick();
-  const fetchedAtMs = useMemo(() => new Date(fetchedAt).getTime(), [fetchedAt]);
-  // Seconds elapsed since the server's snapshot — added to each running task's logged total.
-  const driftSec = Math.max(0, Math.floor((Date.now() - fetchedAtMs) / 1000));
-
-  const storyLiveHours = story.completedHours + (story.tasks.filter(t => t.runningSince).length * driftSec) / 3600;
-  const storyLiveRemaining = Math.max(
-    0,
-    story.remainingHours - (story.tasks.filter(t => t.runningSince).length * driftSec) / 3600,
-  );
+  // Time is tracked silently by the open session; show the server's totals as-is, no live counter.
+  const storyLoggedHours = story.completedHours;
+  const storyRemaining = story.remainingHours;
 
   return (
     <section className="ember-active-story">
@@ -579,11 +563,11 @@ function ActiveStoryCard({
       </h2>
 
       <div className="ember-active-story-numbers">
-        <NumberBlock label="logged" value={storyLiveHours} accent />
+        <NumberBlock label="logged" value={storyLoggedHours} accent />
         <Divider />
         <NumberBlock label="estimate" value={story.totalEstimateHours} dim />
         <Divider />
-        <NumberBlock label="remaining" value={storyLiveRemaining} dim />
+        <NumberBlock label="remaining" value={storyRemaining} dim />
       </div>
 
       <div className="ember-active-story-tasks">
@@ -601,7 +585,6 @@ function ActiveStoryCard({
           <TaskRow
             key={task.id}
             task={task}
-            driftSec={driftSec}
             onOpen={() => onOpenItem(task.id)}
             onAfterChange={onAfterChange}
           />
@@ -619,61 +602,31 @@ function ActiveStoryCard({
 
 function TaskRow({
   task,
-  driftSec,
   onOpen,
   onAfterChange,
 }: {
   task: ApiWorkItem;
-  driftSec: number;
   onOpen: () => void;
   onAfterChange: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [timerPending, setTimerPending] = useState<null | 'start' | 'pause' | 'sync' | 'done'>(null);
-  const [timerError, setTimerError] = useState<string | null>(null);
 
   const stateEdit = useEditable<StateBucket>(bucketForState(task.state));
   const estimateEdit = useEditable<number>(task.originalEstimate ?? 0);
   const remainingEdit = useEditable<number>(task.remainingWork ?? 0);
 
-  const isDone = stateEdit.display === 'done';
-  const running = !!task.runningSince;
-  const hasUnsynced = task.localUncapturedSeconds > 0 || running;
+  // Time is tracked silently by the open session — show the accumulated total, no live counter.
+  const loggedSec = Math.round((task.completedWork ?? 0) * 3600) + task.localUncapturedSeconds;
+  const loggedDisplay = fmtHM(loggedSec, 0);
 
-  const baseLoggedSec = Math.round((task.completedWork ?? 0) * 3600) + task.localUncapturedSeconds;
-  const liveLoggedSec = baseLoggedSec + (running ? driftSec : 0);
-  const loggedDisplay = fmtHM(liveLoggedSec, 0);
-
-  async function doTimerAction(kind: 'start' | 'pause' | 'sync' | 'done') {
-    setTimerPending(kind);
-    setTimerError(null);
-    try {
-      switch (kind) {
-        case 'start': await timerStart(task.id); break;
-        case 'pause': await timerPause(task.id); break;
-        case 'sync':  await timerSync(task.id); break;
-        case 'done':  await timerDone(task.id); break;
-      }
-      onAfterChange();
-    } catch (e) {
-      setTimerError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setTimerPending(null);
-    }
-  }
-
-  const errorMsg = timerError ?? stateEdit.error ?? estimateEdit.error ?? remainingEdit.error;
+  const errorMsg = stateEdit.error ?? estimateEdit.error ?? remainingEdit.error;
 
   const toggle = () => setExpanded(v => !v);
-  const stop = (fn: () => void) => (e: React.MouseEvent) => {
-    e.stopPropagation();
-    fn();
-  };
 
   return (
     <>
       <div
-        className={`ember-active-story-task task-row state-${stateEdit.display} ${running ? 'is-running' : ''} ${expanded ? 'is-open' : ''}`}
+        className={`ember-active-story-task task-row state-${stateEdit.display} ${expanded ? 'is-open' : ''}`}
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
@@ -689,32 +642,15 @@ function TaskRow({
         <span className="ember-task-id task-id">#{task.id}</span>
         <span className="ember-task-title task-title">{task.title}</span>
         <span className="ember-task-meta task-effort">
-          <Mono className={running ? 'accent' : undefined}>{loggedDisplay}</Mono>
+          <Mono>{loggedDisplay}</Mono>
           &nbsp;<span className="of">/</span>&nbsp;
           <Mono style={{ color: 'var(--ink-2)' }}>{estimateFor(task)}</Mono>
+          {task.sessionCount > 0 && (
+            <span className="task-sittings dim-small">&nbsp;· {task.sessionCount} sitting{task.sessionCount === 1 ? '' : 's'}</span>
+          )}
         </span>
         <span className="ember-task-state task-state">{bucketLabel(stateEdit.display)}</span>
         <span className="ember-task-controls task-quickacts">
-          {!isDone && !running && (
-            <button className="ember-task-btn task-quick" onClick={stop(() => doTimerAction('start'))} disabled={timerPending !== null} title="Start timer">
-              <span className="task-quick-glyph">▶</span> start
-            </button>
-          )}
-          {!isDone && running && (
-            <button className="ember-task-btn pause task-quick" onClick={stop(() => doTimerAction('pause'))} disabled={timerPending !== null} title="Pause timer">
-              <span className="task-quick-glyph">⏸</span> pause
-            </button>
-          )}
-          {!isDone && hasUnsynced && !running && (
-            <button className="ember-task-btn sync task-quick" onClick={stop(() => doTimerAction('sync'))} disabled={timerPending !== null} title="Push logged time to Azure DevOps">
-              <span className="task-quick-glyph">↑</span> sync
-            </button>
-          )}
-          {!isDone && (
-            <button className="ember-task-btn done task-quick" onClick={stop(() => doTimerAction('done'))} disabled={timerPending !== null} title="Mark done in Azure DevOps">
-              <span className="task-quick-glyph">✓</span> done
-            </button>
-          )}
           {task.activeSession && (
             <span className="task-live-slot">
               <LiveMarker />
