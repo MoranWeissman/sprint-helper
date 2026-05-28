@@ -61,7 +61,29 @@ const WORK_ITEM_FIELDS = [
   'Microsoft.VSTS.Scheduling.CompletedWork',
 ];
 
+/**
+ * Iterations rarely change within a session (sprint dates are fixed once a
+ * sprint is created), but the `az` calls to fetch them cost ~0.9s. Cache both
+ * the current-iteration lookup and the full list in memory with a short TTL so
+ * a dashboard reload / sprint switch doesn't re-pay that on every request.
+ * Work items themselves are never cached — only the iteration metadata.
+ */
+const ITERATION_TTL_MS = 5 * 60 * 1000;
+let currentCache: { value: Iteration | null; at: number } | null = null;
+let allCache: { value: Iteration[]; at: number } | null = null;
+
+function fresh(at: number): boolean {
+  return Date.now() - at < ITERATION_TTL_MS;
+}
+
+/** Clear the iteration caches — call after creating/changing iterations. */
+export function invalidateIterationCache(): void {
+  currentCache = null;
+  allCache = null;
+}
+
 export async function getCurrentIteration(): Promise<Iteration | null> {
+  if (currentCache && fresh(currentCache.at)) return currentCache.value;
   const cfg = await loadAdoConfig();
   const { stdout } = await azJson(['boards', 'iteration', 'team', 'list', '--team', cfg.team, '--timeframe', 'current']);
   const arr = JSON.parse(stdout) as Array<{
@@ -70,19 +92,22 @@ export async function getCurrentIteration(): Promise<Iteration | null> {
     path: string;
     attributes: { startDate: string; finishDate: string };
   }>;
-  if (arr.length === 0) return null;
-  const it = arr[0];
-  return {
-    id: it.id,
-    name: it.name,
-    path: it.path,
-    startDate: it.attributes.startDate,
-    finishDate: it.attributes.finishDate,
-  };
+  const value: Iteration | null = arr.length === 0
+    ? null
+    : {
+        id: arr[0].id,
+        name: arr[0].name,
+        path: arr[0].path,
+        startDate: arr[0].attributes.startDate,
+        finishDate: arr[0].attributes.finishDate,
+      };
+  currentCache = { value, at: Date.now() };
+  return value;
 }
 
 /** All iterations the team has — for sprint picker (browse previous/upcoming). */
 export async function listAllIterations(): Promise<Iteration[]> {
+  if (allCache && fresh(allCache.at)) return allCache.value;
   const cfg = await loadAdoConfig();
   const { stdout } = await azJson(['boards', 'iteration', 'team', 'list', '--team', cfg.team]);
   const arr = JSON.parse(stdout) as Array<{
@@ -91,7 +116,7 @@ export async function listAllIterations(): Promise<Iteration[]> {
     path: string;
     attributes: { startDate?: string; finishDate?: string };
   }>;
-  return arr
+  const value = arr
     .filter(it => it.attributes.startDate && it.attributes.finishDate)
     .map(it => ({
       id: it.id,
@@ -101,6 +126,8 @@ export async function listAllIterations(): Promise<Iteration[]> {
       finishDate: it.attributes.finishDate!,
     }))
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
+  allCache = { value, at: Date.now() };
+  return value;
 }
 
 /** Find a specific iteration by name. */
@@ -279,23 +306,29 @@ function extractAssignedTo(v: unknown): string | undefined {
 }
 
 export async function getMyWorkItems(iterationPath: string): Promise<WorkItem[]> {
-  // 1) WIQL: find IDs assigned to @Me in this iteration
+  // 1) WIQL: fetch work items assigned to @Me in this iteration. Selecting the
+  //    fields means `az boards query` returns them already populated, so we
+  //    skip a separate workitemsbatch round-trip for the main items (one less
+  //    ~0.7s `az` call on every dashboard load).
+  const fieldList = WORK_ITEM_FIELDS.map(f => `[${f}]`).join(', ');
   const wiql = [
-    'SELECT [System.Id] FROM WorkItems',
+    `SELECT ${fieldList} FROM WorkItems`,
     `WHERE [System.AssignedTo] = @Me`,
     `  AND [System.IterationPath] = '${escapeWiql(iterationPath)}'`,
     'ORDER BY [System.ChangedDate] DESC',
   ].join(' ');
 
-  const { stdout: idsRaw } = await azJson(['boards', 'query', '--wiql', wiql]);
-  const results = JSON.parse(idsRaw) as Array<{ id: number }>;
-  const ids = results.map(r => r.id);
-  if (ids.length === 0) return [];
+  const { stdout } = await azJson(['boards', 'query', '--wiql', wiql]);
+  const raw = JSON.parse(stdout) as Array<{
+    id: number;
+    rev: number;
+    url: string;
+    fields: Record<string, unknown>;
+  }>;
+  if (raw.length === 0) return [];
+  const items = raw.map(w => mapWorkItem(w));
 
-  // 2) Batch fetch the fields we need (and parent ids so we can resolve parent titles)
-  const items = await getWorkItemBatch(ids);
-
-  // 3) Resolve parent details in one extra batch (for parent story chip in the UI)
+  // 2) Resolve parent details in one extra batch (for parent story chip in the UI)
   const parentIds = [...new Set(items.map(i => i.parentId).filter((x): x is number => !!x))];
   const parents = parentIds.length > 0 ? await getWorkItemBatch(parentIds) : [];
   const parentMap = new Map(parents.map(p => [p.id, p]));
