@@ -3,14 +3,15 @@
  * Sprint-helper MCP server.
  *
  * Exposes sprint-helper backend operations to Claude Code (or any MCP client)
- * over stdio. Tools fall into four buckets:
- *  - read:    sprint_snapshot, list_my_work_items
- *  - timers:  timer_start, timer_pause, timer_sync, timer_done
- *  - edits:   workitem_edit
- *  - sessions: session_start, session_log, session_end
+ * over stdio. Tools fall into these buckets:
+ *  - read:      sprint_snapshot, list_my_work_items
+ *  - guardrail: sprint_check_in, task_create
+ *  - edits:     workitem_edit
+ *  - sessions:  session_start, session_log, session_end
  *
- * The sprint guardrail (`sprint_check_in`, `task_create`) lives in slice 2.1c
- * and is not yet wired up here.
+ * Time is tracked silently by the session lifecycle: session_start begins the
+ * timer, session_end pauses it — or, with done=true (only after Moran confirms),
+ * pushes the tracked time to Azure DevOps and closes the task.
  *
  * Run: `npm run mcp`  (uses tsx so the same source ships from server/ unchanged).
  */
@@ -57,15 +58,21 @@ Then act on the returned \`nextStep\`:
     against the new task. Never silently let untracked work slide.
 
 AS WORK PROCEEDS:
+  - The open session tracks time automatically. You do NOT start, pause, or
+    sync any timer by hand — just keep the session open while she works.
   - Log meaningful moments with \`session_log\`: focus (switching attention),
     progress (what got done), blocker (something in the way), decision (a
     tradeoff chosen), note (anything else worth remembering).
-  - Use \`timer_start\` / \`timer_pause\` to track time, \`timer_sync\` to push
-    it to Azure DevOps, \`timer_done\` when a task is finished.
 
-WHEN WORK WRAPS UP:
-  - Call \`session_end\` with a one-line summary of what got done. This feeds
-    her demo prep and retro later.
+WHEN WORK WRAPS UP — always ask first:
+  Ask Moran plainly: "Is this task done, or are you just stopping for now?"
+  - Just stopping: call \`session_end\` with a one-line summary. The tracked
+    time pauses and NOTHING is written to Azure DevOps — she can pick it back
+    up later.
+  - Done: confirm with her, THEN call \`session_end\` with done=true and a
+    summary. This is the only time you write to Azure DevOps automatically, and
+    only after she has said yes — it pushes the tracked time and closes the
+    task. Never set done=true without her explicit confirmation.
 
 Call \`sprint_snapshot\` whenever you need to see what's in the current sprint
 and what's already live. Use plain English with Moran — never say "ceremony",
@@ -191,66 +198,6 @@ function slim(w: Awaited<ReturnType<typeof buildDashboard>>['workItems']['inProg
     recentActivity: w.recentActivity,
   };
 }
-
-/* ============================================================ */
-/*  Timer tools                                                  */
-/* ============================================================ */
-
-server.registerTool(
-  'timer_start',
-  {
-    title: 'Start timer',
-    description:
-      "Start a timer on a work item. Use when Moran starts actively working on a task. Idempotent — returns the existing timer's state if one is already running.",
-    inputSchema: { workItemId: workItemIdSchema },
-  },
-  async ({ workItemId }) => jsonResult(timerService.start(workItemId)),
-);
-
-server.registerTool(
-  'timer_pause',
-  {
-    title: 'Pause timer',
-    description:
-      'Pause the running timer on a work item. Use when Moran stops working on a task without finishing it. No-op if no timer is running.',
-    inputSchema: { workItemId: workItemIdSchema },
-  },
-  async ({ workItemId }) => jsonResult(timerService.pause(workItemId)),
-);
-
-server.registerTool(
-  'timer_sync',
-  {
-    title: 'Sync timer to ADO',
-    description:
-      'Push tracked time on a work item to Azure DevOps (updates CompletedWork, decrements RemainingWork). Pauses any running timer first so its time is included.',
-    inputSchema: { workItemId: workItemIdSchema },
-  },
-  async ({ workItemId }) => {
-    try {
-      return jsonResult(await timerService.sync(workItemId));
-    } catch (e) {
-      return errorResult(e instanceof Error ? e.message : String(e));
-    }
-  },
-);
-
-server.registerTool(
-  'timer_done',
-  {
-    title: 'Mark work item done',
-    description:
-      'Sync the timer to ADO and transition the work item to Done/Closed. Use when Moran finishes a task entirely.',
-    inputSchema: { workItemId: workItemIdSchema },
-  },
-  async ({ workItemId }) => {
-    try {
-      return jsonResult(await timerService.markDone(workItemId));
-    } catch (e) {
-      return errorResult(e instanceof Error ? e.message : String(e));
-    }
-  },
-);
 
 /* ============================================================ */
 /*  Edit tool                                                    */
