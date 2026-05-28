@@ -16,6 +16,17 @@ Dark warm-dusk palette, single moonlit-blue accent, Geist + Geist Mono. There's 
 
 **What just changed (R1):** time is now tracked silently — no start/stop buttons, no ticking. When I work in Claude Code, it opens a *session* against a task; each task shows a calm static total like **"3h · 2 sittings"** instead of a stopwatch.
 
+## ⚠️ Since your last version (2.1d) — DO NOT bring these back
+
+Your memory of this dashboard is from the 2.1d handoff. Several things have been **removed** since then. Please do **not** reintroduce any of these:
+
+- ❌ **Per-task timer buttons** (start / pause / sync / done). They're gone. Task rows have **no action buttons** now except the expand chevron.
+- ❌ **The live ticking counter / stopwatch** on tasks. The logged number is **static** and only updates when the dashboard refreshes.
+- ❌ **A running "logged" number that counts up by the second.** Show logged time as a calm static total (e.g. "3h · 2 sittings").
+- ❌ **Per-second ticking anywhere**, including the "live now" tile — elapsed shows coarse minutes, no second-by-second motion.
+
+What's **kept** from 2.1d and should stay: the static **"live"** marker on a task/story when a session is open, and the **"Recent activity"** feed inside expand panels.
+
 ## The problem I'm fixing
 
 Two things, one root cause:
