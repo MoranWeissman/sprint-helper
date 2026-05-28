@@ -178,6 +178,35 @@ function adoApiPlugin() {
           res.end(JSON.stringify({ error: message }));
         }
       });
+
+      server.middlewares.use('/api/helper-note/', async (req, res) => {
+        try {
+          const url = new URL(req.url ?? '/', 'http://localhost');
+          const m = url.pathname.match(/^\/(\d+)\/dismiss\/?$/);
+          if (!m) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Expected /api/helper-note/<id>/dismiss' }));
+            return;
+          }
+          if (req.method !== 'POST') {
+            res.statusCode = 405;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'POST only' }));
+            return;
+          }
+          const { dismissNote } = await import('./server/helper-notes');
+          const dismissed = dismissNote(Number(m[1]));
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'no-store');
+          res.end(JSON.stringify({ dismissed }));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'unknown error';
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: message }));
+        }
+      });
     },
   };
 }
