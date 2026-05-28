@@ -297,37 +297,6 @@ export function nameFromEmail(email: string): string {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Timer mutations                                                           */
-/* -------------------------------------------------------------------------- */
-
-export interface TimerActionResponse {
-  action: 'started' | 'already_running' | 'paused' | 'not_running' | 'synced' | 'marked_done';
-  syncedSeconds?: number;
-  newCompletedHours?: number;
-  newState?: string;
-  warning?: string;
-}
-
-async function timerCall(path: string, workItemId: string): Promise<TimerActionResponse> {
-  const r = await fetch(`/api/timer/${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ workItemId: Number(workItemId) }),
-  });
-  const body = await r.json();
-  if (!r.ok || 'error' in body) {
-    const msg = body.error ?? `Timer ${path} failed`;
-    throw new Error(msg);
-  }
-  return body as TimerActionResponse;
-}
-
-export const timerStart = (id: string) => timerCall('start', id);
-export const timerPause = (id: string) => timerCall('pause', id);
-export const timerSync = (id: string) => timerCall('sync', id);
-export const timerDone = (id: string) => timerCall('done', id);
-
-/* -------------------------------------------------------------------------- */
 /*  Work item edits                                                           */
 /* -------------------------------------------------------------------------- */
 

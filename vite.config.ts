@@ -51,55 +51,6 @@ function adoApiPlugin() {
         }
       });
 
-      server.middlewares.use('/api/timer/', async (req, res) => {
-        try {
-          const url = new URL(req.url ?? '/', 'http://localhost');
-          const action = url.pathname.replace(/^\//, '').split('/')[0]; // start | pause | sync | done
-          if (req.method !== 'POST') {
-            res.statusCode = 405;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ error: 'POST only' }));
-            return;
-          }
-          const body = await readJsonBody(req);
-          const workItemId = Number((body as { workItemId?: number }).workItemId);
-          if (!Number.isFinite(workItemId) || workItemId <= 0) {
-            res.statusCode = 400;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ error: 'workItemId must be a positive number' }));
-            return;
-          }
-          const svc = await import('./server/timer-service');
-          let result;
-          switch (action) {
-            case 'start':  result = svc.start(workItemId); break;
-            case 'pause':  result = svc.pause(workItemId); break;
-            case 'sync':   result = await svc.sync(workItemId); break;
-            case 'done':   result = await svc.markDone(workItemId); break;
-            default:
-              res.statusCode = 404;
-              res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ error: `Unknown timer action: ${action}` }));
-              return;
-          }
-          res.setHeader('Content-Type', 'application/json');
-          res.setHeader('Cache-Control', 'no-store');
-          res.end(JSON.stringify({
-            action: result.action,
-            syncedSeconds: result.syncedSeconds,
-            newCompletedHours: result.newCompletedHours,
-            newState: result.newState,
-            warning: result.warning,
-          }));
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'unknown error';
-          const command = err instanceof Error && 'command' in err ? String((err as Error & { command?: string }).command) : undefined;
-          res.statusCode = 500;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: message, command }));
-        }
-      });
-
       server.middlewares.use('/api/workitem/', async (req, res) => {
         try {
           const url = new URL(req.url ?? '/', 'http://localhost');
