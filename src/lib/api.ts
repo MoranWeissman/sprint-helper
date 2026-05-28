@@ -46,6 +46,8 @@ export interface ApiWorkItem {
   activeSession?: ApiActiveSession;
   /** Newest-first session events reported by Claude Code via MCP. */
   recentActivity: ApiSessionEvent[];
+  /** Number of work sessions (open or closed) recorded against this item. */
+  sessionCount: number;
   url: string;
 }
 

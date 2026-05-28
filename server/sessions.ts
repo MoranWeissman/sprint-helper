@@ -259,3 +259,23 @@ export function getActiveSessionMap(): Map<number, Session> {
   for (const s of listActiveSessions()) m.set(s.workItemId, s);
   return m;
 }
+
+/**
+ * {workItemId → number of sessions (open or closed)} for the given items.
+ * Used by the dashboard to show a calm "N sittings" total. Items with no
+ * sessions are omitted from the map.
+ */
+export function getSessionCountMap(workItemIds: number[]): Map<number, number> {
+  const m = new Map<number, number>();
+  if (workItemIds.length === 0) return m;
+  const placeholders = workItemIds.map(() => '?').join(',');
+  const rows = getDb()
+    .prepare<number[], { work_item_id: number; n: number }>(
+      `SELECT work_item_id, COUNT(*) AS n FROM sessions
+       WHERE work_item_id IN (${placeholders})
+       GROUP BY work_item_id`,
+    )
+    .all(...workItemIds);
+  for (const r of rows) m.set(r.work_item_id, r.n);
+  return m;
+}

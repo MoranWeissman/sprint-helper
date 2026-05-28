@@ -23,6 +23,7 @@ import { loadAdoConfig } from './config';
 import {
   getActiveSessionMap,
   getRecentEventsMap,
+  getSessionCountMap,
   type Session,
   type SessionEvent,
 } from './sessions';
@@ -70,6 +71,8 @@ export interface DashboardWorkItem {
   activeSession?: { id: string; startedAt: string };
   /** Newest-first session events (focus / summary / blocker / decision / note). */
   recentActivity: SessionEvent[];
+  /** Number of work sessions (open or closed) recorded against this item. */
+  sessionCount: number;
   url: string;
 }
 
@@ -208,13 +211,14 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
   const itemIds = items.map(w => w.id);
   const activeSessions = getActiveSessionMap();
   const recentEvents = getRecentEventsMap(itemIds, 5);
+  const sessionCounts = getSessionCountMap(itemIds);
 
   const inProgress: DashboardWorkItem[] = [];
   const upNext: DashboardWorkItem[] = [];
   const done: DashboardWorkItem[] = [];
 
   for (const w of items) {
-    const projected = projectWorkItem(w, uncaptured, running, activeSessions, recentEvents);
+    const projected = projectWorkItem(w, uncaptured, running, activeSessions, recentEvents, sessionCounts);
     if (DONE_STATES.has(w.state)) done.push(projected);
     else if (ACTIVE_STATES.has(w.state)) inProgress.push(projected);
     else upNext.push(projected);
@@ -399,6 +403,7 @@ function projectWorkItem(
   running: Map<number, string>,
   activeSessions: Map<number, Session>,
   recentEvents: Map<number, SessionEvent[]>,
+  sessionCounts: Map<number, number>,
 ): DashboardWorkItem {
   const lastIterSegment = w.iterationPath.split('\\').pop() ?? w.iterationPath;
   const story = w.parentTitle
@@ -429,6 +434,7 @@ function projectWorkItem(
     runningSince: running.get(w.id),
     activeSession: session ? { id: session.id, startedAt: session.startedAt } : undefined,
     recentActivity: recentEvents.get(w.id) ?? [],
+    sessionCount: sessionCounts.get(w.id) ?? 0,
     url: humanUrl(w.url),
   };
 }
