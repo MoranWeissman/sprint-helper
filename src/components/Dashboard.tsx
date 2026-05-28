@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  dismissHelperNote,
   nameFromEmail,
   useDashboardData,
+  type ApiHelperNote,
+  type ApiHelperNotes,
   type ApiPayload,
   type ApiUserStoryGroup,
   type ApiWorkItem,
@@ -219,6 +222,7 @@ function DashboardLive({
               <div className="r21-body is-overview" aria-hidden={isFocus}>
                 <R21Overview
                   capacity={data.capacity}
+                  helperNotes={data.helperNotes}
                   stories={stories}
                   inProgress={inProgress}
                   upNext={upNext}
@@ -230,6 +234,7 @@ function DashboardLive({
                   onOpenItem={openItem}
                   onShowFocus={() => setShowBoard(false)}
                   onFocusStory={focusStory}
+                  onRefresh={onRefresh}
                 />
               </div>
               <div className="r21-body is-focus" aria-hidden={!isFocus}>
@@ -379,8 +384,77 @@ function R21Sidebar({
   );
 }
 
+function HelperNotesPanel({
+  notes,
+  onRefresh,
+}: {
+  notes: ApiHelperNotes;
+  onRefresh: () => void;
+}) {
+  // Ids ticked off this render — removed optimistically until the refresh lands.
+  const [pending, setPending] = useState<Set<number>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+
+  const visible = notes.notes.filter(n => !pending.has(n.id));
+  const empty = !notes.summary && visible.length === 0;
+
+  async function clear(note: ApiHelperNote) {
+    setError(null);
+    setPending(prev => new Set(prev).add(note.id));
+    try {
+      await dismissHelperNote(note.id);
+      onRefresh();
+    } catch (e) {
+      setPending(prev => {
+        const next = new Set(prev);
+        next.delete(note.id);
+        return next;
+      });
+      setError(e instanceof Error ? e.message : 'Could not clear that note');
+    }
+  }
+
+  return (
+    <section className="r21-notes" aria-label="Notes from your helper">
+      <div className="r21-notes-head">
+        <span className="r21-notes-title">Notes from your helper</span>
+        {notes.summaryAt && <span className="r21-notes-meta">{relAgo(notes.summaryAt)}</span>}
+      </div>
+      {empty ? (
+        <p className="r21-notes-empty">All quiet here — I'll jot notes as I notice things.</p>
+      ) : (
+        <>
+          {notes.summary && <p className="r21-notes-summary">{notes.summary}</p>}
+          {visible.length > 0 && (
+            <ul className="r21-notes-list">
+              {visible.map(n => (
+                <li key={n.id} className="r21-note">
+                  <span className="r21-note-body">{n.body}</span>
+                  <button
+                    type="button"
+                    className="r21-note-clear"
+                    onClick={() => clear(n)}
+                    title="Tick off — I've handled this"
+                    aria-label="Tick off this note"
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <path d="M3.5 8.5l3 3 6-7" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+      {error && <p className="r21-notes-error">{error}</p>}
+    </section>
+  );
+}
+
 function R21Overview({
   capacity,
+  helperNotes,
   stories,
   inProgress,
   upNext,
@@ -392,8 +466,10 @@ function R21Overview({
   onOpenItem,
   onShowFocus,
   onFocusStory,
+  onRefresh,
 }: {
   capacity: ApiPayload['capacity'];
+  helperNotes: ApiHelperNotes;
   stories: ApiUserStoryGroup[];
   inProgress: ApiWorkItem[];
   upNext: ApiWorkItem[];
@@ -405,6 +481,7 @@ function R21Overview({
   onOpenItem: (id: string) => void;
   onShowFocus: () => void;
   onFocusStory: (storyId: string) => void;
+  onRefresh: () => void;
 }) {
   const remaining = Math.round(capacity.remainingHours);
   const logged = Math.round(capacity.completedHours);
@@ -439,6 +516,8 @@ function R21Overview({
           <span><span className="v">{upNext.length}</span> waiting</span>
         </div>
       </section>
+
+      <HelperNotesPanel notes={helperNotes} onRefresh={onRefresh} />
 
       <section>
         <div className="r21-stories-head">
@@ -608,6 +687,18 @@ function relUntil(min: number): string {
   const h = Math.floor(min / 60);
   const m = min % 60;
   return m === 0 ? `in ${h}h` : `in ${h}h ${m}m`;
+}
+
+/** "just now" / "20m ago" / "3h ago" / "2d ago" — for the helper-notes timestamp. */
+function relAgo(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const min = Math.floor((Date.now() - then) / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
 function SprintPicker({
