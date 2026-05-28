@@ -35,10 +35,52 @@ import {
   type StateBucket,
 } from '../server/writes.js';
 
-const server = new McpServer({
-  name: 'sprint-helper',
-  version: '0.1.0',
-});
+const SERVER_INSTRUCTIONS = `
+Sprint-helper keeps Moran aligned with her Azure DevOps sprint while she works
+in Claude Code. Treat it as her sprint conscience — use it proactively, don't
+wait to be asked.
+
+AT THE START OF WORK — before diving in:
+When Moran says she's starting or working on something (e.g. "I've started
+installing argocd", "let's work on the auth refactor", "I'm looking at the
+deploy issue"), your FIRST action is to call \`sprint_check_in\` with a short
+description of that work. Do this before reading code or running commands.
+
+Then act on the returned \`nextStep\`:
+  - confirm_match: tell Moran which sprint task this looks like, confirm it's
+    right, then call \`session_start\` with that workItemId.
+  - choose_match: list the candidate tasks, ask which one (or if it's
+    something else), then \`session_start\`.
+  - no_match: tell Moran plainly that this work is NOT in her current sprint.
+    Ask: is it a quick 1-2 hour thing, or does it need its own story? Then call
+    \`task_create\` (set adHoc=true for the quick case), and \`session_start\`
+    against the new task. Never silently let untracked work slide.
+
+AS WORK PROCEEDS:
+  - Log meaningful moments with \`session_log\`: focus (switching attention),
+    progress (what got done), blocker (something in the way), decision (a
+    tradeoff chosen), note (anything else worth remembering).
+  - Use \`timer_start\` / \`timer_pause\` to track time, \`timer_sync\` to push
+    it to Azure DevOps, \`timer_done\` when a task is finished.
+
+WHEN WORK WRAPS UP:
+  - Call \`session_end\` with a one-line summary of what got done. This feeds
+    her demo prep and retro later.
+
+Call \`sprint_snapshot\` whenever you need to see what's in the current sprint
+and what's already live. Use plain English with Moran — never say "ceremony",
+"session", or "work item id" to her; say "live", "task", and "#1234".
+`.trim();
+
+const server = new McpServer(
+  {
+    name: 'sprint-helper',
+    version: '0.1.0',
+  },
+  {
+    instructions: SERVER_INSTRUCTIONS,
+  },
+);
 
 /* ============================================================ */
 /*  Helpers                                                      */
