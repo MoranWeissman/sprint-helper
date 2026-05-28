@@ -2247,7 +2247,7 @@ html, body {
 .r21-app[data-density="generous"] .r21-focal-meta { gap: 32px; padding-bottom: 28px; margin-top: 32px; }
 
 /* whisper — gentler Focus takeover: the board lingers softly instead of vanishing */
-.r21-app[data-focal="whisper"].is-focus .r21-side { opacity: 0.22; transform: none; pointer-events: none; filter: saturate(0.7); }
+.r21-app[data-focal="whisper"].is-focus .r21-side { opacity: 1; transform: none; pointer-events: auto; }
 .r21-app[data-focal="whisper"].is-focus .r21-topwrap { background: var(--bg-0); border-bottom-color: var(--line-hair); }
 .r21-app[data-focal="whisper"] .r21-focal-title { font-size: 36px; max-width: 22ch; }
 .r21-app[data-focal="whisper"] .r21-focal { padding: 48px 72px 28px; position: relative; }

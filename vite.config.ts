@@ -33,6 +33,19 @@ function adoApiPlugin() {
   return {
     name: 'sprint-helper-api',
     configureServer(server: { middlewares: Connect.Server }) {
+      // Pre-warm at startup: transform the backend module graph + warm the ADO
+      // iteration cache + az token in the background, so the FIRST page load
+      // after `npm run dev` hits the fast (warm) path instead of paying the
+      // one-time cold compile + cold-fetch on the user's first request.
+      void (async () => {
+        try {
+          const { buildDashboard } = await import('./server/dashboard');
+          await buildDashboard();
+        } catch {
+          // Ignore — a real request will surface any error (e.g. az login needed).
+        }
+      })();
+
       server.middlewares.use('/api/dashboard', async (req, res) => {
         try {
           const { buildDashboard } = await import('./server/dashboard');

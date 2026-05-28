@@ -674,7 +674,7 @@ function LoadingShell({ now }: { now: Date }) {
             {greetingForHour(now)}.
             <br />Loading…
           </h1>
-          <p className="ember-sub">Pulling your current iteration from Azure DevOps.</p>
+          <p className="ember-sub">Pulling your sprint from Azure DevOps. The first load after starting can take a moment — it's quick after that.</p>
         </aside>
         <div className="ember-content">
           <div className="ember-stats" style={{ opacity: 0.4 }}>
