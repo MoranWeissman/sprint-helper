@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sprint Helper — R2 · Focus + calmer Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="slice-r2.css" />
+<style>
+  html, body { margin: 0; padding: 0; background: oklch(0.125 0.026 260); font-family: "Geist", system-ui, sans-serif; min-height: 100vh; }
+  #root { min-height: 100vh; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="slice-r2.jsx"></script>
+<script type="text/babel">
+const { createRoot } = ReactDOM;
+
+function App() {
+  return (
+    <DesignCanvas
+      title="Sprint Helper · R2"
+      subtitle="Focus state (the main thing) + calmer Overview · 2 variations of how the rest of the board recedes"
+    >
+      <DCSection
+        id="overview"
+        title="Overview state (shared baseline)"
+        subtitle="No live session. Calm board: where am I in the sprint, my stories, what's next. One headline number, chips breathe, lists are quiet reference."
+      >
+        <DCArtboard id="overview" label="Overview · calmer Day" width={1440} height={920}>
+          <OverviewFrame />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="a"
+        title="Variation A — Collapse"
+        subtitle="When a session goes live, the rest of the board collapses up into a thin strip; the task owns the screen. Quiet escape reads ‘N more in sprint’."
+      >
+        <DCArtboard id="a-single" label="Focus · 1 session live" width={1440} height={920}>
+          <FocusACollapseFrame />
+        </DCArtboard>
+        <DCArtboard id="a-two" label="Focus · 2 sessions live · secondary as a quiet chip" width={1440} height={920}>
+          <FocusACollapseTwoFrame />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="b"
+        title="Variation B — Recede behind"
+        subtitle="The board is still faintly present behind a centred panel — dimmed, not blurred to noise — so you keep a sense of place. Quiet ‘show the whole board’ escape."
+      >
+        <DCArtboard id="b-single" label="Focus · 1 session live" width={1440} height={920}>
+          <FocusBRecedeFrame />
+        </DCArtboard>
+        <DCArtboard id="b-two" label="Focus · 2 sessions live · secondary as a quiet chip" width={1440} height={920}>
+          <FocusBRecedeTwoFrame />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+createRoot(document.getElementById("root")).render(<App />);
+</script>
+</head>
+<body>
+  <div id="root"></div>
+</body>
+</html>
