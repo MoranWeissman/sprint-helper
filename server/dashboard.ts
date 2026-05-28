@@ -20,6 +20,7 @@ import {
   type UpcomingCeremony,
 } from './ceremony';
 import { loadAdoConfig } from './config';
+import { getHelperNotes, type HelperNotes } from './helper-notes';
 import {
   getActiveSessionMap,
   getRecentEventsMap,
@@ -144,6 +145,8 @@ export interface DashboardPayload {
   pendingChanges: number;
   /** Number of live Claude Code sessions reporting in right now. */
   activeSessions: number;
+  /** The assistant's read on the sprint: a living summary + a few open nudges. */
+  helperNotes: HelperNotes;
   /**
    * Upcoming ceremony occurrences within the next ~2 weeks, plus a
    * "suggested" mode if any is happening right now (15 min before → 60 min
@@ -196,6 +199,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
       capacity: { remainingHours: 0, completedHours: 0, totalEstimateHours: 0 },
       pendingChanges: getPendingChangesCount(),
       activeSessions: 0,
+      helperNotes: getHelperNotes(),
       ceremonies: buildCeremonyBlock(null, null),
       fetchedAt: new Date().toISOString(),
     };
@@ -257,6 +261,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     capacity,
     pendingChanges: getPendingChangesCount(),
     activeSessions: activeSessions.size,
+    helperNotes: getHelperNotes(),
     ceremonies: buildCeremonyBlock(
       new Date(iteration.startDate),
       new Date(iteration.finishDate),
