@@ -26,6 +26,18 @@ export interface ApiActiveSession {
   startedAt: string;
 }
 
+export interface ApiHelperNote {
+  id: number;
+  body: string;
+  createdAt: string;
+}
+
+export interface ApiHelperNotes {
+  summary: string | null;
+  summaryAt: string | null;
+  notes: ApiHelperNote[];
+}
+
 export interface ApiWorkItem {
   id: string;
   title: string;
@@ -119,6 +131,8 @@ export interface ApiPayload {
   pendingChanges: number;
   /** Number of live Claude Code sessions reporting in right now. */
   activeSessions: number;
+  /** The assistant's read on the sprint: a living summary + a few open nudges. */
+  helperNotes: ApiHelperNotes;
   ceremonies: {
     upcoming: ApiUpcomingCeremony[];
     next: ApiUpcomingCeremony | null;
@@ -322,4 +336,16 @@ export async function updateWorkItem(
     throw new Error(body.error ?? 'Edit failed');
   }
   return body;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Helper's notes                                                            */
+/* -------------------------------------------------------------------------- */
+
+export async function dismissHelperNote(id: number): Promise<void> {
+  const r = await fetch(`/api/helper-note/${id}/dismiss`, { method: 'POST' });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok || (body && 'error' in body)) {
+    throw new Error((body && body.error) || 'Could not clear that note');
+  }
 }
