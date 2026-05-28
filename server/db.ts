@@ -7,6 +7,7 @@
  *  - settings: misc key/value config.
  *  - sessions / session_events: Claude Code sessions reported via MCP — what
  *    Moran is working on right now, plus summaries, blockers, decisions.
+ *  - helper_notes: the assistant's plain-English nudges (R3); soft-dismissed.
  *
  * Connection is opened lazily and cached for the life of the process.
  */
@@ -89,6 +90,16 @@ function migrate(db: DB) {
       ON session_events(work_item_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_session_events_session
       ON session_events(session_id);
+
+    CREATE TABLE IF NOT EXISTS helper_notes (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      body         TEXT NOT NULL,
+      created_at   TEXT NOT NULL,
+      dismissed_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_helper_notes_open
+      ON helper_notes(created_at DESC) WHERE dismissed_at IS NULL;
   `);
 }
 
