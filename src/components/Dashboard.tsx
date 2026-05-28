@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   nameFromEmail,
-  updateWorkItem,
   useDashboardData,
   type ApiPayload,
   type ApiUserStoryGroup,
   type ApiWorkItem,
-  type StateBucket,
+  type ModeId,
 } from '../lib/api';
 import {
   dayOfSprint,
@@ -18,20 +17,12 @@ import {
   sprintDays,
   useNow,
 } from '../lib/time';
-import { useEditable } from '../lib/useEditable';
 import { useMode } from '../lib/useMode';
 import type { SprintContext } from '../lib/types';
-import { ActivityFeed } from './ActivityFeed';
 import { Dot } from './Dot';
-import { LiveMarker } from './LiveMarker';
-import { LiveNowTile, type LiveNowSession } from './LiveNowTile';
 import { ModePlaceholder } from './ModePlaceholder';
-import { ModeRail } from './ModeRail';
 import { Mono } from './Mono';
 import { ScheduleModal } from './ScheduleModal';
-import { StatePicker } from './StatePicker';
-import { Stepper } from './Stepper';
-import { UpNextTile } from './UpNextTile';
 import { WorkItemDrawer } from './WorkItemDrawer';
 
 export function Dashboard() {
@@ -94,11 +85,6 @@ function DashboardLive({
   const upNext = data.workItems.upNext;
   const done = data.workItems.done;
 
-  // Active story: defaults to first (already sorted: in-progress first).
-  const [activeStoryId, setActiveStoryId] = useState<string | undefined>(stories[0]?.id);
-  // Expanded chip is independent of the focused active story — you can
-  // quick-edit a non-focused story without losing your current focus.
-  const [expandedChipId, setExpandedChipId] = useState<string | null>(null);
   // Work item drawer state — null means closed.
   const [viewingItemId, setViewingItemId] = useState<string | null>(null);
   const openItem = (id: string) => setViewingItemId(id);
@@ -109,360 +95,154 @@ function DashboardLive({
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const ceremonies = data.ceremonies;
 
-  // Re-sync active story when the data changes (e.g., sprint switch).
-  useEffect(() => {
-    if (!activeStoryId || !stories.some(s => s.id === activeStoryId)) {
-      setActiveStoryId(stories[0]?.id);
-    }
-  }, [stories, activeStoryId]);
-  useEffect(() => {
-    if (expandedChipId && !stories.some(s => s.id === expandedChipId)) {
-      setExpandedChipId(null);
-    }
-  }, [stories, expandedChipId]);
-
-  const activeStory = useMemo(
-    () => stories.find(s => s.id === activeStoryId) ?? stories[0],
-    [stories, activeStoryId],
-  );
-  const expandedChip = useMemo(
-    () => stories.find(s => s.id === expandedChipId) ?? null,
-    [stories, expandedChipId],
-  );
-
-  // Derive the live sessions list from the dashboard payload — every work
-  // item with an active Claude Code session, in any state bucket. Each row
-  // resolves its parent story title for the sidebar caption.
+  // Every work item with a live Claude Code session, newest session first.
   const allItems = useMemo(
     () => [...inProgress, ...upNext, ...done],
     [inProgress, upNext, done],
   );
-  const liveSessions: LiveNowSession[] = useMemo(() => {
-    return allItems
-      .filter(w => !!w.activeSession)
-      .map(w => ({
-        workItemId: w.id,
-        taskTitle: w.title,
-        parentTitle: w.parent?.title,
-        startedAt: w.activeSession!.startedAt,
-      }));
-  }, [allItems]);
-  const jumpToLiveSession = (workItemId: string) => {
-    const item = allItems.find(w => w.id === workItemId);
-    const parentId = item?.parent?.id ?? workItemId;
-    if (stories.some(s => s.id === parentId)) {
-      setActiveStoryId(parentId);
-      setExpandedChipId(parentId);
+  const liveItems = useMemo(
+    () =>
+      allItems
+        .filter(w => !!w.activeSession)
+        .sort((a, b) => (a.activeSession!.startedAt < b.activeSession!.startedAt ? 1 : -1)),
+    [allItems],
+  );
+
+  // R2 focus state: the Day screen morphs to the live task automatically.
+  // `focalId` lets a second live task be promoted to the focus; `showBoard`
+  // is the manual "show the whole board" escape while a session is still live.
+  const [focalId, setFocalId] = useState<string | null>(null);
+  const [showBoard, setShowBoard] = useState(false);
+  useEffect(() => {
+    if (liveItems.length === 0) {
+      setShowBoard(false);
+      setFocalId(null);
+    }
+  }, [liveItems.length]);
+  const focalTask = useMemo(
+    () => liveItems.find(w => w.id === focalId) ?? liveItems[0] ?? null,
+    [liveItems, focalId],
+  );
+  const secondaryLive = useMemo(
+    () => liveItems.find(w => !focalTask || w.id !== focalTask.id) ?? null,
+    [liveItems, focalTask],
+  );
+  const isFocus = mode === 'day' && !!focalTask && !showBoard;
+
+  const focusStory = (storyId: string) => {
+    const t = liveItems.find(w => (w.parent?.id ?? w.id) === storyId);
+    if (t) {
+      setFocalId(t.id);
+      setShowBoard(false);
     }
   };
-
-  const sprintLeftHours = `${Math.round(data.capacity.remainingHours)}h`;
-  const completedHours = `${Math.round(data.capacity.completedHours)}h`;
-  const totalEstimateHours = `${Math.round(data.capacity.totalEstimateHours)}h`;
 
   const sprintLabel = data.sprint?.name ?? '—';
 
   return (
-    <div className="ember has-rail">
-      <div className="ember-glow ember-glow-1" aria-hidden="true" />
-      <div className="ember-glow ember-glow-2" aria-hidden="true" />
-      <div className="ember-grain" aria-hidden="true" />
+    <div className={`r21-app ${isFocus ? 'is-focus' : 'is-overview'}`}>
+      <R21Rail
+        active={mode}
+        suggested={ceremonies.suggestedModeId}
+        onPick={setMode}
+        onOpenSchedule={() => setScheduleOpen(true)}
+      />
 
-      {/* TOP BAR */}
-      <header className="ember-top">
-        <div className="ember-brand">
-          <span className="ember-brand-mark" aria-hidden="true" />
-          <span className="ember-brand-name">SPRINT&nbsp;HELPER</span>
-          <span className="ember-brand-meta">
-            <Mono>{userName.toLowerCase()}</Mono>
-          </span>
-        </div>
-        <div className="ember-top-right">
-          <SprintPicker
-            options={data.sprintOptions}
-            currentName={selectedSprintName ?? sprintLabel}
-            onSelect={name => {
-              const sprint = data.sprintOptions.find(o => o.isCurrent);
-              // Pass undefined to clear the override (return to "current") instead
-              // of sticking on a stale name when the user re-clicks the current chip.
-              onSprintChange(sprint && sprint.name === name ? undefined : name);
-            }}
-          />
-          <span className="ember-chip">
-            <span className="dim-small">DAY</span>
-            &nbsp;<Mono>
-              {today}/{sprintCtx?.totalDays ?? '—'}
-            </Mono>
-            <span className="ember-chip-sep" />
-            <span className="dim-small">LOCAL</span>
-            &nbsp;<Mono>{clock}</Mono>
-          </span>
-          <button className="ember-sync" onClick={onRefresh} title="Refresh from Azure DevOps">
-            <Dot size={5} color="var(--accent)" />
-            <span className="dim-small">live</span>
-            &nbsp;<span className="ember-sync-icon">↻</span>
-          </button>
-        </div>
-      </header>
-
-      <div className="ember-main">
-        <ModeRail
-          active={mode}
-          suggested={ceremonies.suggestedModeId}
-          onPick={setMode}
-          onOpenSchedule={() => setScheduleOpen(true)}
+      {mode === 'day' && (
+        <R21Sidebar
+          dateLabel={date}
+          greeting={greetingForHour(now)}
+          userName={userName}
+          sub={greetingCopy(inProgress.length, daysRemaining)}
+          next={ceremonies.next}
+          sprintLabel={sprintLabel}
+          today={today}
+          totalDays={sprintCtx?.totalDays ?? 0}
+          railDays={railDays}
         />
+      )}
 
-        {/* SIDEBAR */}
-        <aside className="ember-side">
-          <p className="ember-date">{date}</p>
-          <h1 className="ember-greeting">
-            {greetingForHour(now)},
-            <br />
-            <span className="ember-greeting-name">{userName}</span>
-          </h1>
-          <p className="ember-sub">
-            {greetingCopy(inProgress.length, daysRemaining)}
-          </p>
-
-          {activeStory ? (
-            <>
-              <button
-                className="ember-cta"
-                onClick={() => openItem(activeStory.id)}
-                style={{ textDecoration: 'none' }}
-              >
-                <span className="ember-cta-line1">
-                  <span className="dim-small">FOCUS</span>
-                </span>
-                <span className="ember-cta-line2">
-                  <Mono>#{activeStory.id}</Mono>&nbsp;&nbsp;{truncate(activeStory.title, 32)}
-                </span>
-                <span className="ember-cta-arrow" aria-hidden="true">→</span>
+      <div className="r21-main">
+        <div className="r21-topwrap">
+          {/* OVERVIEW top bar */}
+          <div className="r21-top is-overview">
+            <div className="r21-brand">
+              <span className="r21-brand-mark" aria-hidden="true" />
+              <span className="r21-brand-name">SPRINT&nbsp;HELPER</span>
+              <span className="r21-brand-meta"><Mono>{userName.toLowerCase()}</Mono></span>
+            </div>
+            <div className="r21-top-right">
+              <SprintPicker
+                options={data.sprintOptions}
+                currentName={selectedSprintName ?? sprintLabel}
+                onSelect={name => {
+                  const sprint = data.sprintOptions.find(o => o.isCurrent);
+                  onSprintChange(sprint && sprint.name === name ? undefined : name);
+                }}
+              />
+              <span className="r21-pill">day&nbsp;<span className="v">{today}/{sprintCtx?.totalDays ?? '—'}</span></span>
+              <span className="r21-pill"><span className="v">{clock}</span></span>
+              <button className="ember-sync" onClick={onRefresh} title="Refresh from Azure DevOps">
+                <Dot size={5} color="var(--accent)" />
+                <span className="dim-small">live</span>&nbsp;<span className="ember-sync-icon">↻</span>
               </button>
-              <p className="ember-cta-foot">
-                <Mono>{activeStory.tasks.length}</Mono> task{activeStory.tasks.length === 1 ? '' : 's'} · <Mono>{Math.round(activeStory.remainingHours)}h</Mono> remaining
-                {stories.length > 1 && (
-                  <span className="dim-soft"> · {stories.length - 1} other stor{stories.length - 1 === 1 ? 'y' : 'ies'} in this sprint</span>
-                )}
-              </p>
-            </>
-          ) : (
-            <p className="ember-cta-foot" style={{ marginTop: 18 }}>
-              No active stories in this sprint. Pick one in Azure DevOps and assign yourself a task.
-            </p>
-          )}
-
-          {/* Live now — only renders when at least one session is open */}
-          <LiveNowTile sessions={liveSessions} onJump={jumpToLiveSession} />
-
-          {/* Up next tile */}
-          <UpNextTile
-            next={ceremonies.next}
-            upcoming={ceremonies.upcoming}
-            onJump={setMode}
-            onOpenSchedule={() => setScheduleOpen(true)}
-          />
-
-          {/* sprint rail */}
-          {sprintCtx && (
-            <div className="ember-rail">
-              <div className="ember-rail-head">
-                <span className="dim-small">SPRINT&nbsp;<Mono style={{ color: 'var(--ink-1)' }}>{sprintLabel}</Mono></span>
-                <span className="dim-small">
-                  DAY&nbsp;<Mono style={{ color: 'var(--ink-1)' }}>{today}</Mono>/{sprintCtx.totalDays}
-                </span>
-              </div>
-              <div className="ember-rail-track">
-                {railDays.map(d => (
-                  <div
-                    key={d.index}
-                    className={`ember-rail-day ${d.state === 'past' ? 'past' : ''} ${d.state === 'today' ? 'today' : ''}`}
-                  >
-                    <span className="ember-rail-tick" />
-                    <span className="ember-rail-label">
-                      <Mono>{d.label}</Mono>
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div className="ember-rail-foot">
-                <Mono className="ember-rail-big">{sprintLeftHours}</Mono>
-                <span className="dim-small">remaining</span>
-              </div>
             </div>
-          )}
-        </aside>
-
-        {/* CONTENT */}
-        <div className="ember-content">
-          {mode !== 'day' ? <ModePlaceholder mode={mode} /> : (
-          <>
-          {/* GLANCE STATS */}
-          <section className="ember-stats">
-            {[
-              { label: 'LOGGED', value: completedHours, sub: 'this sprint' },
-              { label: 'REMAINING', value: sprintLeftHours, sub: 'left to do' },
-              { label: 'ESTIMATE', value: totalEstimateHours, sub: 'total scope' },
-              { label: 'DAYS', value: String(daysRemaining), sub: 'remaining' },
-              { label: 'GOING', value: String(inProgress.length), sub: 'in progress' },
-              { label: 'NEXT', value: String(upNext.length), sub: 'waiting' },
-            ].map(s => (
-              <div key={s.label} className={`ember-stat ${s.value === '0' || s.value === '0h' ? 'muted' : ''}`}>
-                <div className="ember-stat-label">{s.label}</div>
-                <div className="ember-stat-value">
-                  <Mono>{s.value}</Mono>
-                </div>
-                <div className="ember-stat-sub">{s.sub}</div>
-              </div>
-            ))}
-          </section>
-
-          {/* MY USER STORIES — pick one to focus on */}
-          {stories.length > 0 && (
-            <section className="ember-stories">
-              <div className="ember-stories-head">
-                <h3 className="ember-section-title">My user stories</h3>
-                <span className="dim-small">
-                  <Mono style={{ color: 'var(--ink-1)' }}>{stories.length}</Mono>&nbsp;in this sprint · click to focus · <Mono style={{ color: 'var(--ink-2)' }}>›</Mono> for quick edits
-                </span>
-              </div>
-              <div className="ember-stories-grid chips-grid">
-                {stories.map(s => (
-                  <StoryChip
-                    key={s.id}
-                    story={s}
-                    active={activeStory?.id === s.id}
-                    open={expandedChipId === s.id}
-                    onFocus={() => setActiveStoryId(s.id)}
-                    onToggleExpand={() => setExpandedChipId(id => (id === s.id ? null : s.id))}
-                  />
-                ))}
-                <div className={`chip-expand-wrap va ${expandedChip ? 'is-open' : ''}`}>
-                  <div className="chip-expand">
-                    {expandedChip && (
-                      <StoryChipExpand
-                        story={expandedChip}
-                        onOpen={() => openItem(expandedChip.id)}
-                        onAfterChange={onRefresh}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* ACTIVE STORY focus */}
-          {activeStory && (
-            <ActiveStoryCard
-              story={activeStory}
-              onOpenItem={openItem}
-              onAfterChange={onRefresh}
-            />
-          )}
-
-          {/* STANDUP + LISTS */}
-          <div className="ember-grid">
-            <StandupCard data={data} userName={userName} />
-            <section className="ember-tasks">
-              <div className="ember-section-head">
-                <h3 className="ember-section-title">In this sprint</h3>
-                <span className="dim-small">
-                  {inProgress.length + done.length} active · {upNext.length} waiting
-                </span>
-              </div>
-              <ul className="ember-items">
-                {inProgress.map(w => (
-                  <li
-                    key={w.id}
-                    className={`ember-item running ember-clickable ${activeStory?.tasks.some(t => t.id === w.id) ? 'is-focused' : ''}`}
-                    onClick={() => openItem(w.id)}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <Mono className="ember-item-id">#{w.id}</Mono>
-                    <span className="ember-item-title">{w.title}</span>
-                    <span className="ember-item-state">
-                      {activeStory?.tasks.some(t => t.id === w.id) ? 'in focus' : 'going'}
-                    </span>
-                    <Mono className="ember-item-effort">
-                      {loggedFor(w)} / {estimateFor(w)}
-                    </Mono>
-                  </li>
-                ))}
-                {done.map(w => (
-                  <li
-                    key={w.id}
-                    className="ember-item done ember-clickable"
-                    onClick={() => openItem(w.id)}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <Mono className="ember-item-id">#{w.id}</Mono>
-                    <span className="ember-item-title">{w.title}</span>
-                    <span className="ember-item-state">done</span>
-                    <Mono className="ember-item-effort">{loggedFor(w)}</Mono>
-                  </li>
-                ))}
-              </ul>
-
-              {upNext.length > 0 && (
-                <>
-                  <div className="ember-section-head ember-section-head-tight">
-                    <h3 className="ember-section-title">Up next</h3>
-                    <span className="dim-small">{upNext.length} items · {totalEstimateUpNext(upNext)}</span>
-                  </div>
-                  <ul className="ember-items">
-                    {upNext.map(w => (
-                      <li
-                        key={w.id}
-                        className="ember-item queued ember-clickable"
-                        onClick={() => openItem(w.id)}
-                        role="button"
-                        tabIndex={0}
-                      >
-                        <Mono className="ember-item-id">#{w.id}</Mono>
-                        <span className="ember-item-title">{w.title}</span>
-                        <span className="ember-item-state dim">waiting</span>
-                        <Mono className="ember-item-effort">{estimateFor(w)}</Mono>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </section>
           </div>
-
-          {/* SYNC BANNER */}
-          <section className="ember-sync-banner">
-            <div className="ember-sync-left">
-              <Mono className="ember-sync-n">{data.pendingChanges}</Mono>
-              <div className="ember-sync-text">
-                <span className="ember-sync-headline">
-                  {data.pendingChanges === 0
-                    ? 'all caught up with azure devops'
-                    : `${data.pendingChanges} task${data.pendingChanges === 1 ? '' : 's'} with unsynced time`}
-                </span>
-                <span className="ember-sync-detail">
-                  {data.pendingChanges === 0
-                    ? 'logged time is pushed when you sync or mark a task done'
-                    : 'press ↑ on a task to sync, or ✓ to mark it done'}
-                </span>
-              </div>
+          {/* FOCUS top bar (collapsed strip) */}
+          <div className="r21-top is-focus">
+            <div className="r21-brand">
+              <span className="r21-brand-mark" aria-hidden="true" />
+              <span className="r21-brand-name">SPRINT&nbsp;HELPER</span>
+              <span className="r21-strip-meta">
+                <span className="sep">·</span>
+                <span>sprint <span className="v">{sprintLabel}</span></span>
+                <span className="sep">·</span>
+                <span>day <span className="v">{today}/{sprintCtx?.totalDays ?? '—'}</span></span>
+                <span className="sep">·</span>
+                <span><span className="v">{Math.round(data.capacity.remainingHours)}h</span> remaining</span>
+                <span className="sep">·</span>
+                <span><span className="v">{clock}</span></span>
+              </span>
             </div>
-            <a
-              className="ember-report"
-              href={data.sprint ? `https://dev.azure.com/AHITL/_workitems` : '#'}
-              target="_blank"
-              rel="noreferrer"
-              style={{ textDecoration: 'none' }}
-            >
-              <span>Open Azure DevOps</span>
-              <span aria-hidden="true" className="ember-cta-arrow">↗</span>
-            </a>
-          </section>
-          </>
+            <button className="r21-escape" onClick={() => setShowBoard(true)} title="Show the whole board — your work keeps logging">
+              <span><span className="v">{Math.max(0, stories.length - 1)}</span> more in sprint</span>
+              <span className="arr">↗</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="r21-bodywrap">
+          {mode !== 'day' ? (
+            <ModePlaceholder mode={mode} />
+          ) : (
+            <>
+              <div className="r21-body is-overview" aria-hidden={isFocus}>
+                <R21Overview
+                  capacity={data.capacity}
+                  stories={stories}
+                  inProgress={inProgress}
+                  upNext={upNext}
+                  done={done}
+                  today={today}
+                  totalDays={sprintCtx?.totalDays ?? 0}
+                  live={liveItems.length > 0}
+                  focalTitle={focalTask?.title}
+                  onOpenItem={openItem}
+                  onShowFocus={() => setShowBoard(false)}
+                  onFocusStory={focusStory}
+                />
+              </div>
+              <div className="r21-body is-focus" aria-hidden={!isFocus}>
+                {focalTask && (
+                  <R21Focus
+                    task={focalTask}
+                    secondary={secondaryLive}
+                    onOpenItem={openItem}
+                    onPromoteSecondary={() => secondaryLive && setFocalId(secondaryLive.id)}
+                  />
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -485,6 +265,350 @@ function DashboardLive({
 /* -------------------------------------------------------------------------- */
 /*  Sub-components                                                            */
 /* -------------------------------------------------------------------------- */
+
+const EVENT_LABELS: Record<string, string> = {
+  focus: 'Focus',
+  progress: 'Progress',
+  blocker: 'Blocker',
+  decision: 'Decision',
+  note: 'Note',
+};
+
+const R21_MODES: { id: ModeId; label: string; glyph: JSX.Element }[] = [
+  { id: 'day', label: 'Day', glyph: <circle cx="7" cy="7" r="3" fill="currentColor" /> },
+  { id: 'preplan', label: 'Pre-plan', glyph: <><rect x="2" y="3" width="10" height="8" rx="1" stroke="currentColor" fill="none" /><line x1="2" y1="6" x2="12" y2="6" stroke="currentColor" /></> },
+  { id: 'plan', label: 'Plan', glyph: <><line x1="2" y1="4" x2="12" y2="4" stroke="currentColor" /><line x1="2" y1="7" x2="10" y2="7" stroke="currentColor" /><line x1="2" y1="10" x2="11" y2="10" stroke="currentColor" /></> },
+  { id: 'demo', label: 'Demo', glyph: <polygon points="4,3 4,11 12,7" fill="currentColor" /> },
+  { id: 'retro', label: 'Retro', glyph: <path d="M 11 7 A 4 4 0 1 1 7 3" stroke="currentColor" fill="none" strokeWidth="1.2" /> },
+];
+
+function R21Rail({
+  active,
+  suggested,
+  onPick,
+  onOpenSchedule,
+}: {
+  active: ModeId;
+  suggested: ModeId | null;
+  onPick: (m: ModeId) => void;
+  onOpenSchedule: () => void;
+}) {
+  return (
+    <nav className="r21-rail" aria-label="Mode">
+      <span className="r21-rail-cap">Mode</span>
+      {R21_MODES.map(m => (
+        <button
+          key={m.id}
+          className={`r21-rail-tile ${active === m.id ? 'is-active' : ''} ${suggested === m.id && active !== m.id ? 'is-suggested' : ''}`}
+          onClick={() => onPick(m.id)}
+          title={m.label}
+        >
+          <span className="glyph" aria-hidden="true"><svg viewBox="0 0 14 14">{m.glyph}</svg></span>
+          <span className="lbl">{m.label}</span>
+        </button>
+      ))}
+      <button className="r21-rail-gear" onClick={onOpenSchedule} title="Schedule">
+        <span className="glyph" aria-hidden="true">
+          <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="3" stroke="currentColor" fill="none" /><circle cx="7" cy="7" r="1" fill="currentColor" /></svg>
+        </span>
+        <span className="lbl">Schedule</span>
+      </button>
+    </nav>
+  );
+}
+
+function R21Sidebar({
+  dateLabel,
+  greeting,
+  userName,
+  sub,
+  next,
+  sprintLabel,
+  today,
+  totalDays,
+  railDays,
+}: {
+  dateLabel: string;
+  greeting: string;
+  userName: string;
+  sub: string;
+  next: ApiPayload['ceremonies']['next'];
+  sprintLabel: string;
+  today: number;
+  totalDays: number;
+  railDays: Array<{ index: number; state: string; label: string }>;
+}) {
+  return (
+    <div className="r21-sidewrap">
+      <aside className="r21-side">
+        <div className="r21-side-date">{dateLabel}</div>
+        <h1 className="r21-side-greet">{greeting}, <b>{userName}</b></h1>
+        <p className="r21-side-sub">{sub}</p>
+
+        {next && (
+          <div className="r21-side-card">
+            <span className="cap">Up next · {next.label}</span>
+            <div className="row">
+              <span className="when"><Mono>{fmtClockISO(next.startsAt)}</Mono></span>
+              <span className="rel">{relUntil(next.minutesUntil)}</span>
+            </div>
+            <span className="name">{next.label}</span>
+          </div>
+        )}
+
+        {totalDays > 0 && (
+          <div className="r21-side-week">
+            <div className="r21-side-week-head">
+              <span>Sprint <span className="day"><Mono>{sprintLabel}</Mono></span></span>
+              <span>day <span className="day"><Mono>{today}/{totalDays}</Mono></span></span>
+            </div>
+            <div className="r21-side-week-grid">
+              {railDays.map(d => (
+                <span
+                  key={d.index}
+                  className={`r21-side-week-cell ${d.state === 'past' ? 'is-past' : d.state === 'today' ? 'is-today' : 'is-future'}`}
+                >
+                  {d.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+function R21Overview({
+  capacity,
+  stories,
+  inProgress,
+  upNext,
+  done,
+  today,
+  totalDays,
+  live,
+  focalTitle,
+  onOpenItem,
+  onShowFocus,
+  onFocusStory,
+}: {
+  capacity: ApiPayload['capacity'];
+  stories: ApiUserStoryGroup[];
+  inProgress: ApiWorkItem[];
+  upNext: ApiWorkItem[];
+  done: ApiWorkItem[];
+  today: number;
+  totalDays: number;
+  live: boolean;
+  focalTitle?: string;
+  onOpenItem: (id: string) => void;
+  onShowFocus: () => void;
+  onFocusStory: (storyId: string) => void;
+}) {
+  const remaining = Math.round(capacity.remainingHours);
+  const logged = Math.round(capacity.completedHours);
+  const estimate = Math.round(capacity.totalEstimateHours);
+  const dailyItems = done.slice(0, 4);
+  const sprintItems = [...inProgress, ...upNext].slice(0, 5);
+
+  return (
+    <div className="r21-overview">
+      <section>
+        <div className="r21-headline">
+          <div className="r21-headline-left">
+            <div>
+              <div className="r21-headline-cap">REMAINING</div>
+              <div className="r21-headline-big"><Mono>{remaining}</Mono><span className="unit">h</span></div>
+            </div>
+            <div className="r21-headline-day">day <span className="v">{today}</span> of <span className="v">{totalDays || '—'}</span></div>
+          </div>
+          <div className="r21-headline-prompt">
+            {live && focalTitle
+              ? <>Live on <button type="button" className="linkish" onClick={onShowFocus}>{focalTitle}</button></>
+              : <>Nothing live — pick a story below</>}
+          </div>
+        </div>
+        <div className="r21-subline">
+          <span><span className="v">{logged}h</span> logged this sprint</span>
+          <span className="sep">·</span>
+          <span><span className="v">{estimate}h</span> estimate</span>
+          <span className="sep">·</span>
+          <span><span className="v">{inProgress.length}</span> going</span>
+          <span className="sep">·</span>
+          <span><span className="v">{upNext.length}</span> waiting</span>
+        </div>
+      </section>
+
+      <section>
+        <div className="r21-stories-head">
+          <span className="r21-stories-title">My stories</span>
+          <span className="r21-stories-meta">{stories.length} in sprint · click to open</span>
+        </div>
+        <div className="r21-stories-grid">
+          {stories.map(s => (
+            <button
+              key={s.id}
+              type="button"
+              className={`r21-storychip ${s.hasActiveSession ? 'is-live' : ''}`}
+              onClick={() => (s.hasActiveSession ? onFocusStory(s.id) : onOpenItem(s.id))}
+            >
+              <div className="r21-storychip-head">
+                <span className="r21-storychip-kind">{s.type}</span>
+                <span className="r21-storychip-id">#{s.id}</span>
+              </div>
+              <h4 className="r21-storychip-title">{s.title}</h4>
+              <div className="r21-storychip-counts">
+                {s.counts.inProgress > 0 && <span className="c-going">{s.counts.inProgress} going</span>}
+                {s.counts.inProgress > 0 && s.counts.upNext > 0 && <span className="sep">·</span>}
+                {s.counts.upNext > 0 && <span>{s.counts.upNext} waiting</span>}
+                {s.counts.done > 0 && <><span className="sep">·</span><span>{s.counts.done} done</span></>}
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="r21-lists">
+        <div className="r21-list">
+          <div className="r21-list-head">
+            <span className="r21-list-title">For your daily</span>
+            <span className="r21-list-meta">recently closed</span>
+          </div>
+          <ul>
+            {dailyItems.length === 0 ? (
+              <li><span className="t" style={{ color: 'var(--ink-4)' }}>Nothing closed yet</span></li>
+            ) : (
+              dailyItems.map(w => (
+                <li key={w.id} onClick={() => onOpenItem(w.id)}>
+                  <Mono className="id">closed #{w.id}</Mono>
+                  <span className="t">{w.title}</span>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+        <div className="r21-list">
+          <div className="r21-list-head">
+            <span className="r21-list-title">In this sprint</span>
+            <span className="r21-list-meta">{inProgress.length + upNext.length} open</span>
+          </div>
+          <ul>
+            {sprintItems.map(w => (
+              <li key={w.id} onClick={() => onOpenItem(w.id)}>
+                <Mono className="id">#{w.id}</Mono>
+                <span className="t">{w.title}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function R21Focus({
+  task,
+  secondary,
+  onOpenItem,
+  onPromoteSecondary,
+}: {
+  task: ApiWorkItem;
+  secondary: ApiWorkItem | null;
+  onOpenItem: (id: string) => void;
+  onPromoteSecondary: () => void;
+}) {
+  const parent = task.parent;
+  const loggedSec = Math.round((task.completedWork ?? 0) * 3600) + task.localUncapturedSeconds;
+  const logged = fmtHM(loggedSec, 0);
+  const startedAt = task.activeSession ? fmtClockISO(task.activeSession.startedAt) : '';
+  const remaining = task.remainingWork != null ? `${Math.round(task.remainingWork)}h` : '—';
+  const events = task.recentActivity;
+
+  return (
+    <div className="r21-focal">
+      <div className="r21-focal-context">
+        <button type="button" onClick={() => onOpenItem(parent ? parent.id : task.id)}>
+          <span className="kind">{parent ? 'Story' : task.type}</span>
+          {parent && (
+            <>
+              <span className="sep">·</span>
+              <span className="story-title">{parent.title}</span>
+              <span className="sep">·</span>
+              <Mono className="id">#{parent.id}</Mono>
+            </>
+          )}
+        </button>
+      </div>
+
+      <div className="r21-focal-id"><Mono>#{task.id}</Mono></div>
+      <h1 className="r21-focal-title">{task.title}</h1>
+
+      <div className="r21-focal-meta">
+        <span className="r21-live-pill">live</span>
+        {startedAt && <span className="r21-since">started <span className="v">{startedAt}</span></span>}
+        <span className="r21-grow" />
+        <span className="r21-num">
+          <span className="cap">LOGGED</span>
+          <span className="val">{logged}</span>
+          {task.sessionCount > 0 && <span className="sub">· {task.sessionCount} sitting{task.sessionCount === 1 ? '' : 's'}</span>}
+        </span>
+        <span className="r21-num">
+          <span className="cap">ESTIMATE</span>
+          <span className="val">{estimateFor(task)}</span>
+        </span>
+        <span className="r21-num">
+          <span className="cap">REMAINING</span>
+          <span className="val">{remaining}</span>
+        </span>
+      </div>
+
+      {secondary && (
+        <button className="r21-also" onClick={onPromoteSecondary} title="Make this the focus instead">
+          <span className="cap">ALSO LIVE</span>
+          <span className="t">{secondary.title}</span>
+          <span className="arr">→</span>
+        </button>
+      )}
+
+      <div className="r21-feed">
+        <div className="r21-feed-head">
+          <span className="r21-feed-title">Recent activity</span>
+          <span className="r21-feed-meta">
+            {events.length} {events.length === 1 ? 'entry' : 'entries'}{startedAt ? ` · since ${startedAt}` : ''}
+          </span>
+        </div>
+        <div className="r21-feed-list">
+          {events.length === 0 ? (
+            <div className="r21-feed-empty">Nothing logged yet. Claude Code will note things here as you work.</div>
+          ) : (
+            events.map(e => (
+              <div className="r21-ev" key={e.id}>
+                <span className="r21-ev-time">{fmtClockISO(e.createdAt)}</span>
+                <span className={`r21-ev-type t-${e.type}`}>{EVENT_LABELS[e.type] ?? e.type}</span>
+                <span className="r21-ev-body">{e.text}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function fmtClockISO(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function relUntil(min: number): string {
+  if (min <= 0) return 'now';
+  if (min < 60) return `in ${min}m`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `in ${h}h` : `in ${h}h ${m}m`;
+}
 
 function SprintPicker({
   options,
@@ -521,480 +645,6 @@ function SprintPicker({
         →
       </button>
     </div>
-  );
-}
-
-function ActiveStoryCard({
-  story,
-  onOpenItem,
-  onAfterChange,
-}: {
-  story: ApiUserStoryGroup;
-  onOpenItem: (id: string) => void;
-  onAfterChange: () => void;
-}) {
-  // Time is tracked silently by the open session; show the server's totals as-is, no live counter.
-  const storyLoggedHours = story.completedHours;
-  const storyRemaining = story.remainingHours;
-
-  return (
-    <section className="ember-active-story">
-      <div className="ember-active-story-head">
-        <span className="ember-active-story-tag">
-          <Dot size={5} color="var(--story)" />
-          {story.type} · {story.state || 'In focus'}
-        </span>
-        <button
-          className="ember-active-story-id ember-clickable"
-          onClick={() => onOpenItem(story.id)}
-          style={{ background: 'transparent', border: 'none', font: 'inherit', padding: 0 }}
-          title="View story details"
-        >
-          #{story.id} →
-        </button>
-      </div>
-
-      <h2
-        className="ember-active-story-title ember-clickable"
-        onClick={() => onOpenItem(story.id)}
-        title="View story details"
-      >
-        {story.title}
-      </h2>
-
-      <div className="ember-active-story-numbers">
-        <NumberBlock label="logged" value={storyLoggedHours} accent />
-        <Divider />
-        <NumberBlock label="estimate" value={story.totalEstimateHours} dim />
-        <Divider />
-        <NumberBlock label="remaining" value={storyRemaining} dim />
-      </div>
-
-      <div className="ember-active-story-tasks">
-        <div className="ember-active-story-tasks-head">
-          <span className="dim-small">
-            <Mono style={{ color: 'var(--ink-1)' }}>{story.tasks.length}</Mono>&nbsp;TASK{story.tasks.length === 1 ? '' : 'S'} ASSIGNED TO YOU
-          </span>
-          <span className="dim-small">
-            {story.counts.inProgress > 0 && <><Mono style={{ color: 'var(--accent)' }}>{story.counts.inProgress}</Mono>&nbsp;going</>}
-            {story.counts.upNext > 0 && <>&nbsp;·&nbsp;<Mono style={{ color: 'var(--ink-1)' }}>{story.counts.upNext}</Mono>&nbsp;waiting</>}
-            {story.counts.done > 0 && <>&nbsp;·&nbsp;<Mono style={{ color: 'var(--ink-3)' }}>{story.counts.done}</Mono>&nbsp;done</>}
-          </span>
-        </div>
-        {story.tasks.map(task => (
-          <TaskRow
-            key={task.id}
-            task={task}
-            onOpen={() => onOpenItem(task.id)}
-            onAfterChange={onAfterChange}
-          />
-        ))}
-      </div>
-
-      <div className="ember-active-story-actions">
-        <a className="ember-act ember-act-ghost" href={story.url} target="_blank" rel="noreferrer">
-          open story in Azure DevOps <span aria-hidden="true">↗</span>
-        </a>
-      </div>
-    </section>
-  );
-}
-
-function TaskRow({
-  task,
-  onOpen,
-  onAfterChange,
-}: {
-  task: ApiWorkItem;
-  onOpen: () => void;
-  onAfterChange: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  const stateEdit = useEditable<StateBucket>(bucketForState(task.state));
-  const estimateEdit = useEditable<number>(task.originalEstimate ?? 0);
-  const remainingEdit = useEditable<number>(task.remainingWork ?? 0);
-
-  // Time is tracked silently by the open session — show the accumulated total, no live counter.
-  const loggedSec = Math.round((task.completedWork ?? 0) * 3600) + task.localUncapturedSeconds;
-  const loggedDisplay = fmtHM(loggedSec, 0);
-
-  const errorMsg = stateEdit.error ?? estimateEdit.error ?? remainingEdit.error;
-
-  const toggle = () => setExpanded(v => !v);
-
-  return (
-    <>
-      <div
-        className={`ember-active-story-task task-row state-${stateEdit.display} ${expanded ? 'is-open' : ''}`}
-        role="button"
-        tabIndex={0}
-        aria-expanded={expanded}
-        aria-label={`Task #${task.id} ${task.title} — ${expanded ? 'collapse' : 'expand'}`}
-        onClick={toggle}
-        onKeyDown={e => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            toggle();
-          }
-        }}
-      >
-        <span className="ember-task-id task-id">#{task.id}</span>
-        <span className="ember-task-title task-title">{task.title}</span>
-        <span className="ember-task-meta task-effort">
-          <Mono>{loggedDisplay}</Mono>
-          &nbsp;<span className="of">/</span>&nbsp;
-          <Mono style={{ color: 'var(--ink-2)' }}>{estimateFor(task)}</Mono>
-          {task.sessionCount > 0 && (
-            <span className="task-sittings dim-small">&nbsp;· {task.sessionCount} sitting{task.sessionCount === 1 ? '' : 's'}</span>
-          )}
-        </span>
-        <span className="ember-task-state task-state">{bucketLabel(stateEdit.display)}</span>
-        <span className="ember-task-controls task-quickacts">
-          {task.activeSession && (
-            <span className="task-live-slot">
-              <LiveMarker />
-            </span>
-          )}
-        </span>
-        <span
-          className={`chev ${expanded ? 'is-open' : ''}`}
-          aria-hidden="true"
-          title={expanded ? 'collapse' : 'expand'}
-        >
-          ›
-        </span>
-      </div>
-
-      <div className={`task-expand-wrap va ${expanded ? 'is-open' : ''}`}>
-        <div className="task-expand">
-          <div className="task-expand-inner">
-            {task.parent && (
-              <div className="task-expand-context">
-                <span>{task.parent.type}</span>
-                <span className="dot">·</span>
-                <span className="tag-id">#{task.parent.id}</span>
-                <span className="dot">·</span>
-                <span className="tag-title">{task.parent.title}</span>
-              </div>
-            )}
-            {task.descriptionPreview && (
-              <p className="task-expand-desc">{task.descriptionPreview}</p>
-            )}
-            <div className="task-expand-strip">
-              <div className="group">
-                <span className="label">STATE</span>
-                <StatePicker
-                  value={stateEdit.display}
-                  disabled={stateEdit.saving}
-                  onChange={next => stateEdit.save(next, n =>
-                    updateWorkItem(task.id, { state: n }).then(() => onAfterChange()),
-                  )}
-                />
-              </div>
-              <div className="group">
-                <span className="label">ESTIMATE</span>
-                <Stepper
-                  value={estimateEdit.display}
-                  disabled={estimateEdit.saving}
-                  onChange={next => estimateEdit.save(next, n =>
-                    updateWorkItem(task.id, { originalEstimate: n }).then(() => onAfterChange()),
-                  )}
-                />
-              </div>
-              <div className="group">
-                <span className="label">REMAINING</span>
-                <Stepper
-                  value={remainingEdit.display}
-                  disabled={remainingEdit.saving}
-                  onChange={next => remainingEdit.save(next, n =>
-                    updateWorkItem(task.id, { remainingWork: n }).then(() => onAfterChange()),
-                  )}
-                />
-              </div>
-            </div>
-            <div className="expand-divider" />
-            <ActivityFeed events={task.recentActivity} scope="task" />
-            <div className="task-expand-foot">
-              <span className="pushnote">edits push to Azure DevOps when you click away</span>
-              <button className="ghost" onClick={onOpen}>see full description and comments →</button>
-            </div>
-            {errorMsg && (
-              <div className="task-expand-error" role="alert">
-                {errorMsg}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function bucketForState(state: string): StateBucket {
-  if (DONE_STATES_FRONT.has(state)) return 'done';
-  if (ACTIVE_STATES_FRONT.has(state)) return 'going';
-  return 'waiting';
-}
-
-function bucketLabel(b: StateBucket): string {
-  return b === 'going' ? 'GOING' : b === 'done' ? 'DONE' : 'WAITING';
-}
-
-function StoryChip({
-  story,
-  active,
-  open,
-  onFocus,
-  onToggleExpand,
-}: {
-  story: ApiUserStoryGroup;
-  active: boolean;
-  open: boolean;
-  onFocus: () => void;
-  onToggleExpand: () => void;
-}) {
-  return (
-    <div
-      className={`ember-story-chip chip ${active ? 'active' : ''} ${open ? 'is-open' : ''}`}
-      role="button"
-      tabIndex={0}
-      aria-pressed={active}
-      onClick={onFocus}
-      onKeyDown={e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onFocus();
-        }
-      }}
-    >
-      <div className="ember-story-chip-head chip-head">
-        <span className="ember-story-chip-type">{story.type}</span>
-        <span className="ember-story-chip-id">#{story.id}</span>
-        {story.hasActiveSession && (
-          <span className="chip-live-slot">
-            <LiveMarker rollup />
-          </span>
-        )}
-        <button
-          className={`chip-chev ${open ? 'is-open' : ''}`}
-          onClick={e => {
-            e.stopPropagation();
-            onToggleExpand();
-          }}
-          aria-expanded={open}
-          aria-label={open ? 'collapse quick edits' : 'expand quick edits'}
-          title={open ? 'collapse quick edits' : 'expand for quick edits'}
-        >
-          ›
-        </button>
-      </div>
-      <span className="ember-story-chip-title">{story.title}</span>
-      <div className="ember-story-chip-meta">
-        {story.counts.inProgress > 0 && (
-          <span className="ember-story-chip-pill going">
-            <Mono>{story.counts.inProgress}</Mono> going
-          </span>
-        )}
-        {story.counts.upNext > 0 && (
-          <span className="ember-story-chip-pill">
-            <Mono>{story.counts.upNext}</Mono> waiting
-          </span>
-        )}
-        {story.counts.done > 0 && (
-          <span className="ember-story-chip-pill">
-            <Mono>{story.counts.done}</Mono> done
-          </span>
-        )}
-        <span style={{ marginLeft: 'auto' }}>
-          <Mono>{Math.round(story.remainingHours)}h</Mono> left
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function StoryChipExpand({
-  story,
-  onOpen,
-  onAfterChange,
-}: {
-  story: ApiUserStoryGroup;
-  onOpen: () => void;
-  onAfterChange: () => void;
-}) {
-  const stateEdit = useEditable<StateBucket>(bucketForState(story.state));
-  const estimateEdit = useEditable<number>(story.parentEstimate ?? 0);
-  const remainingEdit = useEditable<number>(story.parentRemaining ?? 0);
-  const totalChildren = story.counts.inProgress + story.counts.upNext + story.counts.done;
-  const errorMsg = stateEdit.error ?? estimateEdit.error ?? remainingEdit.error;
-
-  return (
-    <div className="chip-expand-inner">
-      <div className="chip-expand-meta">
-        <span>{story.type}</span>
-        <span className="sep">·</span>
-        <Mono className="v">#{story.id}</Mono>
-        <span className="sep">·</span>
-        <span className="v">{bucketLabel(stateEdit.display).toLowerCase()}</span>
-        {story.area && (
-          <>
-            <span className="sep">·</span>
-            <span>{story.area}</span>
-          </>
-        )}
-        <span className="sep">·</span>
-        <span>{totalChildren} child task{totalChildren === 1 ? '' : 's'} assigned to you</span>
-      </div>
-      {story.descriptionPreview && (
-        <p className="chip-expand-desc">{story.descriptionPreview}</p>
-      )}
-      <div className="chip-expand-strip">
-        <div className="group">
-          <span className="label">STATE</span>
-          <StatePicker
-            value={stateEdit.display}
-            disabled={stateEdit.saving}
-            onChange={next => stateEdit.save(next, n =>
-              updateWorkItem(story.id, { state: n }).then(() => onAfterChange()),
-            )}
-          />
-        </div>
-        <div className="group">
-          <span className="label">ESTIMATE</span>
-          <Stepper
-            value={estimateEdit.display}
-            disabled={estimateEdit.saving}
-            onChange={next => estimateEdit.save(next, n =>
-              updateWorkItem(story.id, { originalEstimate: n }).then(() => onAfterChange()),
-            )}
-          />
-        </div>
-        <div className="group">
-          <span className="label">REMAINING</span>
-          <Stepper
-            value={remainingEdit.display}
-            disabled={remainingEdit.saving}
-            onChange={next => remainingEdit.save(next, n =>
-              updateWorkItem(story.id, { remainingWork: n }).then(() => onAfterChange()),
-            )}
-          />
-        </div>
-      </div>
-      <div className="expand-divider" />
-      <ActivityFeed
-        events={story.recentActivity}
-        scope="chip"
-        rolledUpFromTasks={story.tasks.length}
-      />
-      <div className="chip-expand-foot">
-        <span>edits push to Azure DevOps when you click away</span>
-        <button className="ghost" onClick={onOpen}>open story details →</button>
-      </div>
-      {errorMsg && (
-        <div className="task-expand-error" role="alert">
-          {errorMsg}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const DONE_STATES_FRONT = new Set(['Done', 'Closed', 'Resolved', 'Completed', 'Removed']);
-const ACTIVE_STATES_FRONT = new Set(['Active', 'In Progress', 'Committed', 'Doing']);
-
-function NumberBlock({ label, value, accent, dim }: { label: string; value: number; accent?: boolean; dim?: boolean }) {
-  const h = Math.floor(value);
-  const m = Math.round((value - h) * 60);
-  return (
-    <div className="ember-num-block">
-      <Mono className={`ember-num-big${dim ? ' dim' : ''}`}>
-        {h}
-        <span>h</span>
-        {m > 0 && (
-          <>
-            &nbsp;{String(m).padStart(2, '0')}<span>m</span>
-          </>
-        )}
-      </Mono>
-      <span className="ember-num-cap" style={accent ? { color: 'var(--accent)' } : undefined}>
-        {label}
-      </span>
-    </div>
-  );
-}
-
-function Divider() {
-  return <div className="ember-num-divider" />;
-}
-
-function StandupCard({ data, userName }: { data: ApiPayload; userName: string }) {
-  const yesterdayItems = data.workItems.done;
-  const goingItems = data.workItems.inProgress;
-  const standupText = useMemo(
-    () => buildStandupText(yesterdayItems, goingItems, userName),
-    [yesterdayItems, goingItems, userName],
-  );
-  const standupMd = useMemo(
-    () => buildStandupMd(yesterdayItems, goingItems),
-    [yesterdayItems, goingItems],
-  );
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const copy = (key: string, text: string) => {
-    navigator.clipboard?.writeText(text).catch(() => {});
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(k => (k === key ? null : k)), 1200);
-  };
-
-  return (
-    <section className="ember-standup">
-      <div className="ember-section-head">
-        <h3 className="ember-section-title">Standup draft</h3>
-        <span className="dim-small">auto-drafted from ADO</span>
-      </div>
-      <dl className="ember-standup-list">
-        <div>
-          <dt>Yesterday</dt>
-          <dd>
-            {yesterdayItems.length === 0 ? (
-              <span className="dim">Nothing closed yesterday. Today's a fresh start.</span>
-            ) : (
-              yesterdayItems.slice(0, 3).map((w, i) => (
-                <span key={w.id}>
-                  {i > 0 ? ' · ' : ''}Closed <Mono>#{w.id}</Mono> {truncate(w.title, 40)}
-                </span>
-              ))
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>Today</dt>
-          <dd>
-            {goingItems.length === 0 ? (
-              <span className="dim">No tasks in progress.</span>
-            ) : (
-              goingItems.slice(0, 4).map((w, i) => (
-                <span key={w.id}>
-                  {i > 0 ? ' · ' : ''}<Mono>#{w.id}</Mono> {truncate(w.title, 32)}
-                </span>
-              ))
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>Blockers</dt>
-          <dd className="dim">None reported.</dd>
-        </div>
-      </dl>
-      <div className="ember-standup-foot">
-        <button className="ember-link" onClick={() => copy('text', standupText)}>
-          {copiedKey === 'text' ? 'copied' : 'copy as text'}
-        </button>
-        <button className="ember-link" onClick={() => copy('md', standupMd)}>
-          {copiedKey === 'md' ? 'copied' : 'copy as markdown'}
-        </button>
-      </div>
-    </section>
   );
 }
 
@@ -1100,24 +750,9 @@ function ErrorShell({
 /*  Helpers                                                                   */
 /* -------------------------------------------------------------------------- */
 
-function loggedFor(w: ApiWorkItem): string {
-  const h = w.completedWork ?? 0;
-  return h === 0 ? '0h' : fmtEstimate(Math.round(h * 60));
-}
-
 function estimateFor(w: ApiWorkItem): string {
   const h = w.originalEstimate ?? w.remainingWork ?? 0;
   return h === 0 ? '—' : fmtEstimate(Math.round(h * 60));
-}
-
-function truncate(s: string, n: number): string {
-  if (s.length <= n) return s;
-  return s.slice(0, n - 1).trimEnd() + '…';
-}
-
-function totalEstimateUpNext(items: ApiWorkItem[]): string {
-  const hours = items.reduce((sum, w) => sum + (w.originalEstimate ?? 0), 0);
-  return `${Math.round(hours)}h`;
 }
 
 function greetingCopy(inProgressCount: number, daysRemaining: number): string {
@@ -1130,20 +765,3 @@ function greetingCopy(inProgressCount: number, daysRemaining: number): string {
   return `${inProgressCount} tasks in progress. ${daysRemaining} day${daysRemaining === 1 ? '' : 's'} left in the sprint — start with whichever is most urgent.`;
 }
 
-function buildStandupText(done: ApiWorkItem[], going: ApiWorkItem[], _userName: string): string {
-  const y =
-    done.length === 0
-      ? 'Nothing closed yesterday.'
-      : `Closed: ${done.map(w => `#${w.id} ${w.title}`).join(', ')}.`;
-  const t =
-    going.length === 0
-      ? 'No tasks in progress today.'
-      : `In progress: ${going.map(w => `#${w.id} ${w.title}`).join(', ')}.`;
-  return `Yesterday: ${y}\nToday: ${t}\nBlockers: none.`;
-}
-
-function buildStandupMd(done: ApiWorkItem[], going: ApiWorkItem[]): string {
-  const y = done.length === 0 ? '_None._' : done.map(w => `- #${w.id} ${w.title}`).join('\n');
-  const t = going.length === 0 ? '_None._' : going.map(w => `- #${w.id} ${w.title}`).join('\n');
-  return `**Yesterday**\n${y}\n\n**Today**\n${t}\n\n**Blockers**\n_None._`;
-}
