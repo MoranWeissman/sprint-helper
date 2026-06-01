@@ -2355,6 +2355,29 @@ html, body {
 }
 .r21-daily-bulk:hover { color: var(--accent); border-color: var(--accent-deep); background: var(--accent-soft); }
 .r21-daily-bulk:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Live pill in the daily head — jumps back to Focus */
+.r21-daily-live {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--st-going);
+  background: var(--st-going-bg);
+  color: var(--st-going);
+  border-radius: 999px;
+  font-size: 12px; letter-spacing: 0.02em;
+  cursor: pointer; font: inherit;
+  max-width: 320px;
+  transition: filter 160ms ease;
+}
+.r21-daily-live:hover { filter: brightness(1.15); }
+.r21-daily-live:focus-visible { outline: 2px solid var(--st-going); outline-offset: 2px; }
+.r21-daily-live .dot {
+  width: 7px; height: 7px; border-radius: 999px;
+  background: var(--st-going); box-shadow: 0 0 0 3px var(--st-going-bg);
+}
+.r21-daily-live .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r21-daily-live .lbl .t { color: var(--ink-0); font-weight: 500; }
+.r21-daily-live .arr { font-family: var(--font-mono); }
 .r21-daily-cap { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; }
 .r21-daily-title { margin: 6px 0 0; font-size: 28px; font-weight: 500; color: var(--ink-0); letter-spacing: -0.01em; }
 .r21-daily-close {

@@ -171,7 +171,13 @@ function DashboardLive({
           totalDays={sprintCtx?.totalDays ?? 0}
           railDays={railDays}
           dailyOpen={dailyOpen}
-          onToggleDaily={() => setDailyOpen(v => !v)}
+          onToggleDaily={() => {
+            // Picking Daily or Overview always escapes Focus — otherwise the
+            // toggle silently swaps state while the live session keeps the
+            // screen locked on Focus.
+            setShowBoard(true);
+            setDailyOpen(v => !v);
+          }}
         />
       )}
 
@@ -232,7 +238,9 @@ function DashboardLive({
               stories={stories}
               sprintName={sprintLabel}
               onOpenItem={openItem}
-              onClose={() => setDailyOpen(false)}
+              live={liveItems.length > 0}
+              focalTitle={focalTask?.title}
+              onReturnToFocus={() => setShowBoard(false)}
             />
           ) : (
             <>
@@ -710,12 +718,16 @@ function DailyView({
   stories,
   sprintName,
   onOpenItem,
-  onClose,
+  live,
+  focalTitle,
+  onReturnToFocus,
 }: {
   stories: ApiUserStoryGroup[];
   sprintName: string;
   onOpenItem: (id: string) => void;
-  onClose: () => void;
+  live: boolean;
+  focalTitle?: string;
+  onReturnToFocus: () => void;
 }) {
   // Which story cards are currently expanded (show per-task EST/REM). Default
   // is collapsed for every card — Moran expands just the one she's diving into.
@@ -761,6 +773,18 @@ function DailyView({
           <h1 className="r21-daily-title">Your stories &amp; tasks</h1>
         </div>
         <div className="r21-daily-head-actions">
+          {live && focalTitle && (
+            <button
+              type="button"
+              className="r21-daily-live"
+              onClick={onReturnToFocus}
+              title="Return to your live focus"
+            >
+              <span className="dot" aria-hidden="true" />
+              <span className="lbl">live on <span className="t">{focalTitle}</span></span>
+              <span className="arr" aria-hidden="true">→</span>
+            </button>
+          )}
           {stories.length > 0 && (
             <button
               type="button"
@@ -771,14 +795,6 @@ function DailyView({
               {anyExpanded ? 'collapse all' : 'expand all'}
             </button>
           )}
-          <button
-            type="button"
-            className="r21-daily-close"
-            onClick={onClose}
-            title="Back to overview"
-          >
-            ← back
-          </button>
         </div>
       </div>
 
