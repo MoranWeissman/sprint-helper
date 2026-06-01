@@ -756,6 +756,7 @@ function DailyStoryCard({
 }) {
   const sp = story.storyPoints != null ? `${fmtNum(story.storyPoints)}d` : '—';
   const eff = story.effort != null ? `${fmtNum(story.effort)}h` : '—';
+  const taskCount = story.counts.inProgress + story.counts.upNext + story.counts.done;
 
   return (
     <article className={`r21-daily-card ${story.hasActiveSession ? 'is-live' : ''}`}>
@@ -764,61 +765,77 @@ function DailyStoryCard({
         className="r21-daily-card-head"
         onClick={() => onOpenItem(story.id)}
       >
-        <span className="r21-daily-card-left">
-          <span className="r21-daily-card-kind">{story.type}</span>
-          <Mono className="r21-daily-card-id">#{story.id}</Mono>
-          <span className="r21-daily-card-title">{story.title}</span>
+        <span className="r21-daily-card-headline">
+          <span className="r21-daily-card-meta-row">
+            <span className="r21-daily-kind">{story.type}</span>
+            <Mono className="r21-daily-card-id">#{story.id}</Mono>
+          </span>
+          <h2 className="r21-daily-card-title">{story.title}</h2>
         </span>
-        <span className="r21-daily-card-effort">
-          <span className="r21-daily-eff">
+        <span className="r21-daily-card-numbers">
+          <span className="r21-daily-num">
             <span className="cap">SP</span>
             <span className={`val ${story.storyPoints == null ? 'is-missing' : ''}`}>{sp}</span>
           </span>
-          <span className="r21-daily-eff">
+          <span className="r21-daily-num">
             <span className="cap">EFFORT</span>
             <span className={`val ${story.effort == null ? 'is-missing' : ''}`}>{eff}</span>
           </span>
         </span>
       </button>
 
-      {story.descriptionPreview && (
-        <p className="r21-daily-desc">{story.descriptionPreview}</p>
-      )}
+      <div className="r21-daily-card-body">
+        {story.descriptionPreview && (
+          <p className="r21-daily-desc">{story.descriptionPreview}</p>
+        )}
 
-      {story.tasks.length === 0 ? (
-        <p className="r21-daily-card-empty">No tasks under this story yet.</p>
-      ) : (
-        <ul className="r21-daily-tasks">
-          {story.tasks.map(t => {
-            const est = t.originalEstimate != null ? `${fmtNum(t.originalEstimate)}h` : '—';
-            const rem = t.remainingWork != null ? `${fmtNum(t.remainingWork)}h` : '—';
-            return (
-              <li key={t.id}>
-                <button
-                  type="button"
-                  className={`r21-daily-task ${dailyStateClass(t.state)}`}
-                  onClick={() => onOpenItem(t.id)}
-                >
-                  <span className="r21-daily-task-left">
+        <div className="r21-daily-counts">
+          {story.counts.inProgress > 0 && (
+            <span className="c-going"><span className="dot" /> {story.counts.inProgress} going</span>
+          )}
+          {story.counts.upNext > 0 && (
+            <span className="c-waiting"><span className="dot" /> {story.counts.upNext} waiting</span>
+          )}
+          {story.counts.done > 0 && (
+            <span className="c-done"><span className="dot" /> {story.counts.done} done</span>
+          )}
+          {taskCount === 0 && <span className="c-empty">no tasks under this story yet</span>}
+        </div>
+
+        {story.tasks.length > 0 && (
+          <ul className="r21-daily-tasks">
+            {story.tasks.map(t => {
+              const sc = dailyStateClass(t.state);
+              const est = t.originalEstimate != null ? `${fmtNum(t.originalEstimate)}h` : '—';
+              const rem = t.remainingWork != null ? `${fmtNum(t.remainingWork)}h` : '—';
+              return (
+                <li key={t.id}>
+                  <button
+                    type="button"
+                    className={`r21-daily-task ${sc}`}
+                    onClick={() => onOpenItem(t.id)}
+                  >
+                    <span className="r21-daily-task-dot" aria-hidden="true" />
                     <Mono className="r21-daily-task-id">#{t.id}</Mono>
                     <span className="r21-daily-task-title">{t.title}</span>
-                  </span>
-                  <span className="r21-daily-task-effort">
-                    <span className="r21-daily-eff">
-                      <span className="cap">EST</span>
-                      <span className={`val ${t.originalEstimate == null ? 'is-missing' : ''}`}>{est}</span>
+                    <span className="r21-daily-task-state">{dailyStateLabel(t.state)}</span>
+                    <span className="r21-daily-task-numbers">
+                      <span className="r21-daily-task-num">
+                        <span className="cap">EST</span>
+                        <span className={`val ${t.originalEstimate == null ? 'is-missing' : ''}`}>{est}</span>
+                      </span>
+                      <span className="r21-daily-task-num">
+                        <span className="cap">REM</span>
+                        <span className={`val ${t.remainingWork == null ? 'is-missing' : ''}`}>{rem}</span>
+                      </span>
                     </span>
-                    <span className="r21-daily-eff">
-                      <span className="cap">REM</span>
-                      <span className={`val ${t.remainingWork == null ? 'is-missing' : ''}`}>{rem}</span>
-                    </span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </article>
   );
 }
@@ -833,6 +850,13 @@ function dailyStateClass(state: string): string {
   if (s === 'active' || s === 'in progress' || s === 'doing' || s === 'committed') return 'is-going';
   if (s === 'done' || s === 'closed' || s === 'resolved' || s === 'completed' || s === 'removed') return 'is-done';
   return 'is-waiting';
+}
+
+function dailyStateLabel(state: string): string {
+  const sc = dailyStateClass(state);
+  if (sc === 'is-going') return 'going';
+  if (sc === 'is-done') return 'done';
+  return 'waiting';
 }
 
 function fmtClockISO(iso: string): string {

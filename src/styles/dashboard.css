@@ -2342,53 +2342,94 @@ html, body {
 .r21-daily-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .r21-daily-empty { font-size: 14px; color: var(--ink-3); padding: 30px 0; margin: 0; }
-.r21-daily-list { display: flex; flex-direction: column; gap: 18px; }
+.r21-daily-list { display: flex; flex-direction: column; gap: 28px; }
 
+/* === Story card === */
 .r21-daily-card {
   background: var(--bg-1);
-  border: 1px solid var(--line-hair);
-  border-radius: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
   overflow: hidden;
 }
-.r21-daily-card.is-live { border-left: 2px solid var(--accent); }
+.r21-daily-card.is-live { border-color: var(--accent-deep); }
 
+/* Story header — the prominent strip at the top of each card */
 .r21-daily-card-head {
   width: 100%;
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;
-  padding: 18px 22px 14px;
-  background: transparent;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 32px;
+  padding: 22px 28px 20px;
+  background: linear-gradient(180deg, oklch(0.235 0.034 256) 0%, transparent 100%);
   border: 0;
+  border-bottom: 1px solid var(--line-hair);
   text-align: left;
   cursor: pointer;
   color: inherit;
   font: inherit;
 }
-.r21-daily-card-head:hover { background: var(--bg-2); }
+.r21-daily-card-head:hover { background: linear-gradient(180deg, oklch(0.27 0.034 256) 0%, transparent 100%); }
 .r21-daily-card-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-.r21-daily-card-left { display: flex; align-items: baseline; gap: 12px; flex: 1; min-width: 0; }
-.r21-daily-card-kind { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); flex: none; }
-.r21-daily-card-id { font-size: 13px; color: var(--ink-3); flex: none; }
-.r21-daily-card-title { font-size: 16px; color: var(--ink-0); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; }
+.r21-daily-card-headline { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
+.r21-daily-card-meta-row { display: inline-flex; align-items: center; gap: 12px; }
+.r21-daily-kind {
+  display: inline-flex; align-items: center;
+  padding: 3px 10px;
+  font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  color: var(--ink-2);
+}
+.r21-daily-card.is-live .r21-daily-kind {
+  background: var(--accent-soft);
+  border-color: var(--accent-deep);
+  color: var(--accent);
+}
+.r21-daily-card-id { font-family: var(--font-mono); font-size: 12px; color: var(--ink-4); }
+.r21-daily-card-title { margin: 0; font-size: 19px; font-weight: 500; line-height: 1.3; color: var(--ink-0); letter-spacing: -0.005em; }
 
-.r21-daily-card-effort,
-.r21-daily-task-effort { display: flex; gap: 18px; flex: none; align-items: baseline; }
-.r21-daily-eff { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-.r21-daily-eff .cap { font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-4); font-weight: 500; }
-.r21-daily-eff .val { font-family: var(--font-mono); font-size: 14px; color: var(--ink-1); }
-.r21-daily-eff .val.is-missing { color: var(--ink-4); }
+/* Story big-number block (SP + EFFORT on the right) */
+.r21-daily-card-numbers { display: flex; gap: 28px; flex: none; align-self: flex-start; padding-top: 2px; }
+.r21-daily-num { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.r21-daily-num .cap { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-4); font-weight: 500; }
+.r21-daily-num .val { font-family: var(--font-mono); font-size: 22px; font-weight: 400; color: var(--ink-0); line-height: 1; }
+.r21-daily-num .val.is-missing { color: var(--ink-4); }
 
-.r21-daily-desc { margin: 0 22px 12px; font-size: 13px; color: var(--ink-3); line-height: 1.5; text-wrap: pretty; }
-.r21-daily-card-empty { margin: 0 22px 16px; font-size: 12.5px; color: var(--ink-4); padding: 8px 0; }
+/* Story body — description + counts + tasks live here */
+.r21-daily-card-body { padding: 16px 28px 22px; display: flex; flex-direction: column; gap: 14px; }
+.r21-daily-desc { margin: 0; font-size: 13.5px; color: var(--ink-3); line-height: 1.55; text-wrap: pretty; max-width: 80ch; }
 
-.r21-daily-tasks { list-style: none; margin: 0; padding: 0 14px 14px; display: flex; flex-direction: column; gap: 4px; }
+/* Counts strip — quick glance of done / going / waiting under each story */
+.r21-daily-counts { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; font-size: 12px; letter-spacing: 0.02em; }
+.r21-daily-counts span { display: inline-flex; align-items: center; gap: 6px; }
+.r21-daily-counts .dot { width: 7px; height: 7px; border-radius: 999px; display: inline-block; }
+.r21-daily-counts .c-going { color: var(--accent); }
+.r21-daily-counts .c-going .dot { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.r21-daily-counts .c-waiting { color: var(--ink-3); }
+.r21-daily-counts .c-waiting .dot { background: transparent; border: 1px solid var(--ink-4); }
+.r21-daily-counts .c-done { color: oklch(0.74 0.060 150); }
+.r21-daily-counts .c-done .dot { background: oklch(0.74 0.060 150); }
+.r21-daily-counts .c-empty { color: var(--ink-4); font-style: italic; }
+
+/* Task list — visually nested under the story with a left guideline */
+.r21-daily-tasks {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 0 0 16px;
+  border-left: 1px solid var(--line-hair);
+  display: flex; flex-direction: column;
+  gap: 2px;
+}
 .r21-daily-task {
   width: 100%;
-  display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  display: grid;
+  grid-template-columns: 10px 60px minmax(0, 1fr) 64px auto;
+  align-items: center;
+  gap: 14px;
   padding: 10px 12px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 9px;
   text-align: left;
   color: inherit;
   font: inherit;
@@ -2397,14 +2438,35 @@ html, body {
 }
 .r21-daily-task:hover { background: var(--bg-2); border-color: var(--line-hair); }
 .r21-daily-task:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.r21-daily-task.is-going { border-left: 2px solid var(--accent); }
-.r21-daily-task.is-done { color: var(--ink-3); }
-.r21-daily-task.is-done .r21-daily-task-title { text-decoration: line-through; text-decoration-color: var(--ink-4); }
 
-.r21-daily-task-left { display: flex; align-items: baseline; gap: 12px; flex: 1; min-width: 0; }
-.r21-daily-task-id { font-size: 12px; color: var(--ink-3); flex: none; }
-.r21-daily-task-title { font-size: 13.5px; color: var(--ink-1); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; }
+/* State dot — the first column */
+.r21-daily-task-dot {
+  width: 9px; height: 9px;
+  border-radius: 999px;
+  background: var(--ink-4);
+  display: inline-block;
+  justify-self: center;
+}
+.r21-daily-task.is-going .r21-daily-task-dot { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.r21-daily-task.is-done .r21-daily-task-dot { background: oklch(0.74 0.060 150); }
+.r21-daily-task.is-waiting .r21-daily-task-dot { background: transparent; border: 1px solid var(--ink-4); }
+
+.r21-daily-task-id { font-family: var(--font-mono); font-size: 12px; color: var(--ink-4); }
+.r21-daily-task-title { font-size: 14px; color: var(--ink-1); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r21-daily-task-state { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-4); text-align: right; }
+.r21-daily-task.is-going .r21-daily-task-state { color: var(--accent); }
+.r21-daily-task.is-done .r21-daily-task-state { color: oklch(0.74 0.060 150); }
+.r21-daily-task.is-done .r21-daily-task-title { text-decoration: line-through; text-decoration-color: var(--ink-4); color: var(--ink-3); }
+.r21-daily-task.is-done .r21-daily-task-id { color: var(--ink-4); }
+
+.r21-daily-task-numbers { display: inline-flex; gap: 18px; align-items: baseline; }
+.r21-daily-task-num { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.r21-daily-task-num .cap { font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-4); }
+.r21-daily-task-num .val { font-family: var(--font-mono); font-size: 13px; color: var(--ink-1); }
+.r21-daily-task-num .val.is-missing { color: var(--ink-4); }
 
 .r21-app[data-density="generous"] .r21-daily { padding: 60px 88px 72px; gap: 30px; }
-.r21-app[data-density="generous"] .r21-daily-card-head { padding: 24px 28px 18px; }
-.r21-app[data-density="generous"] .r21-daily-tasks { padding: 4px 20px 20px; }
+.r21-app[data-density="generous"] .r21-daily-card-head { padding: 28px 36px 22px; }
+.r21-app[data-density="generous"] .r21-daily-card-body { padding: 18px 36px 26px; gap: 16px; }
+.r21-app[data-density="generous"] .r21-daily-num .val { font-size: 26px; }
+.r21-app[data-density="generous"] .r21-daily-card-title { font-size: 22px; }
