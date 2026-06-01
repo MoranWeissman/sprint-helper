@@ -170,14 +170,11 @@ function DashboardLive({
           today={today}
           totalDays={sprintCtx?.totalDays ?? 0}
           railDays={railDays}
-          dailyOpen={dailyOpen}
-          onToggleDaily={() => {
-            // Picking Daily or Overview always escapes Focus — otherwise the
-            // toggle silently swaps state while the live session keeps the
-            // screen locked on Focus.
-            setShowBoard(true);
-            setDailyOpen(v => !v);
-          }}
+          view={isFocus ? 'focus' : (isDaily ? 'daily' : 'overview')}
+          hasLive={liveItems.length > 0}
+          onPickDaily={() => { setShowBoard(true); setDailyOpen(true); }}
+          onPickOverview={() => { setShowBoard(true); setDailyOpen(false); }}
+          onPickFocus={() => { setShowBoard(false); }}
         />
       )}
 
@@ -238,9 +235,6 @@ function DashboardLive({
               stories={stories}
               sprintName={sprintLabel}
               onOpenItem={openItem}
-              live={liveItems.length > 0}
-              focalTitle={focalTask?.title}
-              onReturnToFocus={() => setShowBoard(false)}
             />
           ) : (
             <>
@@ -357,8 +351,11 @@ function R21Sidebar({
   today,
   totalDays,
   railDays,
-  dailyOpen,
-  onToggleDaily,
+  view,
+  hasLive,
+  onPickDaily,
+  onPickOverview,
+  onPickFocus,
 }: {
   dateLabel: string;
   greeting: string;
@@ -369,8 +366,11 @@ function R21Sidebar({
   today: number;
   totalDays: number;
   railDays: Array<{ index: number; state: string; label: string }>;
-  dailyOpen: boolean;
-  onToggleDaily: () => void;
+  view: 'daily' | 'overview' | 'focus';
+  hasLive: boolean;
+  onPickDaily: () => void;
+  onPickOverview: () => void;
+  onPickFocus: () => void;
 }) {
   return (
     <div className="r21-sidewrap">
@@ -379,15 +379,37 @@ function R21Sidebar({
         <h1 className="r21-side-greet">{greeting}, <b>{userName}</b></h1>
         <p className="r21-side-sub">{sub}</p>
 
-        <button
-          type="button"
-          className={`r21-side-daily ${!dailyOpen ? 'is-open' : ''}`}
-          onClick={onToggleDaily}
-          title={dailyOpen ? 'Show the calmer Overview (helper\'s notes, headline)' : 'Back to your Daily view'}
-        >
-          <span className="lbl">{dailyOpen ? 'Overview' : 'Daily view'}</span>
-          <span className="arr">{dailyOpen ? '↩' : '→'}</span>
-        </button>
+        <div className="r21-place" role="tablist" aria-label="View">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'daily'}
+            className={`r21-place-seg ${view === 'daily' ? 'is-active' : ''}`}
+            onClick={onPickDaily}
+          >
+            Daily
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'overview'}
+            className={`r21-place-seg ${view === 'overview' ? 'is-active' : ''}`}
+            onClick={onPickOverview}
+          >
+            Overview
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'focus'}
+            disabled={!hasLive}
+            className={`r21-place-seg ${view === 'focus' ? 'is-active' : ''}`}
+            onClick={onPickFocus}
+            title={hasLive ? 'Switch to Focus on your live task' : 'Focus is only available while a session is live'}
+          >
+            Focus
+          </button>
+        </div>
 
         {next && (
           <div className="r21-side-card">
@@ -718,16 +740,10 @@ function DailyView({
   stories,
   sprintName,
   onOpenItem,
-  live,
-  focalTitle,
-  onReturnToFocus,
 }: {
   stories: ApiUserStoryGroup[];
   sprintName: string;
   onOpenItem: (id: string) => void;
-  live: boolean;
-  focalTitle?: string;
-  onReturnToFocus: () => void;
 }) {
   // Which story cards are currently expanded (show per-task EST/REM). Default
   // is collapsed for every card — Moran expands just the one she's diving into.
@@ -773,18 +789,6 @@ function DailyView({
           <h1 className="r21-daily-title">Your stories &amp; tasks</h1>
         </div>
         <div className="r21-daily-head-actions">
-          {live && focalTitle && (
-            <button
-              type="button"
-              className="r21-daily-live"
-              onClick={onReturnToFocus}
-              title="Return to your live focus"
-            >
-              <span className="dot" aria-hidden="true" />
-              <span className="lbl">live on <span className="t">{focalTitle}</span></span>
-              <span className="arr" aria-hidden="true">→</span>
-            </button>
-          )}
           {stories.length > 0 && (
             <button
               type="button"
