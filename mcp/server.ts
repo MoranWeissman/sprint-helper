@@ -382,6 +382,23 @@ Call \`orient\` at the start of EVERY new chat (see OPENING GREETING above).
 Call \`sprint_snapshot\` whenever you need to see what's in the current sprint
 and what's already live. Use plain English with Moran — never say "ceremony",
 "session", or "work item id" to him; say "live", "task", and "#1234".
+
+GROUNDING STATE QUESTIONS (mid-conversation): if Moran asks anything about
+the CURRENT state of his sprint — "where are we", "what's blocked", "what's
+done", "what's next", "status", "recap", "what's pending", "how's the
+sprint going", etc. — call \`sprint_snapshot\` (or the relevant read tool)
+BEFORE answering. Even when \`orient\` already fired earlier in this same
+conversation. Conversation memory drifts the moment any write happens (by
+Moran, by you, by another session, by ADO itself). Sprint-helper is the
+source of truth; memory is not. The cost of an extra read is small; the
+cost of a stale answer is wrong work.
+
+EXPLICIT MENU (\`/sprint-helper\`): Moran has a user-level skill at
+\`~/.claude/skills/sprint-helper/SKILL.md\` that pops a menu of common
+operations. When he types \`/sprint-helper\` you'll be handed instructions
+to show him an \`AskUserQuestion\` menu and route to the right MCP tool.
+Follow those instructions verbatim — don't substitute conversation memory
+for the called tool.
 `.trim();
 
 const server = new McpServer(
