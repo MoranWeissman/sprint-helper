@@ -20,7 +20,7 @@ To remove later: `claude mcp remove sprint-helper`.
 
 | Tool | What it does |
 |---|---|
-| `orient` | **Opening ritual.** Call this as the very first tool on the first user message of a new session. Returns: time-of-day greeting, sprint day-of-N, live sessions still open, the last session that ended (where she left off), helper's notes summary + open nudges, and a quick gap count. Compose a short plain-English orientation from it — don't dump the raw fields. |
+| `orient` | **Opening greeting.** Call this first thing in every new chat, before saying anything back to Moran. Returns a small read of: what time of day it is (so you can greet her right), what day of the sprint we're on, any work sessions still open, the last task she worked on (with her summary), the current helper's notes + how many nudges are still open, and a quick count of stories/tasks missing planning fields. Use it to write a friendly 2-4 sentence greeting — not a dump of the numbers. |
 | `sprint_snapshot` | Current sprint + counts + in-progress items + live sessions. Heavier than `orient`; call when you need the full board. |
 | `list_my_work_items` | Flat list of work items in the sprint. Optional `state` filter: `inProgress` / `upNext` / `done`. |
 | `sprint_check_in` | **Guardrail.** Before starting unplanned work, check whether it's in Moran's sprint. Returns matches + a `nextStep` (`confirm_match` / `choose_match` / `no_match`). |
@@ -36,7 +36,7 @@ To remove later: `claude mcp remove sprint-helper`.
 
 ## Recommended flow at session start
 
-1. Call `orient` first — compose a short greeting from it (where she left off, day of sprint, open nudges).
+1. Call `orient` first — write a short greeting from what it returns (where she left off, what day of the sprint, how many helper notes are still open).
 2. Ask Moran what she wants to pick up today.
 3. Call `sprint_check_in` with her description.
 4. Based on `nextStep`:

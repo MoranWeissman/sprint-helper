@@ -47,26 +47,28 @@ Sprint-helper keeps Moran aligned with her Azure DevOps sprint while she works
 in Claude Code. Treat it as her sprint conscience — use it proactively, don't
 wait to be asked.
 
-OPENING RITUAL — the FIRST thing you do in any new conversation:
-Before responding to Moran's first message in plain text, call \`orient\` with
-no arguments. It returns a small packet: time-of-day greeting, sprint day-of-N,
-any live sessions still open, the last session that ended (where she left off),
-the helper's notes summary, open nudges she hasn't ticked off, and a quick
-count of stories/tasks missing planning fields. Use it to compose a short
-plain-English opening — 2–4 sentences max — that:
-  - greets her using the greeting field (it already knows time of day);
-  - tells her where she left off if \`lastSession\` is present ("Last time you
-    were on #1234 — <title>. <summary if there is one>");
-  - if \`liveNow\` is non-empty, says so plainly ("session is still open on
-    #X");
-  - mentions the sprint day naturally if useful ("day 4 of 10");
-  - if there are open nudges, says how many ("2 notes from your helper
-    waiting") — DO NOT dump the bodies, she reads those on her dashboard;
+OPENING GREETING — the very FIRST thing you do in any new conversation:
+Before saying anything back to Moran's first message, call \`orient\` with no
+arguments. It returns a small read of where she is: a time-of-day greeting,
+what day of the sprint we're on (e.g. day 4 of 10), any work sessions still
+open from before, the last task she worked on (with the summary she left), the
+current helper's notes plus how many nudges are still open, and a quick count
+of stories/tasks missing planning fields (story points / effort / estimate).
+Use it to write a friendly 2-4 sentence greeting that:
+  - opens with the \`greeting\` field (it already knows the time of day);
+  - if \`lastSession\` is set, says where she left off ("Last time you were on
+    #1234 — <title>. <summary if there is one>");
+  - if \`liveNow\` has anything, mentions it plainly ("you've still got a
+    session open on #X");
+  - mentions the sprint day naturally if it helps ("day 4 of 10");
+  - if there are open helper notes, just says how many ("you've got 2 notes
+    from your helper waiting") — DO NOT paste the note bodies, she reads
+    those on her dashboard;
   - ends by asking what she wants to pick up today.
-Don't dump the raw fields. Don't list everything. Pick the 2–3 most useful
-signals and write them as you'd write a text to a friend. If \`orient\` errors
-(e.g. ADO unavailable), greet her plainly and ask what she's working on —
-don't block on the call.
+Pick the 2-3 things that actually matter and write them like you'd text a
+friend — not a list of fields. If \`orient\` fails for any reason (e.g. ADO is
+unreachable), just greet her and ask what she's working on. Never block on
+the call.
 
 AT THE START OF WORK — before diving in:
 When Moran says she's starting or working on something (e.g. "I've started
@@ -133,7 +135,7 @@ KEEPING MORAN'S NOTES (her dashboard's "helper's notes" space):
   - Never write effort or status to Azure DevOps from a note — notes are just your
     read for her; ADO writes still only happen via the confirm-first close-the-loop.
 
-Call \`orient\` at the start of EVERY new session (see OPENING RITUAL above).
+Call \`orient\` at the start of EVERY new chat (see OPENING GREETING above).
 Call \`sprint_snapshot\` whenever you need to see what's in the current sprint
 and what's already live. Use plain English with Moran — never say "ceremony",
 "session", or "work item id" to her; say "live", "task", and "#1234".
@@ -185,9 +187,9 @@ const workItemIdSchema = z
 server.registerTool(
   'orient',
   {
-    title: 'Orient at session start',
+    title: 'Greet Moran at the start of a chat',
     description:
-      "Read where Moran left off and what's waiting in her sprint right now. ALWAYS call this as the very first tool on the FIRST user message of a new session — it is how you know what to say in your opening greeting. Returns: greeting (time-of-day appropriate), sprint day-of-N, any live sessions still open, the last session that ended (where she left off), the helper's notes summary + open nudges she hasn't ticked off, and a quick gap count (stories/tasks missing planning fields). Compose a short plain-English orientation from this — don't dump the raw fields. See SERVER_INSTRUCTIONS → OPENING RITUAL.",
+      "Read where Moran left off and what's waiting in her sprint. ALWAYS call this first thing in any new chat — before saying anything back to her — so you can open with a real greeting. Returns: a time-of-day greeting, what day of the sprint we're on, any work sessions still open, the last task she worked on (with her summary), the current helper's notes plus how many nudges are still open, and a quick count of stories/tasks missing planning fields. Use it to write a friendly 2-4 sentence greeting — don't paste the numbers. See SERVER_INSTRUCTIONS → OPENING GREETING.",
     inputSchema: {},
   },
   async () => {

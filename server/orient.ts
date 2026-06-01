@@ -1,13 +1,13 @@
 /**
  * Orientation packet (slice R4).
  *
- * Composes a single high-signal read of "where Moran left off and what's
- * waiting" — surfaced to Claude Code on the first tool call of a session via
- * the MCP `orient` tool. The shape is tight on purpose: the assistant should
- * compose a brief plain-English greeting from this, not dump the whole sprint.
+ * Builds a short "where Moran left off and what's waiting" read for the start
+ * of every Claude Code session. The MCP `orient` tool returns this; the
+ * assistant uses it to write a friendly 2-4 sentence greeting (time of day,
+ * last task, day of sprint, any open helper notes) — not to dump the data.
  *
- * Pulls from existing sources only — no new ADO calls beyond the cached
- * dashboard fetch.
+ * Reads from sources already in memory or local SQLite, plus the cached
+ * Azure DevOps fetch. No new network calls.
  */
 import { buildDashboardCached } from './dashboard-cache';
 import { getDb } from './db';
