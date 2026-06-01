@@ -680,16 +680,19 @@ function R21Overview({
           <span className="r21-stories-meta">{storyOnly.length} in sprint · click to open</span>
         </div>
         <div className="r21-stories-grid">
-          {storyOnly.map(s => (
+          {storyOnly.map(s => {
+            const blocked = isBlocked(s.tags);
+            return (
             <button
               key={s.id}
               type="button"
-              className={`r21-storychip ${s.hasActiveSession ? 'is-live' : ''}`}
+              className={`r21-storychip ${s.hasActiveSession ? 'is-live' : ''} ${blocked ? 'is-blocked' : ''}`}
               onClick={() => (s.hasActiveSession ? onFocusStory(s.id) : onOpenItem(s.id))}
             >
               <div className="r21-storychip-head">
                 <span className="r21-storychip-kind">{s.type}</span>
                 <span className="r21-storychip-id">#{s.id}</span>
+                {blocked && <span className="r21-blocked-pill">blocked</span>}
               </div>
               <h4 className="r21-storychip-title">{s.title}</h4>
               <div className="r21-storychip-counts">
@@ -699,7 +702,8 @@ function R21Overview({
                 {s.counts.done > 0 && <><span className="sep">·</span><span>{s.counts.done} done</span></>}
               </div>
             </button>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -777,6 +781,14 @@ function R21Focus({
 
       <div className="r21-focal-id"><Mono>#{task.id}</Mono></div>
       <h1 className="r21-focal-title">{task.title}</h1>
+      {(isBlocked(task.tags) || isBlocked(task.parentTags)) && (
+        <div className="r21-focal-blocked">
+          <span className="r21-blocked-pill">blocked</span>
+          <span className="r21-focal-blocked-meta">
+            {isBlocked(task.tags) ? 'this task is blocked' : 'parent story is blocked'}
+          </span>
+        </div>
+      )}
 
       <div className="r21-focal-meta">
         <span className="r21-live-pill">live</span>
@@ -976,9 +988,10 @@ function DailyStoryCard({
   const eff = story.effort != null ? `${fmtNum(story.effort)}h` : '—';
   const taskCount = story.counts.inProgress + story.counts.upNext + story.counts.done;
   const dominant = storyDominantState(story);
+  const blocked = isBlocked(story.tags);
 
   return (
-    <article className={`r21-daily-card is-state-${dominant} ${expanded ? 'is-expanded' : ''} ${story.hasActiveSession ? 'is-live' : ''}`}>
+    <article className={`r21-daily-card is-state-${dominant} ${expanded ? 'is-expanded' : ''} ${story.hasActiveSession ? 'is-live' : ''} ${blocked ? 'is-blocked' : ''}`}>
       <button
         type="button"
         className="r21-daily-card-head"
@@ -989,6 +1002,7 @@ function DailyStoryCard({
             <span className={`r21-daily-kind kind-${kindSlug(story.type)}`}>{story.type}</span>
             <Mono className="r21-daily-card-id">#{story.id}</Mono>
             <span className={`r21-daily-state state-${dominant}`}>{storyStateLabel(dominant)}</span>
+            {blocked && <span className="r21-blocked-pill">blocked</span>}
           </span>
           <h2 className="r21-daily-card-title">{story.title}</h2>
         </span>
@@ -1091,6 +1105,11 @@ function fmtNum(n: number): string {
 type StoryState = 'going' | 'waiting' | 'done' | 'empty';
 
 const STORY_STATE_ORDER: Record<StoryState, number> = { going: 0, waiting: 1, empty: 2, done: 3 };
+
+function isBlocked(tags: string[] | undefined): boolean {
+  if (!tags) return false;
+  return tags.some(t => t.trim().toLowerCase() === 'blocked');
+}
 
 function classifyAdoState(state: string): 'going' | 'done' | 'waiting' {
   const s = state.toLowerCase();

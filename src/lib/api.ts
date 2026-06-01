@@ -78,6 +78,10 @@ export interface ApiWorkItem {
   recentActivity: ApiSessionEvent[];
   /** Number of work sessions (open or closed) recorded against this item. */
   sessionCount: number;
+  /** Parsed System.Tags. Contains "Blocked" when this task itself is tagged blocked. */
+  tags?: string[];
+  /** Parent story's tags — surfaced so a task can show its parent story is blocked. */
+  parentTags?: string[];
   url: string;
 }
 
@@ -123,6 +127,8 @@ export interface ApiUserStoryGroup {
   recentActivity: ApiSessionEvent[];
   /** True if any child task has a live Claude Code session right now. */
   hasActiveSession: boolean;
+  /** Parsed System.Tags on the story. Contains "Blocked" when tagged blocked. */
+  tags?: string[];
 }
 
 export type CeremonyId = 'daily' | 'preplan' | 'plan' | 'demo' | 'retro';

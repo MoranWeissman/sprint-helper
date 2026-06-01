@@ -2341,6 +2341,31 @@ html, body {
 
 .r21-app[data-density="generous"] .r21-capacity { padding: 28px 34px; gap: 18px; }
 
+/* Blocked badge — shown on Daily card header, Story chip, and Focus title row */
+.r21-blocked-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: oklch(0.42 0.12 30 / 0.18);
+  border: 1px solid oklch(0.62 0.16 30 / 0.55);
+  color: oklch(0.84 0.14 35);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.r21-storychip.is-blocked { border-color: oklch(0.62 0.16 30 / 0.55); }
+.r21-daily-card.is-blocked { border-left: 3px solid oklch(0.62 0.16 30 / 0.7); }
+.r21-focal-blocked {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 4px;
+}
+.r21-focal-blocked-meta { font-size: 12.5px; color: var(--ink-3); }
+
 /* Daily view — stories + tasks + planning fields, the "standup glance" screen */
 
 /* Sidebar place-switcher — segmented pill showing the CURRENT view. */

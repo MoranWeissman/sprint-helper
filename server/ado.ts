@@ -50,6 +50,10 @@ export interface WorkItem {
   storyPoints?: number;
   /** Story-level: total hours estimate. */
   effort?: number;
+  /** Parsed System.Tags. Includes "Blocked" when the item is currently blocked. */
+  tags?: string[];
+  /** Parent's parsed tags — surfaced so a child task can show that ITS parent story is blocked. */
+  parentTags?: string[];
   changedDate: string;
   url: string;
 }
@@ -71,6 +75,7 @@ const WORK_ITEM_FIELDS = [
   'Microsoft.VSTS.Scheduling.CompletedWork',
   'Microsoft.VSTS.Scheduling.StoryPoints',
   'Microsoft.VSTS.Scheduling.Effort',
+  'System.Tags',
 ];
 
 /**
@@ -365,6 +370,7 @@ export async function getMyWorkItems(iterationPath: string): Promise<WorkItem[]>
         i.parentRemainingWork = p.remainingWork;
         i.parentStoryPoints = p.storyPoints;
         i.parentEffort = p.effort;
+        i.parentTags = p.tags;
         if (p.parentId) {
           const g = grandparentMap.get(p.parentId);
           if (g) {
@@ -493,9 +499,19 @@ function mapWorkItem(w: { id: number; rev: number; url: string; fields: Record<s
     completedWork: numOrUndef(f['Microsoft.VSTS.Scheduling.CompletedWork']),
     storyPoints: numOrUndef(f['Microsoft.VSTS.Scheduling.StoryPoints']),
     effort: numOrUndef(f['Microsoft.VSTS.Scheduling.Effort']),
+    tags: parseTags(f['System.Tags']),
     changedDate: String(f['System.ChangedDate'] ?? ''),
     url: w.url,
   };
+}
+
+function parseTags(raw: unknown): string[] | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const list = raw
+    .split(';')
+    .map(t => t.trim())
+    .filter(t => t.length > 0);
+  return list.length > 0 ? list : undefined;
 }
 
 function numOrUndef(v: unknown): number | undefined {

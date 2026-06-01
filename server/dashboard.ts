@@ -75,6 +75,10 @@ export interface DashboardWorkItem {
   recentActivity: SessionEvent[];
   /** Number of work sessions (open or closed) recorded against this item. */
   sessionCount: number;
+  /** Parsed System.Tags. Includes "Blocked" when this task itself is tagged blocked. */
+  tags?: string[];
+  /** Parent story's tags — used so a task can show its parent story is blocked. */
+  parentTags?: string[];
   url: string;
 }
 
@@ -120,6 +124,8 @@ export interface UserStoryGroup {
   recentActivity: SessionEvent[];
   /** True if any child task has a live Claude Code session right now. */
   hasActiveSession: boolean;
+  /** Parsed System.Tags on the story (or self-as-story) itself. Includes "Blocked" when tagged blocked. */
+  tags?: string[];
 }
 
 export interface DashboardPayload {
@@ -359,6 +365,7 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
         storyPoints: raw.parentStoryPoints,
         effort: raw.parentEffort,
         feature,
+        tags: raw.parentTags,
       };
     } else {
       // No parent — treat the item itself as its own "story".
@@ -379,6 +386,7 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
         storyPoints: raw.storyPoints,
         effort: raw.effort,
         feature,
+        tags: raw.tags,
       };
     }
     const key = parent.id;
@@ -430,6 +438,7 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
       counts,
       recentActivity,
       hasActiveSession,
+      tags: parent.tags,
     };
   });
 
@@ -456,6 +465,7 @@ interface ParentInfo {
   storyPoints?: number;
   effort?: number;
   feature?: { id: string; title: string; type: string };
+  tags?: string[];
 }
 
 const FEATURE_LIKE_TYPES = new Set(['feature', 'epic']);
@@ -498,6 +508,8 @@ function projectWorkItem(
     activeSession: session ? { id: session.id, startedAt: session.startedAt } : undefined,
     recentActivity: recentEvents.get(w.id) ?? [],
     sessionCount: sessionCounts.get(w.id) ?? 0,
+    tags: w.tags,
+    parentTags: w.parentTags,
     url: humanUrl(w.url),
   };
 }
