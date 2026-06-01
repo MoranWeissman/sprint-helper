@@ -34,13 +34,12 @@ function adoApiPlugin() {
     name: 'sprint-helper-api',
     configureServer(server: { middlewares: Connect.Server }) {
       // Pre-warm at startup: transform the backend module graph + warm the ADO
-      // iteration cache + az token in the background, so the FIRST page load
-      // after `npm run dev` hits the fast (warm) path instead of paying the
-      // one-time cold compile + cold-fetch on the user's first request.
+      // iteration cache + az token + the dashboard cache in the background, so
+      // the FIRST page load after `npm run dev` hits the fast (warm) path.
       void (async () => {
         try {
-          const { buildDashboard } = await import('./server/dashboard');
-          await buildDashboard();
+          const { buildDashboardCached } = await import('./server/dashboard-cache');
+          await buildDashboardCached();
         } catch {
           // Ignore — a real request will surface any error (e.g. az login needed).
         }
@@ -48,13 +47,15 @@ function adoApiPlugin() {
 
       server.middlewares.use('/api/dashboard', async (req, res) => {
         try {
-          const { buildDashboard } = await import('./server/dashboard');
+          const { buildDashboardCached } = await import('./server/dashboard-cache');
           const url = new URL(req.url ?? '/', 'http://localhost');
           const sprintName = url.searchParams.get('sprint') ?? undefined;
-          const payload = await buildDashboard({ sprintName });
+          const result = await buildDashboardCached({ sprintName });
           res.setHeader('Content-Type', 'application/json');
           res.setHeader('Cache-Control', 'no-store');
-          res.end(JSON.stringify(payload));
+          res.setHeader('X-Cache', result.cache);
+          res.setHeader('X-Cache-Age-Ms', String(result.cacheAgeMs));
+          res.end(JSON.stringify(result.payload));
         } catch (err) {
           const message = err instanceof Error ? err.message : 'unknown error';
           const command = err instanceof Error && 'command' in err ? String((err as Error & { command?: string }).command) : undefined;
@@ -120,6 +121,10 @@ function adoApiPlugin() {
               await setRemaining(id, body.remainingWork);
               applied.remainingWork = body.remainingWork;
             }
+            if (Object.keys(applied).length > 0) {
+              const { invalidateDashboardCache } = await import('./server/dashboard-cache');
+              invalidateDashboardCache();
+            }
             res.setHeader('Content-Type', 'application/json');
             res.setHeader('Cache-Control', 'no-store');
             res.end(JSON.stringify({ applied }));
@@ -163,6 +168,8 @@ function adoApiPlugin() {
               return;
             }
             const saved = getCeremonySchedule();
+            const { invalidateDashboardCache } = await import('./server/dashboard-cache');
+            invalidateDashboardCache();
             res.setHeader('Content-Type', 'application/json');
             res.setHeader('Cache-Control', 'no-store');
             res.end(JSON.stringify(saved));
@@ -197,6 +204,10 @@ function adoApiPlugin() {
           }
           const { dismissNote } = await import('./server/helper-notes');
           const dismissed = dismissNote(Number(m[1]));
+          if (dismissed) {
+            const { invalidateDashboardCache } = await import('./server/dashboard-cache');
+            invalidateDashboardCache();
+          }
           res.setHeader('Content-Type', 'application/json');
           res.setHeader('Cache-Control', 'no-store');
           res.end(JSON.stringify({ dismissed }));
