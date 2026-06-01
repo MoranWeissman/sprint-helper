@@ -731,6 +731,28 @@ function DailyView({
   const collapseAll = () => setExpanded(new Set());
   const anyExpanded = expanded.size > 0;
 
+  // Group stories by their parent Feature/Epic. Features with active work
+  // float to the top; stories with no feature fall to the bottom.
+  const featureGroups = useMemo(() => {
+    const map = new Map<string, { feature: ApiUserStoryGroup['feature'] | null; stories: ApiUserStoryGroup[] }>();
+    for (const s of stories) {
+      const key = s.feature?.id ?? '__no_feature__';
+      if (!map.has(key)) map.set(key, { feature: s.feature ?? null, stories: [] });
+      map.get(key)!.stories.push(s);
+    }
+    const groups = Array.from(map.values());
+    groups.sort((a, b) => {
+      // "No feature" group is always last.
+      if (a.feature == null) return 1;
+      if (b.feature == null) return -1;
+      const aGoing = a.stories.reduce((sum, s) => sum + s.counts.inProgress, 0);
+      const bGoing = b.stories.reduce((sum, s) => sum + s.counts.inProgress, 0);
+      if (aGoing !== bGoing) return bGoing - aGoing;
+      return b.stories.length - a.stories.length;
+    });
+    return groups;
+  }, [stories]);
+
   return (
     <div className="r21-daily">
       <div className="r21-daily-head">
@@ -763,15 +785,33 @@ function DailyView({
       {stories.length === 0 ? (
         <p className="r21-daily-empty">No stories in this sprint yet.</p>
       ) : (
-        <div className="r21-daily-list">
-          {stories.map(s => (
-            <DailyStoryCard
-              key={s.id}
-              story={s}
-              expanded={expanded.has(s.id)}
-              onOpenItem={onOpenItem}
-              onToggleExpanded={() => toggleExpanded(s.id)}
-            />
+        <div className="r21-daily-features">
+          {featureGroups.map((g, idx) => (
+            <section className="r21-daily-feature" key={g.feature?.id ?? `none-${idx}`}>
+              <header className={`r21-daily-feature-head ${g.feature ? '' : 'is-orphan'}`}>
+                <div className="r21-daily-feature-left">
+                  <span className="r21-daily-feature-kind">{g.feature?.type ?? 'No feature'}</span>
+                  {g.feature && <Mono className="r21-daily-feature-id">#{g.feature.id}</Mono>}
+                  <h3 className="r21-daily-feature-title">
+                    {g.feature?.title ?? 'Stories without a parent feature'}
+                  </h3>
+                </div>
+                <span className="r21-daily-feature-meta">
+                  {g.stories.length} {g.stories.length === 1 ? 'story' : 'stories'}
+                </span>
+              </header>
+              <div className="r21-daily-list">
+                {g.stories.map(s => (
+                  <DailyStoryCard
+                    key={s.id}
+                    story={s}
+                    expanded={expanded.has(s.id)}
+                    onOpenItem={onOpenItem}
+                    onToggleExpanded={() => toggleExpanded(s.id)}
+                  />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}
@@ -794,8 +834,18 @@ function DailyStoryCard({
   const eff = story.effort != null ? `${fmtNum(story.effort)}h` : '—';
   const taskCount = story.counts.inProgress + story.counts.upNext + story.counts.done;
 
+  // The dominant state — drives the top stripe color so each card is scannable.
+  const dominant =
+    story.counts.inProgress > 0
+      ? 'going'
+      : story.counts.done > 0 && story.counts.upNext === 0
+        ? 'done'
+        : story.counts.upNext > 0
+          ? 'waiting'
+          : 'empty';
+
   return (
-    <article className={`r21-daily-card ${expanded ? 'is-expanded' : ''} ${story.hasActiveSession ? 'is-live' : ''}`}>
+    <article className={`r21-daily-card is-state-${dominant} ${expanded ? 'is-expanded' : ''} ${story.hasActiveSession ? 'is-live' : ''}`}>
       <button
         type="button"
         className="r21-daily-card-head"
@@ -803,7 +853,7 @@ function DailyStoryCard({
       >
         <span className="r21-daily-card-headline">
           <span className="r21-daily-card-meta-row">
-            <span className="r21-daily-kind">{story.type}</span>
+            <span className={`r21-daily-kind kind-${kindSlug(story.type)}`}>{story.type}</span>
             <Mono className="r21-daily-card-id">#{story.id}</Mono>
           </span>
           <h2 className="r21-daily-card-title">{story.title}</h2>
@@ -850,7 +900,7 @@ function DailyStoryCard({
           {taskCount === 0 && <span className="c-empty">no tasks under this story yet</span>}
         </div>
 
-        {story.tasks.length > 0 && (
+        {expanded && story.tasks.length > 0 && (
           <ul className="r21-daily-tasks">
             {story.tasks.map(t => {
               const sc = dailyStateClass(t.state);
@@ -891,7 +941,7 @@ function DailyStoryCard({
             onClick={onToggleExpanded}
             aria-expanded={expanded}
           >
-            {expanded ? '▴  hide task details' : '▾  show task details'}
+            {expanded ? `▴  hide ${story.tasks.length} task${story.tasks.length === 1 ? '' : 's'}` : `▾  show ${story.tasks.length} task${story.tasks.length === 1 ? '' : 's'}`}
           </button>
         )}
       </div>
@@ -916,6 +966,15 @@ function dailyStateLabel(state: string): string {
   if (sc === 'is-going') return 'going';
   if (sc === 'is-done') return 'done';
   return 'waiting';
+}
+
+function kindSlug(type: string): string {
+  const s = type.toLowerCase();
+  if (s.includes('feature')) return 'feature';
+  if (s.includes('epic')) return 'epic';
+  if (s.includes('bug') || s.includes('issue')) return 'bug';
+  if (s.includes('story')) return 'story';
+  return 'other';
 }
 
 function fmtClockISO(iso: string): string {

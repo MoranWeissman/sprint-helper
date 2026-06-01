@@ -1844,6 +1844,20 @@ html, body {
   --ev-blocker:  oklch(0.74 0.060 38);    /* muted rust — NOT red */
   --ev-decision: oklch(0.87 0.016 232);   /* ink-1 — neutral */
   --ev-note:     oklch(0.55 0.022 244);   /* dim ink */
+
+  /* Status palette — used by the Daily view to give each card a glanceable identity */
+  --st-going:    oklch(0.78 0.075 245);   /* accent blue */
+  --st-going-bg: oklch(0.78 0.075 245 / 0.16);
+  --st-done:     oklch(0.74 0.060 150);   /* muted sage */
+  --st-done-bg:  oklch(0.74 0.060 150 / 0.16);
+  --st-waiting:  oklch(0.78 0.070 85);    /* warm amber */
+  --st-waiting-bg: oklch(0.78 0.070 85 / 0.14);
+  --st-blocked:  oklch(0.74 0.060 38);    /* warm rust */
+  --st-blocked-bg: oklch(0.74 0.060 38 / 0.16);
+
+  /* Feature/Epic accent — copper, distinct from the story blue */
+  --feature:     oklch(0.78 0.075 60);    /* warm copper */
+  --feature-bg:  oklch(0.78 0.075 60 / 0.14);
 }
 
 /* ----- Live pill ----- */
@@ -2359,12 +2373,49 @@ html, body {
 
 .r21-daily-empty { font-size: 14px; color: var(--ink-3); padding: 30px 0; margin: 0; }
 
+/* === Feature sections — stories grouped under their parent Feature / Epic. === */
+.r21-daily-features {
+  display: flex; flex-direction: column;
+  gap: 36px;
+}
+.r21-daily-feature { display: flex; flex-direction: column; gap: 18px; }
+.r21-daily-feature-head {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;
+  padding: 10px 0 14px;
+  border-bottom: 1px solid var(--line-hair);
+  position: relative;
+}
+.r21-daily-feature-head::before {
+  content: ""; position: absolute; left: 0; bottom: -1px; height: 2px; width: 56px;
+  background: var(--feature);
+  border-radius: 999px;
+}
+.r21-daily-feature-head.is-orphan::before { background: var(--ink-4); }
+.r21-daily-feature-left { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.r21-daily-feature-kind {
+  display: inline-flex; align-items: center;
+  padding: 3px 10px;
+  font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600;
+  border-radius: 999px;
+  background: var(--feature-bg);
+  border: 1px solid color-mix(in oklch, var(--feature) 50%, transparent);
+  color: var(--feature);
+}
+.r21-daily-feature-head.is-orphan .r21-daily-feature-kind {
+  background: var(--bg-2);
+  border-color: var(--line-soft);
+  color: var(--ink-3);
+}
+.r21-daily-feature-id { font-family: var(--font-mono); font-size: 12px; color: var(--ink-4); }
+.r21-daily-feature-title { margin: 0; font-size: 17px; font-weight: 500; color: var(--ink-0); letter-spacing: -0.005em; }
+.r21-daily-feature-meta { font-size: 11.5px; letter-spacing: 0.04em; color: var(--ink-4); flex: none; }
+
 /* === The card grid — as many cards per row as fit. === */
 .r21-daily-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
   gap: 20px;
-  align-items: start;
+  align-items: stretch;
 }
 
 /* === Story card (a tile) === */
@@ -2375,8 +2426,20 @@ html, body {
   border-radius: 14px;
   overflow: hidden;
   min-width: 0;
+  min-height: 240px;
+  position: relative;
 }
-.r21-daily-card.is-live { border-color: var(--accent-deep); }
+.r21-daily-card.is-live { border-color: var(--accent-deep); box-shadow: 0 0 0 1px var(--accent-deep) inset; }
+
+/* Top status stripe — scannable identity per card */
+.r21-daily-card::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--ink-4);
+}
+.r21-daily-card.is-state-going::before    { background: var(--st-going); }
+.r21-daily-card.is-state-done::before     { background: var(--st-done); }
+.r21-daily-card.is-state-waiting::before  { background: var(--st-waiting); }
+.r21-daily-card.is-state-empty::before    { background: transparent; }
 
 /* Story header — stacked vertically inside the tile */
 .r21-daily-card-head {
@@ -2404,6 +2467,26 @@ html, body {
   background: var(--bg-2);
   border: 1px solid var(--line-soft);
   color: var(--ink-2);
+}
+.r21-daily-kind.kind-story {
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+  border-color: color-mix(in oklch, var(--accent) 40%, transparent);
+  color: var(--accent);
+}
+.r21-daily-kind.kind-feature {
+  background: var(--feature-bg);
+  border-color: color-mix(in oklch, var(--feature) 50%, transparent);
+  color: var(--feature);
+}
+.r21-daily-kind.kind-epic {
+  background: color-mix(in oklch, oklch(0.78 0.075 300) 14%, transparent);
+  border-color: color-mix(in oklch, oklch(0.78 0.075 300) 50%, transparent);
+  color: oklch(0.78 0.075 300);
+}
+.r21-daily-kind.kind-bug {
+  background: var(--st-blocked-bg);
+  border-color: color-mix(in oklch, var(--st-blocked) 50%, transparent);
+  color: var(--st-blocked);
 }
 .r21-daily-card.is-live .r21-daily-kind {
   background: var(--accent-soft);
@@ -2443,12 +2526,12 @@ html, body {
 .r21-daily-counts { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 11.5px; letter-spacing: 0.02em; }
 .r21-daily-counts span { display: inline-flex; align-items: center; gap: 6px; }
 .r21-daily-counts .dot { width: 7px; height: 7px; border-radius: 999px; display: inline-block; }
-.r21-daily-counts .c-going { color: var(--accent); }
-.r21-daily-counts .c-going .dot { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.r21-daily-counts .c-waiting { color: var(--ink-3); }
-.r21-daily-counts .c-waiting .dot { background: transparent; border: 1px solid var(--ink-4); }
-.r21-daily-counts .c-done { color: oklch(0.74 0.060 150); }
-.r21-daily-counts .c-done .dot { background: oklch(0.74 0.060 150); }
+.r21-daily-counts .c-going { color: var(--st-going); }
+.r21-daily-counts .c-going .dot { background: var(--st-going); box-shadow: 0 0 0 3px var(--st-going-bg); }
+.r21-daily-counts .c-waiting { color: var(--st-waiting); }
+.r21-daily-counts .c-waiting .dot { background: var(--st-waiting); }
+.r21-daily-counts .c-done { color: var(--st-done); }
+.r21-daily-counts .c-done .dot { background: var(--st-done); }
 .r21-daily-counts .c-empty { color: var(--ink-4); font-style: italic; }
 
 /* Task list — nested under the story */
@@ -2488,16 +2571,17 @@ html, body {
   justify-self: center;
   grid-row: 1; grid-column: 1;
 }
-.r21-daily-task.is-going .r21-daily-task-dot { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.r21-daily-task.is-done .r21-daily-task-dot { background: oklch(0.74 0.060 150); }
-.r21-daily-task.is-waiting .r21-daily-task-dot { background: transparent; border: 1px solid var(--ink-4); }
+.r21-daily-task.is-going .r21-daily-task-dot { background: var(--st-going); box-shadow: 0 0 0 3px var(--st-going-bg); }
+.r21-daily-task.is-done .r21-daily-task-dot { background: var(--st-done); }
+.r21-daily-task.is-waiting .r21-daily-task-dot { background: var(--st-waiting); }
 
 .r21-daily-task-id { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-4); grid-row: 1; grid-column: 2; }
 .r21-daily-task-title { font-size: 12.5px; color: var(--ink-1); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; grid-row: 1; grid-column: 3; }
 
 .r21-daily-task-state { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-4); }
-.r21-daily-task.is-going .r21-daily-task-state { color: var(--accent); }
-.r21-daily-task.is-done .r21-daily-task-state { color: oklch(0.74 0.060 150); }
+.r21-daily-task.is-going .r21-daily-task-state { color: var(--st-going); }
+.r21-daily-task.is-done .r21-daily-task-state { color: var(--st-done); }
+.r21-daily-task.is-waiting .r21-daily-task-state { color: var(--st-waiting); }
 .r21-daily-task.is-done .r21-daily-task-title { text-decoration: line-through; text-decoration-color: var(--ink-4); color: var(--ink-3); }
 .r21-daily-task.is-done .r21-daily-task-id { color: var(--ink-4); }
 
