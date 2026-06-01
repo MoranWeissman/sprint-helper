@@ -133,6 +133,24 @@ export async function setRemaining(workItemId: number, hours: number): Promise<v
   ]);
 }
 
+/**
+ * Story-level effort. Two separate ADO fields:
+ *  - StoryPoints: Moran's team convention = days.
+ *  - Effort:      total hours she thinks the work is.
+ * Both are needed so the POM delivery manager sees real planning.
+ */
+export async function setStoryPoints(workItemId: number, points: number): Promise<void> {
+  await patchWorkItem(workItemId, [
+    { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.StoryPoints', value: round2(points) },
+  ]);
+}
+
+export async function setEffort(workItemId: number, hours: number): Promise<void> {
+  await patchWorkItem(workItemId, [
+    { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.Effort', value: round2(hours) },
+  ]);
+}
+
 /* ============================================================ */
 /*  Create                                                       */
 /* ============================================================ */
@@ -245,6 +263,108 @@ export async function createTask(input: CreateTaskInput): Promise<CreatedTask> {
       created._links?.html?.href ??
       `${cfg.organization}/${encodeURIComponent(cfg.project)}/_workitems/edit/${created.id}`,
     parentId: input.parentStoryId,
+  };
+}
+
+export interface CreateStoryInput {
+  title: string;
+  description?: string;
+  /** Moran's team convention: 1 story point = 1 day. */
+  storyPoints: number;
+  /** Total hours she thinks this story is. */
+  effortHours: number;
+  /** Optional Feature/Epic id to link the story under. */
+  parentFeatureId?: number;
+  tags?: string[];
+}
+
+export interface CreatedStory {
+  id: number;
+  title: string;
+  type: string;
+  state: string;
+  url: string;
+  webUrl: string;
+  parentId?: number;
+}
+
+/**
+ * Create a new User Story in ADO. Defaults: assignee = current user, iteration =
+ * current sprint, area = project default. Always sets StoryPoints + Effort —
+ * these are required by callers, not optional, so the POM delivery manager
+ * never sees a story with blank planning fields.
+ */
+export async function createStory(input: CreateStoryInput): Promise<CreatedStory> {
+  const cfg = await loadAdoConfig();
+  const iteration = await getCurrentIterationPath();
+  if (!iteration) throw new Error('No active sprint found — cannot place new story.');
+
+  const patch: Array<Record<string, unknown>> = [
+    { op: 'add', path: '/fields/System.Title', value: input.title },
+    { op: 'add', path: '/fields/System.AssignedTo', value: cfg.user },
+    { op: 'add', path: '/fields/System.IterationPath', value: iteration },
+    { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.StoryPoints', value: round2(input.storyPoints) },
+    { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.Effort', value: round2(input.effortHours) },
+  ];
+  if (input.description) {
+    patch.push({
+      op: 'add',
+      path: '/fields/System.Description',
+      value: escapeHtml(input.description),
+    });
+  }
+  if (input.tags && input.tags.length > 0) {
+    patch.push({
+      op: 'add',
+      path: '/fields/System.Tags',
+      value: input.tags.join('; '),
+    });
+  }
+  if (input.parentFeatureId) {
+    patch.push({
+      op: 'add',
+      path: '/relations/-',
+      value: {
+        rel: 'System.LinkTypes.Hierarchy-Reverse',
+        url: `${cfg.organization}/_apis/wit/workItems/${input.parentFeatureId}`,
+      },
+    });
+  }
+
+  const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitems/$User%20Story?api-version=7.1`;
+  const { stdout } = await azStdin(
+    [
+      'rest',
+      '--method', 'POST',
+      '--uri', uri,
+      '--resource', ADO_RESOURCE,
+      '--headers', 'Content-Type=application/json-patch+json',
+      '--body', '@-',
+    ],
+    JSON.stringify(patch),
+  );
+
+  const created = JSON.parse(stdout) as {
+    id: number;
+    fields: {
+      'System.Title': string;
+      'System.WorkItemType': string;
+      'System.State': string;
+    };
+    url: string;
+    _links?: { html?: { href?: string } };
+  };
+
+  return {
+    id: created.id,
+    title: created.fields['System.Title'],
+    type: created.fields['System.WorkItemType'],
+    state: created.fields['System.State'],
+    url: created.url,
+    webUrl:
+      created._links?.html?.href ??
+      `${cfg.organization}/${encodeURIComponent(cfg.project)}/_workitems/edit/${created.id}`,
+    parentId: input.parentFeatureId,
   };
 }
 
