@@ -263,26 +263,39 @@ WHEN WORK WRAPS UP — always ask first:
 
 CAPACITY (Moran's real desk time after meetings):
   Moran's Outlook calendar is wired in via a private published URL (stored
-  locally, never echoed). Call \`capacity_check\` whenever capacity is at
-  stake:
+  locally, never echoed). Capacity comes back two ways:
+
+  1. As \`capacity\` inside the orient packet (cheapest — same numbers, no
+     extra calendar fetch). Use this for the opening greeting.
+  2. Via the explicit \`capacity_check\` tool when capacity is at stake
+     mid-conversation.
+
+  When to read capacity from orient:
+    - Always read \`orient.capacity\` once at the start of the chat.
+    - If \`capacity.hasUrl\` is true and \`difference\` is ≥ 8h
+      (planned > real desk), the opening greeting should mention it
+      plainly ("you're planned about Xh over capacity"). The system will
+      have also dropped a one-time-per-sprint helper note about this.
+    - If \`difference\` is ≤ -8h (more slack than planned work), gentle
+      "you've got room to pull something in" framing.
+
+  When to call \`capacity_check\` directly:
     - When Moran asks "is this realistic?", "how much time do I really
-      have?", "what's my capacity this sprint?", "do I have room for X?",
-      etc — answer with the numbers from \`capacity_check\`.
+      have?", "what's my capacity this sprint?", "do I have room for X?".
     - At sprint planning / pre-planning moments (Pre-plan and Plan modes),
       always check capacity before agreeing to add work.
-    - When the orient packet shows a meaningful gap between planned hours
-      and real desk hours (planned much higher than capacity), surface it
-      in your opening greeting or drop a helper note.
-  The tool returns: workingHoursTotal (9h × working days, Mon-Fri),
-  meetingHours (BUSY full, TENTATIVE IGNORED entirely per Moran's
-  preference, OOF full, clipped to 08:00–18:00 on Mon-Fri), realDeskHours
-  = total − meetingHours, plannedHours (sum of RemainingWork), difference
-  = planned − realDesk. If \`hasUrl\` is false, the calendar
-  isn't wired up — tell Moran plainly that capacity-vs-meetings is unknown
-  and point him at docs/setup/outlook-calendar.md.
-  If \`fetchError\` is set, the URL is configured but the fetch failed
-  (network, link expired, etc.) — say what the error was and offer to clear
-  or replace via \`calendar_set_url\`.
+
+  The shape both paths return: workingHoursTotal (9h × working days,
+  Mon-Fri), meetingHours (BUSY full, TENTATIVE IGNORED entirely per
+  Moran's preference, OOF full, clipped to 08:00–18:00 on Mon-Fri),
+  realDeskHours = total − meetingHours, plannedHours (sum of
+  RemainingWork), difference = planned − realDesk. If \`hasUrl\` is false,
+  the calendar isn't wired up — tell Moran plainly that
+  capacity-vs-meetings is unknown and point him at
+  docs/setup/outlook-calendar.md. If \`fetchError\` is set, the URL is
+  configured but the fetch failed (network, link expired, etc.) — say
+  what the error was and offer to clear or replace via
+  \`calendar_set_url\`.
 
 KEEPING MORAN'S NOTES (his dashboard's "helper's notes" space):
   This is where you talk TO Moran about his sprint, in plain casual English.
@@ -372,7 +385,7 @@ server.registerTool(
   {
     title: 'Greet Moran at the start of a chat',
     description:
-      "Read where Moran left off and what's waiting in his sprint. Call this BEFORE responding whenever you sense he's reorienting: at the start of a new chat, after a /compact, when he resumes and greets you ('hi', 'morning', 'where were we', 'what should i do'), etc. Don't wait for a 'new conversation' — Moran almost always works through resume/compact, so the greeting triggers matter more than session boundaries. Call at most once per orientation moment; don't re-fire on every 'hi'. Returns a time-of-day greeting, what day of the sprint we're on, any work sessions still open, the last task he worked on (with him summary), the current helper's notes plus how many nudges are still open, and a quick count of stories/tasks missing planning fields. Use it to write a friendly 2-4 sentence greeting — don't paste the numbers. See SERVER_INSTRUCTIONS → OPENING GREETING for the full trigger list.",
+      "Read where Moran left off and what's waiting in his sprint. Call this BEFORE responding whenever you sense he's reorienting: at the start of a new chat, after a /compact, when he resumes and greets you ('hi', 'morning', 'where were we', 'what should i do'), etc. Don't wait for a 'new conversation' — Moran almost always works through resume/compact, so the greeting triggers matter more than session boundaries. Call at most once per orientation moment; don't re-fire on every 'hi'. Returns a time-of-day greeting, what day of the sprint we're on, any work sessions still open, the last task he worked on (with his summary), the current helper's notes plus how many nudges are still open, a quick count of stories/tasks missing planning fields, and his sprint capacity (real desk time vs planned hours, derived from his Outlook calendar). Use it to write a friendly 2-4 sentence greeting — don't paste the numbers. See SERVER_INSTRUCTIONS → OPENING GREETING and → CAPACITY for the full trigger list.",
     inputSchema: {},
   },
   async () => {

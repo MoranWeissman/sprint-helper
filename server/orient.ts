@@ -9,9 +9,10 @@
  * Reads from sources already in memory or local SQLite, plus the cached
  * Azure DevOps fetch. No new network calls.
  */
+import type { Capacity } from './capacity';
 import { buildDashboardCached } from './dashboard-cache';
 import { getDb } from './db';
-import { getHelperNotes } from './helper-notes';
+import { ensureCapacityNudge, getHelperNotes } from './helper-notes';
 import { listActiveSessions, type SessionRow } from './sessions';
 
 export interface OrientLiveSession {
@@ -57,6 +58,12 @@ export interface OrientPacket {
     storiesMissingPlanning: number;
     tasksMissingEstimate: number;
   };
+  /**
+   * Real desk time vs planned hours for the sprint (from Outlook). Null when
+   * the dashboard couldn't compute it. The opening greeting should mention
+   * capacity only when there's a meaningful gap and `hasUrl` is true.
+   */
+  capacity: Capacity | null;
 }
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -104,6 +111,10 @@ function getLastEndedSession(): SessionRow | null {
 
 export async function buildOrientPacket(): Promise<OrientPacket> {
   const { payload } = await buildDashboardCached();
+  if (!payload.sprint) {
+    throw new Error('No current sprint — set a sprint first.');
+  }
+  const sprint = payload.sprint;
   const now = new Date();
 
   const titleById = new Map<number, string>();
@@ -132,8 +143,6 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
       }
     : null;
 
-  const helperNotes = payload.helperNotes ?? getHelperNotes();
-
   let storiesMissingPlanning = 0;
   for (const g of payload.userStories) {
     if (g.storyPoints == null || g.effort == null) storiesMissingPlanning++;
@@ -143,14 +152,30 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
     if (w.originalEstimate == null) tasksMissingEstimate++;
   }
 
+  // Surface capacity from the dashboard payload; fire a once-per-sprint nudge
+  // if the gap is big and we actually have calendar data to back it.
+  const capacity = payload.outlookCapacity;
+  if (capacity && capacity.hasUrl && !capacity.fetchError) {
+    ensureCapacityNudge({
+      sprintName: sprint.name,
+      difference: capacity.difference,
+      realDeskHours: capacity.realDeskHours,
+      plannedHours: capacity.plannedHours,
+    });
+  }
+
+  // Read helper notes AFTER the nudge, so a just-added capacity nudge shows
+  // up in this same orient response. (Cached payload.helperNotes would miss it.)
+  const helperNotes = getHelperNotes();
+
   return {
     greeting: greetingFor(now),
     fetchedAt: now.toISOString(),
     sprint: {
-      name: payload.sprint.name,
-      ...sprintProgress(payload.sprint.startDate, payload.sprint.finishDate, now),
-      startDate: payload.sprint.startDate,
-      finishDate: payload.sprint.finishDate,
+      name: sprint.name,
+      ...sprintProgress(sprint.startDate, sprint.finishDate, now),
+      startDate: sprint.startDate,
+      finishDate: sprint.finishDate,
     },
     liveNow,
     lastSession,
@@ -163,5 +188,6 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
       storiesMissingPlanning,
       tasksMissingEstimate,
     },
+    capacity,
   };
 }

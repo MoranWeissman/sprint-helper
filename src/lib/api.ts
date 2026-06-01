@@ -38,6 +38,24 @@ export interface ApiHelperNotes {
   notes: ApiHelperNote[];
 }
 
+/** Outlook-calendar derived capacity for the current sprint. */
+export interface ApiOutlookCapacity {
+  sprintStart: string;
+  sprintEnd: string;
+  workingDays: number;
+  workdayHours: number;
+  workingHoursTotal: number;
+  meetingHours: { busy: number; tentative: number; oof: number; weighted: number };
+  realDeskHours: number;
+  plannedHours: number;
+  /** plannedHours - realDeskHours. Positive = planned over capacity. */
+  difference: number;
+  /** False when no calendar URL is configured. */
+  hasUrl: boolean;
+  /** Non-empty when the ICS fetch failed. */
+  fetchError?: string;
+}
+
 export interface ApiWorkItem {
   id: string;
   title: string;
@@ -133,6 +151,8 @@ export interface ApiPayload {
     completedHours: number;
     totalEstimateHours: number;
   };
+  /** Outlook-calendar derived capacity, null when there's no sprint. */
+  outlookCapacity: ApiOutlookCapacity | null;
   pendingChanges: number;
   /** Number of live Claude Code sessions reporting in right now. */
   activeSessions: number;

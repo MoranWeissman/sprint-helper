@@ -13,6 +13,7 @@ import {
   type Iteration,
   type WorkItem,
 } from './ado';
+import { computeCapacity, type Capacity } from './capacity';
 import {
   computeUpcomingCeremonies,
   modeForCeremony,
@@ -146,6 +147,12 @@ export interface DashboardPayload {
     completedHours: number;
     totalEstimateHours: number;
   };
+  /**
+   * Outlook-derived "real desk time" for the sprint vs planned task hours.
+   * Null when there's no sprint yet. When no calendar URL is set, hasUrl=false
+   * and meeting subtractions are skipped (real desk = working hours total).
+   */
+  outlookCapacity: Capacity | null;
   /** Count of local edits that haven't reached ADO yet. */
   pendingChanges: number;
   /** Number of live Claude Code sessions reporting in right now. */
@@ -202,6 +209,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
       workItems: { inProgress: [], upNext: [], done: [] },
       userStories: [],
       capacity: { remainingHours: 0, completedHours: 0, totalEstimateHours: 0 },
+      outlookCapacity: null,
       pendingChanges: getPendingChangesCount(),
       activeSessions: 0,
       helperNotes: getHelperNotes(),
@@ -250,6 +258,20 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
 
   const userStories = groupByParent(items, [...inProgress, ...upNext, ...done]);
 
+  // Outlook capacity is best-effort: never break the dashboard if the calendar
+  // fetch hiccups. computeCapacity catches its own fetch errors and surfaces
+  // them via `fetchError`; this outer try is belt-and-suspenders.
+  let outlookCapacity: Capacity | null = null;
+  try {
+    outlookCapacity = await computeCapacity({
+      sprintStart: new Date(iteration.startDate),
+      sprintEnd: new Date(iteration.finishDate),
+      plannedHours: capacity.remainingHours,
+    });
+  } catch {
+    outlookCapacity = null;
+  }
+
   return {
     user: cfg.user,
     sprint: {
@@ -264,6 +286,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     workItems: { inProgress, upNext, done },
     userStories,
     capacity,
+    outlookCapacity,
     pendingChanges: getPendingChangesCount(),
     activeSessions: activeSessions.size,
     helperNotes: getHelperNotes(),

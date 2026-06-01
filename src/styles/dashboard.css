@@ -2311,6 +2311,36 @@ html, body {
 
 .r21-app[data-density="generous"] .r21-notes { padding: 28px 34px; gap: 18px; }
 
+/* R5b — capacity tile: real desk time vs planned hours */
+.r21-capacity {
+  border: 1px solid var(--line-hair);
+  border-left: 2px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--bg-1);
+  padding: 22px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.r21-capacity.is-over { border-left-color: var(--ev-blocker); }
+.r21-capacity.is-under { border-left-color: var(--ev-progress, var(--accent-deep)); }
+.r21-capacity.is-on-track { border-left-color: var(--accent-deep); }
+.r21-capacity-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.r21-capacity-title { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
+.r21-capacity-meta { font-size: 11px; color: var(--ink-4); letter-spacing: 0.04em; }
+.r21-capacity-verdict { font-size: 13px; color: var(--ink-2); }
+.r21-capacity-verdict.is-over { color: var(--ev-blocker); }
+.r21-capacity-verdict.is-under { color: var(--ink-2); }
+.r21-capacity-verdict.is-on-track { color: var(--ink-2); }
+.r21-capacity-empty { font-size: 13.5px; color: var(--ink-3); margin: 0; line-height: 1.55; max-width: 64ch; }
+.r21-capacity-empty code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12.5px; color: var(--ink-2); background: var(--bg-2); padding: 1px 6px; border-radius: 4px; }
+.r21-capacity-row { display: flex; gap: 36px; flex-wrap: wrap; align-items: baseline; }
+.r21-capacity-num { display: flex; flex-direction: column; gap: 4px; }
+.r21-capacity-num-label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4); }
+.r21-capacity-num-val { font-size: 22px; color: var(--ink-1); font-weight: 500; }
+
+.r21-app[data-density="generous"] .r21-capacity { padding: 28px 34px; gap: 18px; }
+
 /* Daily view — stories + tasks + planning fields, the "standup glance" screen */
 
 /* Sidebar place-switcher — segmented pill showing the CURRENT view. */

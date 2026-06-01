@@ -5,6 +5,7 @@ import {
   useDashboardData,
   type ApiHelperNote,
   type ApiHelperNotes,
+  type ApiOutlookCapacity,
   type ApiPayload,
   type ApiUserStoryGroup,
   type ApiWorkItem,
@@ -248,6 +249,7 @@ function DashboardLive({
               <div className="r21-body is-overview" aria-hidden={isFocus}>
                 <R21Overview
                   capacity={data.capacity}
+                  outlookCapacity={data.outlookCapacity}
                   helperNotes={data.helperNotes}
                   stories={stories}
                   inProgress={inProgress}
@@ -520,8 +522,83 @@ function HelperNotesPanel({
   );
 }
 
+function CapacityTile({ capacity }: { capacity: ApiOutlookCapacity | null }) {
+  if (!capacity) return null;
+
+  if (!capacity.hasUrl) {
+    return (
+      <section className="r21-capacity is-empty" aria-label="Sprint capacity">
+        <div className="r21-capacity-head">
+          <span className="r21-capacity-title">Capacity</span>
+          <span className="r21-capacity-meta">no calendar yet</span>
+        </div>
+        <p className="r21-capacity-empty">
+          Connect your Outlook calendar to see real desk time after meetings.
+          See <code>docs/setup/outlook-calendar.md</code> for the publish-URL steps.
+        </p>
+      </section>
+    );
+  }
+
+  if (capacity.fetchError) {
+    return (
+      <section className="r21-capacity is-error" aria-label="Sprint capacity">
+        <div className="r21-capacity-head">
+          <span className="r21-capacity-title">Capacity</span>
+          <span className="r21-capacity-meta">couldn't read calendar</span>
+        </div>
+        <p className="r21-capacity-empty">
+          Calendar fetch failed — check your published Outlook URL is still valid.
+        </p>
+      </section>
+    );
+  }
+
+  const working = Math.round(capacity.workingHoursTotal);
+  const real = Math.round(capacity.realDeskHours);
+  const planned = Math.round(capacity.plannedHours);
+  const diff = capacity.difference;
+  const absDiff = Math.round(Math.abs(diff));
+
+  let state: 'over' | 'under' | 'on-track' = 'on-track';
+  let phrase = 'on track';
+  if (diff >= 8) {
+    state = 'over';
+    phrase = `${absDiff}h over`;
+  } else if (diff <= -8) {
+    state = 'under';
+    phrase = `${absDiff}h of slack`;
+  } else if (Math.abs(diff) >= 1) {
+    phrase = diff > 0 ? `${absDiff}h over` : `${absDiff}h under`;
+  }
+
+  return (
+    <section className={`r21-capacity is-${state}`} aria-label="Sprint capacity">
+      <div className="r21-capacity-head">
+        <span className="r21-capacity-title">Capacity</span>
+        <span className={`r21-capacity-verdict is-${state}`}>{phrase}</span>
+      </div>
+      <div className="r21-capacity-row">
+        <div className="r21-capacity-num">
+          <span className="r21-capacity-num-label">working</span>
+          <Mono className="r21-capacity-num-val">{working}h</Mono>
+        </div>
+        <div className="r21-capacity-num">
+          <span className="r21-capacity-num-label">real desk</span>
+          <Mono className="r21-capacity-num-val">{real}h</Mono>
+        </div>
+        <div className="r21-capacity-num">
+          <span className="r21-capacity-num-label">planned</span>
+          <Mono className="r21-capacity-num-val">{planned}h</Mono>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function R21Overview({
   capacity,
+  outlookCapacity,
   helperNotes,
   stories,
   inProgress,
@@ -537,6 +614,7 @@ function R21Overview({
   onRefresh,
 }: {
   capacity: ApiPayload['capacity'];
+  outlookCapacity: ApiOutlookCapacity | null;
   helperNotes: ApiHelperNotes;
   stories: ApiUserStoryGroup[];
   inProgress: ApiWorkItem[];
@@ -593,6 +671,8 @@ function R21Overview({
       </section>
 
       <HelperNotesPanel notes={helperNotes} onRefresh={onRefresh} />
+
+      <CapacityTile capacity={outlookCapacity} />
 
       <section>
         <div className="r21-stories-head">

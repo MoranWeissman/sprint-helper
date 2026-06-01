@@ -12,6 +12,14 @@
 import { getDb } from './db';
 
 const SUMMARY_KEY = 'helper_summary';
+const CAPACITY_NUDGE_KEY = 'capacity_nudge_state';
+
+/** Once-per-sprint-per-direction guard so the capacity nudge doesn't re-fire. */
+interface StoredCapacityNudge {
+  sprintName: string;
+  direction: 'over' | 'under';
+  addedAt: string;
+}
 
 export interface HelperNote {
   id: number;
@@ -100,4 +108,58 @@ export function dismissNote(id: number): boolean {
 export function getHelperNotes(limit = 5): HelperNotes {
   const { summary, summaryAt } = getSummary();
   return { summary, summaryAt, notes: listNotes(limit) };
+}
+
+/**
+ * Add a capacity nudge when planned hours diverge from real desk time by
+ * `thresholdHours` (default 8h = a full Moran-day). Deduped via a settings
+ * key — fires at most once per sprint per direction (over/under). If sprint
+ * changes or direction flips, fires again. Returns the new note, or null if
+ * the gap is below threshold or already nudged.
+ */
+export function ensureCapacityNudge(opts: {
+  sprintName: string;
+  difference: number;
+  realDeskHours: number;
+  plannedHours: number;
+  thresholdHours?: number;
+}): HelperNote | null {
+  const threshold = opts.thresholdHours ?? 8;
+  if (Math.abs(opts.difference) < threshold) return null;
+  const direction: 'over' | 'under' = opts.difference > 0 ? 'over' : 'under';
+
+  const db = getDb();
+  const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(CAPACITY_NUDGE_KEY) as
+    | { value: string }
+    | undefined;
+  if (row) {
+    try {
+      const state = JSON.parse(row.value) as StoredCapacityNudge;
+      if (state.sprintName === opts.sprintName && state.direction === direction) return null;
+    } catch {
+      /* corrupt state — fall through and overwrite */
+    }
+  }
+
+  const planned = Math.round(opts.plannedHours);
+  const real = Math.round(opts.realDeskHours);
+  const gap = Math.round(Math.abs(opts.difference));
+  const body =
+    direction === 'over'
+      ? `You're planned about ${gap}h over capacity this sprint (${planned}h planned vs ~${real}h real desk time). Want to trim or push something?`
+      : `You've got about ${gap}h of slack this sprint (${planned}h planned vs ~${real}h real desk time). Room to pull something in if you want.`;
+
+  const note = addNote(body);
+
+  const next: StoredCapacityNudge = {
+    sprintName: opts.sprintName,
+    direction,
+    addedAt: new Date().toISOString(),
+  };
+  db.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  ).run(CAPACITY_NUDGE_KEY, JSON.stringify(next));
+
+  return note;
 }
