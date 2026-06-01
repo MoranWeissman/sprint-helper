@@ -145,6 +145,20 @@ Then act on the returned \`nextStep\`:
     \`task_create\` (set adHoc=true for the quick case), and \`session_start\`
     against the new task. Never silently let untracked work slide.
 
+SPRINT-SCOPED — sprint-helper operates on Moran's CURRENT sprint by default.
+All reads (orient, sprint_snapshot, capacity_check) and routing decisions
+("which item is 'this'", "which parent for that anchor") use the current
+sprint as the primary context. Items outside the current sprint exist
+(sprintOptions lists them, sprint_check_in can surface near-matches), but
+they are NOT the default context. Don't reach outside the current sprint
+unless Moran explicitly references something there ("the story I closed
+last sprint", "#430000"). When resolving an ambiguous "this" / "that" /
+"the task" / "the story", search in this order:
+  1. The live-session item Moran is currently working on (orient.liveNow)
+  2. An item he just mentioned by id (#NNNNNN)
+  3. A title match against current-sprint items (workItems + userStories)
+  4. ASK him — don't expand the search globally.
+
 AUTO-FLIP ON SESSION START — \`session_start\` automatically transitions the
 work item from a "waiting" state (New / To Do / Proposed) to "going" (Active
 / In Progress) in Azure DevOps. This matches reality: opening a session IS
@@ -224,6 +238,16 @@ through the life of the task.
   - Backfilling existing items with blank planning: same approach.
     Decompose, anchor (use the existing parentId), propose, confirm
     with Moran, then call \`workitem_edit\`.
+
+  AUTO-FIRE on intent — don't make Moran ASK for an estimate. When his
+  sentence describes wanting new work tracked, run the full ritual
+  without him saying "help me estimate". Trigger phrases:
+    "let's add a task for X", "add a task to Y", "I want to track Z",
+    "track this", "add this to the sprint", "another task for X",
+    "let's spin up a story for X", "add a story for Y", "new story"
+  Then: \`sprint_check_in\` → \`estimate_anchor\` → propose with citation →
+  confirm → \`task_create\` / \`story_create\`. The "estimate help" path
+  fires from this intent — Moran never has to ask for it explicitly.
 
   AS WORK PROGRESSES — keep RemainingWork honest:
   - This is sprint-helper's PRIMARY job during work: keep Remaining
@@ -351,6 +375,21 @@ BLOCKING (when something can't move forward right now):
   Feature work items don't have Blocked; they have 'On Hold' (also
   recognized by the blocked bucket). Bugs don't have Blocked — for those,
   the tag is still the only signal sprint-helper can use.
+
+  AUTO-DETECT — don't make Moran ASK sprint-helper to block. When his
+  conversation contains any of these, route to \`workitem_block\` from
+  context (resolve the item via SPRINT-SCOPED rules above; use the
+  remainder of his sentence as the reason; ask only for missing owner /
+  unblockCondition):
+    "is blocked", "I'm blocked", "blocked on", "waiting on", "stuck on",
+    "X is holding this up", "can't move forward until", "depending on",
+    "in someone else's court"
+  And for \`workitem_unblock\`:
+    "X landed", "Y merged", "we got the green light", "unblocked",
+    "back on track", "the fix is in", "X cleared it", "the dep landed"
+  Confirm the item id once if ambiguous, then act. Don't pop a menu for
+  a state Moran has already described — the menu is for PULL operations
+  only (see EXPLICIT MENU below).
 
 PREFER SPRINT-HELPER OVER RAW \`az\` — STRICT. Sprint-helper exists so Moran
 has ONE coordinated layer in front of Azure DevOps. Every board read and
