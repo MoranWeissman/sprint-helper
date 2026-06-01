@@ -47,14 +47,43 @@ Sprint-helper keeps Moran aligned with her Azure DevOps sprint while she works
 in Claude Code. Treat it as her sprint conscience — use it proactively, don't
 wait to be asked.
 
-OPENING GREETING — the very FIRST thing you do in any new conversation:
-Before saying anything back to Moran's first message, call \`orient\` with no
-arguments. It returns a small read of where she is: a time-of-day greeting,
+OPENING GREETING — call \`orient\` whenever it's your first chance to ground
+yourself before responding to Moran. Moran almost always resumes existing
+chats or works through /compact rather than starting fresh, so don't wait for
+a "new conversation" — fire on ANY of these triggers, as long as you haven't
+already called orient in this conversation:
+
+  TRIGGER 1: Truly new conversation — your very first response, before saying
+    anything back to her first message.
+
+  TRIGGER 2: Just-compacted conversation — you see a system reminder along
+    the lines of "This session is being continued from a previous conversation
+    that ran out of context. The summary below covers..." That means the
+    context was just summarized; treat this turn as a fresh start and call
+    orient before responding.
+
+  TRIGGER 3: Greeting / orientation message from Moran — her message is
+    short and reads like she's checking in or picking up after a break.
+    Examples: "hi", "hey", "morning", "good morning", "good afternoon",
+    "back", "i'm back", "where were we", "where am i", "what should i do",
+    "what should i pick up today", "what's next" (when the recent context
+    looks idle — not when she's mid-task and just wondering about the next
+    step). When in doubt and the message looks like a check-in rather than a
+    work instruction, lean toward calling orient.
+
+Call orient AT MOST ONCE per conversation per trigger event. If you already
+greeted her with orientation context earlier in this conversation, don't
+re-fire on every "hi" she sends — just answer normally. Compact resets that
+budget: after a compact, you may call orient again.
+
+WHAT ORIENT RETURNS: a small read of where she is — a time-of-day greeting,
 what day of the sprint we're on (e.g. day 4 of 10), any work sessions still
-open from before, the last task she worked on (with the summary she left), the
-current helper's notes plus how many nudges are still open, and a quick count
-of stories/tasks missing planning fields (story points / effort / estimate).
-Use it to write a friendly 2-4 sentence greeting that:
+open from before, the last task she worked on (with the summary she left),
+the current helper's notes plus how many nudges are still open, and a quick
+count of stories/tasks missing planning fields (story points / effort /
+estimate).
+
+HOW TO USE IT: write a friendly 2-4 sentence greeting that:
   - opens with the \`greeting\` field (it already knows the time of day);
   - if \`lastSession\` is set, says where she left off ("Last time you were on
     #1234 — <title>. <summary if there is one>");
@@ -189,7 +218,7 @@ server.registerTool(
   {
     title: 'Greet Moran at the start of a chat',
     description:
-      "Read where Moran left off and what's waiting in her sprint. ALWAYS call this first thing in any new chat — before saying anything back to her — so you can open with a real greeting. Returns: a time-of-day greeting, what day of the sprint we're on, any work sessions still open, the last task she worked on (with her summary), the current helper's notes plus how many nudges are still open, and a quick count of stories/tasks missing planning fields. Use it to write a friendly 2-4 sentence greeting — don't paste the numbers. See SERVER_INSTRUCTIONS → OPENING GREETING.",
+      "Read where Moran left off and what's waiting in her sprint. Call this BEFORE responding whenever you sense she's reorienting: at the start of a new chat, after a /compact, when she resumes and greets you ('hi', 'morning', 'where were we', 'what should i do'), etc. Don't wait for a 'new conversation' — Moran almost always works through resume/compact, so the greeting triggers matter more than session boundaries. Call at most once per orientation moment; don't re-fire on every 'hi'. Returns a time-of-day greeting, what day of the sprint we're on, any work sessions still open, the last task she worked on (with her summary), the current helper's notes plus how many nudges are still open, and a quick count of stories/tasks missing planning fields. Use it to write a friendly 2-4 sentence greeting — don't paste the numbers. See SERVER_INSTRUCTIONS → OPENING GREETING for the full trigger list.",
     inputSchema: {},
   },
   async () => {
