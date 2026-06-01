@@ -116,6 +116,13 @@ function DashboardLive({
   // is the manual "show the whole board" escape while a session is still live.
   const [focalId, setFocalId] = useState<string | null>(null);
   const [showBoard, setShowBoard] = useState(false);
+  // The "Daily view" — stories + tasks + planning fields, opened from the
+  // sidebar button. Lives inside Day mode; tapping any rail mode closes it.
+  const [dailyOpen, setDailyOpen] = useState(false);
+  const pickMode = (m: ModeId) => {
+    setDailyOpen(false);
+    setMode(m);
+  };
   useEffect(() => {
     if (liveItems.length === 0) {
       setShowBoard(false);
@@ -130,7 +137,8 @@ function DashboardLive({
     () => liveItems.find(w => !focalTask || w.id !== focalTask.id) ?? null,
     [liveItems, focalTask],
   );
-  const isFocus = mode === 'day' && !!focalTask && !showBoard;
+  const isFocus = mode === 'day' && !dailyOpen && !!focalTask && !showBoard;
+  const isDaily = mode === 'day' && dailyOpen;
 
   const focusStory = (storyId: string) => {
     const t = liveItems.find(w => (w.parent?.id ?? w.id) === storyId);
@@ -147,7 +155,7 @@ function DashboardLive({
       <R21Rail
         active={mode}
         suggested={ceremonies.suggestedModeId}
-        onPick={setMode}
+        onPick={pickMode}
         onOpenSchedule={() => setScheduleOpen(true)}
       />
 
@@ -162,6 +170,8 @@ function DashboardLive({
           today={today}
           totalDays={sprintCtx?.totalDays ?? 0}
           railDays={railDays}
+          dailyOpen={dailyOpen}
+          onToggleDaily={() => setDailyOpen(v => !v)}
         />
       )}
 
@@ -217,6 +227,13 @@ function DashboardLive({
         <div className="r21-bodywrap">
           {mode !== 'day' ? (
             <ModePlaceholder mode={mode} />
+          ) : isDaily ? (
+            <DailyView
+              stories={stories}
+              sprintName={sprintLabel}
+              onOpenItem={openItem}
+              onClose={() => setDailyOpen(false)}
+            />
           ) : (
             <>
               <div className="r21-body is-overview" aria-hidden={isFocus}>
@@ -332,6 +349,8 @@ function R21Sidebar({
   today,
   totalDays,
   railDays,
+  dailyOpen,
+  onToggleDaily,
 }: {
   dateLabel: string;
   greeting: string;
@@ -342,6 +361,8 @@ function R21Sidebar({
   today: number;
   totalDays: number;
   railDays: Array<{ index: number; state: string; label: string }>;
+  dailyOpen: boolean;
+  onToggleDaily: () => void;
 }) {
   return (
     <div className="r21-sidewrap">
@@ -349,6 +370,16 @@ function R21Sidebar({
         <div className="r21-side-date">{dateLabel}</div>
         <h1 className="r21-side-greet">{greeting}, <b>{userName}</b></h1>
         <p className="r21-side-sub">{sub}</p>
+
+        <button
+          type="button"
+          className={`r21-side-daily ${dailyOpen ? 'is-open' : ''}`}
+          onClick={onToggleDaily}
+          title="Daily view — your stories, tasks and planning numbers at a glance"
+        >
+          <span className="lbl">{dailyOpen ? 'Back to overview' : 'Daily view'}</span>
+          <span className="arr">{dailyOpen ? '↩' : '→'}</span>
+        </button>
 
         {next && (
           <div className="r21-side-card">
@@ -673,6 +704,135 @@ function R21Focus({
       </div>
     </div>
   );
+}
+
+function DailyView({
+  stories,
+  sprintName,
+  onOpenItem,
+  onClose,
+}: {
+  stories: ApiUserStoryGroup[];
+  sprintName: string;
+  onOpenItem: (id: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="r21-daily">
+      <div className="r21-daily-head">
+        <div>
+          <span className="r21-daily-cap">DAILY · {sprintName}</span>
+          <h1 className="r21-daily-title">Your stories &amp; tasks</h1>
+        </div>
+        <button
+          type="button"
+          className="r21-daily-close"
+          onClick={onClose}
+          title="Back to overview"
+        >
+          ← back
+        </button>
+      </div>
+
+      {stories.length === 0 ? (
+        <p className="r21-daily-empty">No stories in this sprint yet.</p>
+      ) : (
+        <div className="r21-daily-list">
+          {stories.map(s => (
+            <DailyStoryCard key={s.id} story={s} onOpenItem={onOpenItem} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DailyStoryCard({
+  story,
+  onOpenItem,
+}: {
+  story: ApiUserStoryGroup;
+  onOpenItem: (id: string) => void;
+}) {
+  const sp = story.storyPoints != null ? `${fmtNum(story.storyPoints)}d` : '—';
+  const eff = story.effort != null ? `${fmtNum(story.effort)}h` : '—';
+
+  return (
+    <article className={`r21-daily-card ${story.hasActiveSession ? 'is-live' : ''}`}>
+      <button
+        type="button"
+        className="r21-daily-card-head"
+        onClick={() => onOpenItem(story.id)}
+      >
+        <span className="r21-daily-card-left">
+          <span className="r21-daily-card-kind">{story.type}</span>
+          <Mono className="r21-daily-card-id">#{story.id}</Mono>
+          <span className="r21-daily-card-title">{story.title}</span>
+        </span>
+        <span className="r21-daily-card-effort">
+          <span className="r21-daily-eff">
+            <span className="cap">SP</span>
+            <span className={`val ${story.storyPoints == null ? 'is-missing' : ''}`}>{sp}</span>
+          </span>
+          <span className="r21-daily-eff">
+            <span className="cap">EFFORT</span>
+            <span className={`val ${story.effort == null ? 'is-missing' : ''}`}>{eff}</span>
+          </span>
+        </span>
+      </button>
+
+      {story.descriptionPreview && (
+        <p className="r21-daily-desc">{story.descriptionPreview}</p>
+      )}
+
+      {story.tasks.length === 0 ? (
+        <p className="r21-daily-card-empty">No tasks under this story yet.</p>
+      ) : (
+        <ul className="r21-daily-tasks">
+          {story.tasks.map(t => {
+            const est = t.originalEstimate != null ? `${fmtNum(t.originalEstimate)}h` : '—';
+            const rem = t.remainingWork != null ? `${fmtNum(t.remainingWork)}h` : '—';
+            return (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  className={`r21-daily-task ${dailyStateClass(t.state)}`}
+                  onClick={() => onOpenItem(t.id)}
+                >
+                  <span className="r21-daily-task-left">
+                    <Mono className="r21-daily-task-id">#{t.id}</Mono>
+                    <span className="r21-daily-task-title">{t.title}</span>
+                  </span>
+                  <span className="r21-daily-task-effort">
+                    <span className="r21-daily-eff">
+                      <span className="cap">EST</span>
+                      <span className={`val ${t.originalEstimate == null ? 'is-missing' : ''}`}>{est}</span>
+                    </span>
+                    <span className="r21-daily-eff">
+                      <span className="cap">REM</span>
+                      <span className={`val ${t.remainingWork == null ? 'is-missing' : ''}`}>{rem}</span>
+                    </span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </article>
+  );
+}
+
+function fmtNum(n: number): string {
+  const r = Math.round(n * 10) / 10;
+  return Number.isInteger(r) ? String(Math.round(r)) : r.toString();
+}
+
+function dailyStateClass(state: string): string {
+  const s = state.toLowerCase();
+  if (s === 'active' || s === 'in progress' || s === 'doing' || s === 'committed') return 'is-going';
+  if (s === 'done' || s === 'closed' || s === 'resolved' || s === 'completed' || s === 'removed') return 'is-done';
+  return 'is-waiting';
 }
 
 function fmtClockISO(iso: string): string {
