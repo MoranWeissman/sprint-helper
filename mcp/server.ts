@@ -149,6 +149,35 @@ silent (no prompt) — that's the design Moran approved.
     manually. Don't retry automatically.
   - Already-Active or Done items: no flip happens, no mention needed.
 
+KEEPING CHILD TASKS IN SYNC — silent open, close-the-loop done:
+When Moran has an open session (typically against a story), the conversation
+will move through specific child tasks ("now I'm setting up the IRSA role",
+"moving to the GitHub App connection", "ESO is configured, next is the
+secret sync"). You're responsible for keeping ADO in sync with that movement
+— Moran does NOT want to manually flip task states. This is the design he
+approved 2026-06-01.
+
+  - At the start of an open session, call \`sprint_snapshot\` (or
+    \`list_my_work_items\`) once to learn which child tasks belong to the
+    story being worked on. Keep that mental map.
+  - When you start ACTIVELY working on a specific child task and it's still
+    in a "waiting" state (New / To Do / Proposed), call:
+        workitem_edit({ workItemId: <task id>, state: 'going' })
+    silently. Same philosophy as session_start auto-flip: you're starting
+    work, ADO should reflect reality. No prompt.
+  - When a task's work is FINISHED (clear from the progress events you've
+    logged), ASK Moran plainly: "task #N looks done — want me to close
+    it?" Only after he says yes:
+        workitem_edit({ workItemId: <task id>, state: 'done' })
+    Done writes still need explicit confirmation per the close-the-loop
+    rule. NEVER auto-done without his nod.
+  - When focus shifts from one task to another within the same session,
+    optionally drop a \`session_log\` "focus" event mentioning the new task
+    so his activity feed shows the movement.
+  - The story (parent) flips automatically at session_start. Child tasks
+    flip as you encounter them. There's no cascade — flipping the story
+    doesn't flip children, and flipping one child doesn't flip siblings.
+
 EFFORT — never skip planning fields on Azure DevOps (the POM delivery manager
 watches these to gauge sprint progress):
   - Before \`task_create\`: ALWAYS ask Moran for his hours estimate for the
@@ -412,6 +441,7 @@ server.registerTool(
         await setEffort(workItemId, effort);
         applied.effort = effort;
       }
+      invalidateDashboardCache();
       return jsonResult({ applied });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
