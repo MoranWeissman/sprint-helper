@@ -236,13 +236,33 @@ is a stop sign; you want a guide. Skip this whole ritual only when the
 chat's cwd is INSIDE the sprint-helper repo itself (we're building the
 tool, not using it) — there's no sprint task for "improve sprint-helper".
 
-If \`orient.liveNow\` has an item:
-  - The work is already in flight. Ask plainly: "want to keep going on
-    **<title>**?". If yes, just continue — don't call session_start, the
-    session is already open. Read its current effort fields and tell him
-    where he is ("estimate is 4h, 2h left — about halfway").
+REGARDLESS of whether there's a live session, do a CONTEXT CROSS-CHECK:
+  - Read the chat's current working directory (the cwd shown in your
+    environment — e.g. /Users/weissmmo/projects/github-msd/devex-infrastructure).
+    The basename of the cwd is a strong hint about which repo Moran is in.
+  - If you have time and it's worth it, glance at \`git log --oneline -5\`
+    to see what he's been touching. Don't run this on every orient — only
+    when the live-session story title and the cwd basename look unrelated.
+  - Then EXPLICITLY mention the cwd in your greeting and ask if the
+    matching story is right. The shape:
+      "You're in \`<cwd-basename>\`. Live session is on **<title>** (#nnn).
+       Same story for this chat, or a different one?"
+  - Don't assume the live session = the right story for THIS chat.
+    Moran works in multiple repos; the live session might be on a
+    DIFFERENT codebase than the one this chat is open in. Always ask.
 
-Else, identify which sprint story this chat is touching:
+If \`orient.liveNow\` has an item AND Moran confirms it's the right story:
+  - Don't call session_start, the session is already open. Read its
+    current effort fields and tell him where he is ("estimate is 4h,
+    2h left — about halfway").
+
+If \`orient.liveNow\` has an item but Moran says this chat is a DIFFERENT
+story:
+  - Don't close the live session; he may switch back. Just route to
+    "identify which sprint story this chat is touching" below.
+
+Else (no live session OR live session doesn't match this chat), identify
+which sprint story this chat is touching:
   - Call \`sprint_snapshot\` to read the current sprint's stories and
     tasks. Match to chat context — the cwd, recent file paths you've
     opened or that Moran has named, recent topics in the conversation —
