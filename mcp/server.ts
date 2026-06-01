@@ -24,7 +24,7 @@ import { z } from 'zod';
 import { getCalendarUrl, setCalendarUrl } from '../server/calendar.js';
 import { computeCapacity } from '../server/capacity.js';
 import { buildDashboard } from '../server/dashboard.js';
-import { buildDashboardCached } from '../server/dashboard-cache.js';
+import { buildDashboardCached, invalidateDashboardCache } from '../server/dashboard-cache.js';
 import { sprintCheckIn } from '../server/guardrail.js';
 import { addNote, getHelperNotes, setSummary } from '../server/helper-notes.js';
 import { buildOrientPacket } from '../server/orient.js';
@@ -38,6 +38,7 @@ import * as timerService from '../server/timer-service.js';
 import {
   createStory,
   createTask,
+  ensureActive,
   setEffort,
   setEstimate,
   setRemaining,
@@ -135,9 +136,22 @@ Then act on the returned \`nextStep\`:
     \`task_create\` (set adHoc=true for the quick case), and \`session_start\`
     against the new task. Never silently let untracked work slide.
 
+AUTO-FLIP ON SESSION START — \`session_start\` automatically transitions the
+work item from a "waiting" state (New / To Do / Proposed) to "going" (Active
+/ In Progress) in Azure DevOps. This matches reality: opening a session IS
+the act of starting work, so the dashboard and ADO should agree. The flip is
+silent (no prompt) — that's the design Moran approved.
+  - The return payload includes \`stateFlip: { flipped, fromState, toState }\`.
+    If \`flipped\` is true, mention it casually in your reply ("I also flipped
+    #1234 from New to Active in ADO so it matches reality").
+  - If \`stateFlip.error\` is set, the flip failed (rare). Tell Moran the
+    session is still open + tracking time, but he may want to flip it
+    manually. Don't retry automatically.
+  - Already-Active or Done items: no flip happens, no mention needed.
+
 EFFORT — never skip planning fields on Azure DevOps (the POM delivery manager
 watches these to gauge sprint progress):
-  - Before \`task_create\`: ALWAYS ask Moran for him hours estimate for the
+  - Before \`task_create\`: ALWAYS ask Moran for his hours estimate for the
     task. Don't guess and don't call without it — \`estimateHours\` is required.
     The tool also sets RemainingWork to the same value so burndown starts honest.
   - Before \`story_create\`: ALWAYS ask Moran for BOTH story points and effort
@@ -430,7 +444,7 @@ server.registerTool(
   {
     title: 'Create an ADO task in the current sprint',
     description:
-      "Create a new Task in Azure DevOps, placed in Moran's current sprint and assigned to him. Use after sprint_check_in returned `no_match` AND Moran confirmed he wants this work tracked. ALWAYS ask Moran for him hours estimate before calling — never guess and never skip. estimateHours is required so the POM delivery manager always sees a planning number; RemainingWork is also set to the same value so burndown starts honest. Pass `adHoc: true` for the quick 1–2 hour case (tags it 'ad-hoc'). Pass `parentStoryId` to nest under an existing user story when known. Returns the new task's id and URL.",
+      "Create a new Task in Azure DevOps, placed in Moran's current sprint and assigned to him. Use after sprint_check_in returned `no_match` AND Moran confirmed he wants this work tracked. ALWAYS ask Moran for his hours estimate before calling — never guess and never skip. estimateHours is required so the POM delivery manager always sees a planning number; RemainingWork is also set to the same value so burndown starts honest. Pass `adHoc: true` for the quick 1–2 hour case (tags it 'ad-hoc'). Pass `parentStoryId` to nest under an existing user story when known. Returns the new task's id and URL.",
     inputSchema: {
       title: z.string().min(1).describe('Task title — short and specific.'),
       description: z.string().optional().describe('Optional details. Plain text or simple HTML.'),
@@ -516,7 +530,7 @@ server.registerTool(
   {
     title: 'Start a Claude Code session',
     description:
-      "Open a session against a work item. Tells sprint-helper that Moran is now working on this item with you. Returns a sessionId you'll pass to later session_log / session_end calls. Idempotent — returns the existing session if one is already open.",
+      "Open a session against a work item. Tells sprint-helper that Moran is now working on this item with you. Returns a sessionId you'll pass to later session_log / session_end calls. Idempotent — returns the existing session if one is already open. AUTO-FLIPS the work item state from any 'waiting' state (New / To Do / Proposed) to 'going' (Active / In Progress) in Azure DevOps, since opening a session IS the act of starting work. No prompt — that's the design Moran approved. Reports `stateFlip` so you can mention the flip in your reply.",
     inputSchema: {
       workItemId: workItemIdSchema,
       client: z
@@ -528,7 +542,28 @@ server.registerTool(
   async ({ workItemId, client }) => {
     const session = startSession({ workItemId, client });
     timerService.start(workItemId); // silent time tracking begins with the session
-    return jsonResult(session);
+
+    // Auto-flip waiting → going in ADO. If the flip throws, don't fail
+    // the whole session_start; report the error in the payload.
+    let stateFlip: {
+      flipped: boolean;
+      fromState: string;
+      toState: string;
+      error?: string;
+    };
+    try {
+      stateFlip = await ensureActive(workItemId);
+      if (stateFlip.flipped) invalidateDashboardCache();
+    } catch (e) {
+      stateFlip = {
+        flipped: false,
+        fromState: 'unknown',
+        toState: 'unknown',
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+
+    return jsonResult({ session, stateFlip });
   },
 );
 

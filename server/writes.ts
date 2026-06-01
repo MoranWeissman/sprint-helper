@@ -121,6 +121,31 @@ export function transitionToDone(workItemId: number): Promise<string> {
   return setStateBucket(workItemId, 'done');
 }
 
+const WAITING_STATES_LOWER = new Set(STATE_BUCKET_CHAIN.waiting.map(s => s.toLowerCase()));
+
+/**
+ * If the work item is in any "waiting" state (New / To Do / Proposed),
+ * transition it to the team's "going" state (Active / In Progress / etc).
+ * Called automatically from session_start so opening a session on a New
+ * item is the user's declaration that work has started — no manual ADO
+ * state flip needed.
+ *
+ * No-op if the item is already in going/done/unknown.
+ */
+export async function ensureActive(workItemId: number): Promise<{
+  flipped: boolean;
+  fromState: string;
+  toState: string;
+}> {
+  const current = await fetchEffortFields(workItemId);
+  const fromState = current.fields['System.State'] ?? '';
+  if (!WAITING_STATES_LOWER.has(fromState.toLowerCase())) {
+    return { flipped: false, fromState, toState: fromState };
+  }
+  const toState = await setStateBucket(workItemId, 'going');
+  return { flipped: true, fromState, toState };
+}
+
 export async function setEstimate(workItemId: number, hours: number): Promise<void> {
   await patchWorkItem(workItemId, [
     { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.OriginalEstimate', value: round2(hours) },
