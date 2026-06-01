@@ -23,8 +23,9 @@ To remove later: `claude mcp remove sprint-helper`.
 | `sprint_snapshot` | Current sprint + counts + in-progress items + live sessions. Good to call at the start of a chat. |
 | `list_my_work_items` | Flat list of work items in the sprint. Optional `state` filter: `inProgress` / `upNext` / `done`. |
 | `sprint_check_in` | **Guardrail.** Before starting unplanned work, check whether it's in Moran's sprint. Returns matches + a `nextStep` (`confirm_match` / `choose_match` / `no_match`). |
-| `task_create` | Create a new Task in the current sprint. `adHoc: true` tags it for the quick 1–2h case. Optional `parentStoryId` and `estimateHours`. |
-| `workitem_edit` | Update state (`waiting` / `going` / `done`), original estimate, or remaining work in ADO. |
+| `task_create` | Create a new Task in the current sprint. **Requires `estimateHours`** — ask Moran for it first. Sets both OriginalEstimate and RemainingWork. `adHoc: true` tags it for the quick 1–2h case. Optional `parentStoryId`. |
+| `story_create` | Create a new User Story in the current sprint. **Requires `storyPoints` (her team: 1 point = 1 day) AND `effortHours`** — ask Moran for both first. Optional `parentFeatureId`. |
+| `workitem_edit` | Update state (`waiting` / `going` / `done`), `originalEstimate`, `remainingWork`, `storyPoints`, or `effort` in ADO. Use this to backfill planning fields on existing items. |
 | `session_start` | Open a session against a work item. Returns a `sessionId` and silently starts tracking time. Idempotent. |
 | `session_log` | Record an event in a session: `focus` / `progress` / `blocker` / `decision` / `note`. |
 | `session_end` | Close a session with a one-line summary. Pauses the silent timer. Pass `done: true` (only after Moran confirms) to push the tracked time to Azure DevOps and close the task. |

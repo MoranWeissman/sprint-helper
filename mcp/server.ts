@@ -5,7 +5,7 @@
  * Exposes sprint-helper backend operations to Claude Code (or any MCP client)
  * over stdio. Tools fall into these buckets:
  *  - read:      sprint_snapshot, list_my_work_items
- *  - guardrail: sprint_check_in, task_create
+ *  - guardrail: sprint_check_in, task_create, story_create
  *  - edits:     workitem_edit
  *  - sessions:  session_start, session_log, session_end
  *  - notes:     helper_notes_get, helper_note_set_summary, helper_note_add
@@ -31,10 +31,13 @@ import {
 } from '../server/sessions.js';
 import * as timerService from '../server/timer-service.js';
 import {
+  createStory,
   createTask,
+  setEffort,
   setEstimate,
   setRemaining,
   setStateBucket,
+  setStoryPoints,
   type StateBucket,
 } from '../server/writes.js';
 
@@ -223,19 +226,27 @@ server.registerTool(
   {
     title: 'Edit work item fields',
     description:
-      "Update a work item in Azure DevOps. State uses Moran's plain English buckets: 'waiting' (New/To Do/Proposed), 'going' (Active/In Progress/Doing), 'done' (Closed/Done/Resolved). Effort fields are in hours; 1 ADO point = 1 hour by team convention.",
+      "Update an existing work item in Azure DevOps. Use this to backfill planning fields the POM delivery manager needs. State uses Moran's plain English buckets: 'waiting' (New/To Do/Proposed), 'going' (Active/In Progress/Doing), 'done' (Closed/Done/Resolved). Effort fields are in hours. Story-level fields: storyPoints (her team treats 1 point = 1 day) and effort (total hours she thinks the story is) — use these to fix stories with blank planning.",
     inputSchema: {
       workItemId: workItemIdSchema,
       state: z.enum(['waiting', 'going', 'done']).optional(),
-      originalEstimate: z.number().min(0).optional().describe('In hours.'),
-      remainingWork: z.number().min(0).optional().describe('In hours.'),
+      originalEstimate: z.number().min(0).optional().describe('Task field, in hours.'),
+      remainingWork: z.number().min(0).optional().describe('Task field, in hours. Burns down as work happens.'),
+      storyPoints: z.number().min(0).optional().describe('Story field. Her team treats 1 point = 1 day.'),
+      effort: z.number().min(0).optional().describe('Story field, in hours. Total hours she thinks the story is.'),
     },
   },
-  async ({ workItemId, state, originalEstimate, remainingWork }) => {
-    if (state == null && originalEstimate == null && remainingWork == null) {
-      return errorResult('At least one of state, originalEstimate, remainingWork is required.');
+  async ({ workItemId, state, originalEstimate, remainingWork, storyPoints, effort }) => {
+    if (state == null && originalEstimate == null && remainingWork == null && storyPoints == null && effort == null) {
+      return errorResult('At least one of state, originalEstimate, remainingWork, storyPoints, effort is required.');
     }
-    const applied: { state?: string; originalEstimate?: number; remainingWork?: number } = {};
+    const applied: {
+      state?: string;
+      originalEstimate?: number;
+      remainingWork?: number;
+      storyPoints?: number;
+      effort?: number;
+    } = {};
     try {
       if (state) applied.state = await setStateBucket(workItemId, state as StateBucket);
       if (originalEstimate != null) {
@@ -245,6 +256,14 @@ server.registerTool(
       if (remainingWork != null) {
         await setRemaining(workItemId, remainingWork);
         applied.remainingWork = remainingWork;
+      }
+      if (storyPoints != null) {
+        await setStoryPoints(workItemId, storyPoints);
+        applied.storyPoints = storyPoints;
+      }
+      if (effort != null) {
+        await setEffort(workItemId, effort);
+        applied.effort = effort;
       }
       return jsonResult({ applied });
     } catch (e) {
@@ -278,7 +297,7 @@ server.registerTool(
   {
     title: 'Create an ADO task in the current sprint',
     description:
-      "Create a new Task in Azure DevOps, placed in Moran's current sprint and assigned to her. Use after sprint_check_in returned `no_match` AND Moran confirmed she wants this work tracked. Pass `adHoc: true` for the quick 1–2 hour case (tags it 'ad-hoc'). Pass `parentStoryId` to nest under an existing user story when known. Returns the new task's id and URL.",
+      "Create a new Task in Azure DevOps, placed in Moran's current sprint and assigned to her. Use after sprint_check_in returned `no_match` AND Moran confirmed she wants this work tracked. ALWAYS ask Moran for her hours estimate before calling — never guess and never skip. estimateHours is required so the POM delivery manager always sees a planning number; RemainingWork is also set to the same value so burndown starts honest. Pass `adHoc: true` for the quick 1–2 hour case (tags it 'ad-hoc'). Pass `parentStoryId` to nest under an existing user story when known. Returns the new task's id and URL.",
     inputSchema: {
       title: z.string().min(1).describe('Task title — short and specific.'),
       description: z.string().optional().describe('Optional details. Plain text or simple HTML.'),
@@ -291,8 +310,7 @@ server.registerTool(
       estimateHours: z
         .number()
         .min(0)
-        .optional()
-        .describe('Estimated hours (1 ADO point = 1 hour by team convention).'),
+        .describe("REQUIRED. Moran's own hours estimate — ask her for it before calling. Sets OriginalEstimate AND RemainingWork."),
       adHoc: z
         .boolean()
         .optional()
@@ -307,6 +325,47 @@ server.registerTool(
         parentStoryId,
         estimateHours,
         tags: adHoc ? ['ad-hoc'] : undefined,
+      });
+      return jsonResult(created);
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'story_create',
+  {
+    title: 'Create an ADO user story in the current sprint',
+    description:
+      "Create a new User Story in Azure DevOps, placed in Moran's current sprint and assigned to her. ALWAYS ask Moran for storyPoints AND effortHours before calling — never guess, never skip. These are the planning fields the POM delivery manager looks at to gauge sprint progress, so they must be set on every story you create. storyPoints uses her team's convention: 1 point = 1 day. effortHours is the total hours she thinks the story is. Pass `parentFeatureId` to nest under an existing Feature/Epic if she has one. Returns the new story's id and URL.",
+    inputSchema: {
+      title: z.string().min(1).describe('Story title — short and specific.'),
+      description: z.string().optional().describe('Optional details. Plain text or simple HTML.'),
+      storyPoints: z
+        .number()
+        .min(0)
+        .describe("REQUIRED. Moran's team convention: 1 point = 1 day. Ask her for it before calling."),
+      effortHours: z
+        .number()
+        .min(0)
+        .describe('REQUIRED. Total hours Moran thinks this story is. Ask her for it before calling.'),
+      parentFeatureId: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe('Optional Feature/Epic id to link this story under.'),
+    },
+  },
+  async ({ title, description, storyPoints, effortHours, parentFeatureId }) => {
+    try {
+      const created = await createStory({
+        title,
+        description,
+        storyPoints,
+        effortHours,
+        parentFeatureId,
       });
       return jsonResult(created);
     } catch (e) {
