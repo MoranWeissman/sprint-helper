@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import {
   dismissHelperNote,
   nameFromEmail,
@@ -116,13 +116,11 @@ function DashboardLive({
   // is the manual "show the whole board" escape while a session is still live.
   const [focalId, setFocalId] = useState<string | null>(null);
   const [showBoard, setShowBoard] = useState(false);
-  // The "Daily view" — stories + tasks + planning fields, opened from the
-  // sidebar button. Lives inside Day mode; tapping any rail mode closes it.
-  const [dailyOpen, setDailyOpen] = useState(false);
-  const pickMode = (m: ModeId) => {
-    setDailyOpen(false);
-    setMode(m);
-  };
+  // The "Daily view" is the DEFAULT body of Day mode. The sidebar button flips
+  // to the calmer "Overview" (helper's notes + headline + story chips). A live
+  // session still wins — it morphs to Focus regardless of this toggle.
+  const [dailyOpen, setDailyOpen] = useState(true);
+  const pickMode = (m: ModeId) => setMode(m);
   useEffect(() => {
     if (liveItems.length === 0) {
       setShowBoard(false);
@@ -137,8 +135,10 @@ function DashboardLive({
     () => liveItems.find(w => !focalTask || w.id !== focalTask.id) ?? null,
     [liveItems, focalTask],
   );
-  const isFocus = mode === 'day' && !dailyOpen && !!focalTask && !showBoard;
-  const isDaily = mode === 'day' && dailyOpen;
+  // Focus has top precedence — if a session is live and Moran hasn't asked to
+  // see the whole board, the screen morphs to Focus regardless of Daily/Overview.
+  const isFocus = mode === 'day' && !!focalTask && !showBoard;
+  const isDaily = mode === 'day' && !isFocus && dailyOpen;
 
   const focusStory = (storyId: string) => {
     const t = liveItems.find(w => (w.parent?.id ?? w.id) === storyId);
@@ -373,11 +373,11 @@ function R21Sidebar({
 
         <button
           type="button"
-          className={`r21-side-daily ${dailyOpen ? 'is-open' : ''}`}
+          className={`r21-side-daily ${!dailyOpen ? 'is-open' : ''}`}
           onClick={onToggleDaily}
-          title="Daily view — your stories, tasks and planning numbers at a glance"
+          title={dailyOpen ? 'Show the calmer Overview (helper\'s notes, headline)' : 'Back to your Daily view'}
         >
-          <span className="lbl">{dailyOpen ? 'Back to overview' : 'Daily view'}</span>
+          <span className="lbl">{dailyOpen ? 'Overview' : 'Daily view'}</span>
           <span className="arr">{dailyOpen ? '↩' : '→'}</span>
         </button>
 
@@ -786,33 +786,59 @@ function DailyView({
         <p className="r21-daily-empty">No stories in this sprint yet.</p>
       ) : (
         <div className="r21-daily-features">
-          {featureGroups.map((g, idx) => (
-            <section className="r21-daily-feature" key={g.feature?.id ?? `none-${idx}`}>
-              <header className={`r21-daily-feature-head ${g.feature ? '' : 'is-orphan'}`}>
-                <div className="r21-daily-feature-left">
-                  <span className="r21-daily-feature-kind">{g.feature?.type ?? 'No feature'}</span>
-                  {g.feature && <Mono className="r21-daily-feature-id">#{g.feature.id}</Mono>}
-                  <h3 className="r21-daily-feature-title">
-                    {g.feature?.title ?? 'Stories without a parent feature'}
-                  </h3>
-                </div>
-                <span className="r21-daily-feature-meta">
-                  {g.stories.length} {g.stories.length === 1 ? 'story' : 'stories'}
-                </span>
-              </header>
-              <div className="r21-daily-list">
-                {g.stories.map(s => (
-                  <DailyStoryCard
-                    key={s.id}
-                    story={s}
-                    expanded={expanded.has(s.id)}
-                    onOpenItem={onOpenItem}
-                    onToggleExpanded={() => toggleExpanded(s.id)}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
+          {featureGroups.map((g, idx) => {
+            // Drop any story that IS its own feature — the section header
+            // already represents it; the duplicate card was noise.
+            const childStories = g.feature
+              ? g.stories.filter(s => s.id !== g.feature!.id)
+              : g.stories;
+            const featureId = g.feature?.id;
+            const openFeature = featureId ? () => onOpenItem(featureId) : undefined;
+            return (
+              <section className="r21-daily-feature" key={g.feature?.id ?? `none-${idx}`}>
+                <header
+                  className={`r21-daily-feature-head ${g.feature ? 'is-openable' : 'is-orphan'}`}
+                  {...(openFeature ? {
+                    role: 'button' as const,
+                    tabIndex: 0,
+                    onClick: openFeature,
+                    onKeyDown: (e: KeyboardEvent) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openFeature();
+                      }
+                    },
+                    title: 'Open this feature in the drawer',
+                  } : {})}
+                >
+                  <div className="r21-daily-feature-left">
+                    <span className="r21-daily-feature-kind">{g.feature?.type ?? 'No feature'}</span>
+                    {g.feature && <Mono className="r21-daily-feature-id">#{g.feature.id}</Mono>}
+                    <h3 className="r21-daily-feature-title">
+                      {g.feature?.title ?? 'Stories without a parent feature'}
+                    </h3>
+                  </div>
+                  <span className="r21-daily-feature-meta">
+                    {childStories.length} {childStories.length === 1 ? 'story' : 'stories'}
+                    {g.feature && <span className="r21-daily-feature-open" aria-hidden="true">↗</span>}
+                  </span>
+                </header>
+                {childStories.length > 0 && (
+                  <div className="r21-daily-list">
+                    {childStories.map(s => (
+                      <DailyStoryCard
+                        key={s.id}
+                        story={s}
+                        expanded={expanded.has(s.id)}
+                        onOpenItem={onOpenItem}
+                        onToggleExpanded={() => toggleExpanded(s.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
     </div>
