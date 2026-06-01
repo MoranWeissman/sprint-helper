@@ -27,11 +27,15 @@
   --zone-running-2: oklch(0.155 0.030 254);
   --zone-banner: oklch(0.205 0.044 252); /* sync banner */
 
-  --ink-0: oklch(0.95 0.014 230);
-  --ink-1: oklch(0.87 0.016 232);
-  --ink-2: oklch(0.67 0.022 238);
-  --ink-3: oklch(0.50 0.025 244);
-  --ink-4: oklch(0.38 0.025 248);
+  /* 2026-06-01: ink ramp lifted globally per Moran's "all gray too dim"
+     feedback. Lightness floor raised so even ink-4 reads clearly on the
+     dark warm-dusk background; ink-2 is now near-primary so caption / unit
+     text feels alive, not vestigial. Hierarchy ratios preserved. */
+  --ink-0: oklch(0.97 0.014 230);
+  --ink-1: oklch(0.92 0.016 232);
+  --ink-2: oklch(0.80 0.022 238);
+  --ink-3: oklch(0.68 0.025 244);
+  --ink-4: oklch(0.56 0.025 248);
 
   /* Single accent — soft moonlit blue */
   --accent: oklch(0.78 0.075 245);
