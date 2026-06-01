@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // Mirrors server/dashboard.ts → DashboardPayload exactly. Keep in sync manually
 // until we extract a shared types package.
@@ -189,21 +189,40 @@ export type FetchState =
 export function useDashboardData(sprintName?: string): { state: FetchState; refresh: () => void } {
   const [state, setState] = useState<FetchState>({ status: 'loading' });
   const [nonce, setNonce] = useState(0);
+  // True once we've scheduled a follow-up refetch for the current stale chain,
+  // so a chain of stale responses can't spin into an infinite refetch loop.
+  const staleRetryRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    setState({ status: 'loading' });
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    // Keep the rendered dashboard while a refresh is in flight; only flash the
+    // loading shell on the initial mount or after an error.
+    setState(prev => (prev.status === 'ok' ? prev : { status: 'loading' }));
     const url = sprintName
       ? `/api/dashboard?sprint=${encodeURIComponent(sprintName)}`
       : '/api/dashboard';
     fetch(url, { cache: 'no-store' })
       .then(async r => {
         const body = (await r.json()) as ApiPayload | ApiError;
+        const stale = r.headers.get('X-Cache') === 'stale';
         if (cancelled) return;
         if ('error' in body) {
           setState({ status: 'error', error: body.error, command: body.command });
+          return;
+        }
+        setState({ status: 'ok', data: body });
+        if (stale) {
+          // The server is refreshing in the background — pick up the fresh
+          // data after it lands. Only retry once per stale chain.
+          if (!staleRetryRef.current) {
+            staleRetryRef.current = true;
+            retryTimer = setTimeout(() => {
+              if (!cancelled) setNonce(n => n + 1);
+            }, 3000);
+          }
         } else {
-          setState({ status: 'ok', data: body });
+          staleRetryRef.current = false;
         }
       })
       .catch(err => {
@@ -212,6 +231,7 @@ export function useDashboardData(sprintName?: string): { state: FetchState; refr
       });
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [nonce, sprintName]);
 
