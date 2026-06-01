@@ -35,11 +35,17 @@ export interface WorkItem {
   parentAreaPath?: string;
   parentOriginalEstimate?: number;
   parentRemainingWork?: number;
+  parentStoryPoints?: number;
+  parentEffort?: number;
   assignedTo?: string;
   iterationPath: string;
   originalEstimate?: number;
   remainingWork?: number;
   completedWork?: number;
+  /** Story-level: 1 point = 1 day in Moran's team. */
+  storyPoints?: number;
+  /** Story-level: total hours estimate. */
+  effort?: number;
   changedDate: string;
   url: string;
 }
@@ -59,6 +65,8 @@ const WORK_ITEM_FIELDS = [
   'Microsoft.VSTS.Scheduling.OriginalEstimate',
   'Microsoft.VSTS.Scheduling.RemainingWork',
   'Microsoft.VSTS.Scheduling.CompletedWork',
+  'Microsoft.VSTS.Scheduling.StoryPoints',
+  'Microsoft.VSTS.Scheduling.Effort',
 ];
 
 /**
@@ -344,6 +352,8 @@ export async function getMyWorkItems(iterationPath: string): Promise<WorkItem[]>
         i.parentAreaPath = p.areaPath;
         i.parentOriginalEstimate = p.originalEstimate;
         i.parentRemainingWork = p.remainingWork;
+        i.parentStoryPoints = p.storyPoints;
+        i.parentEffort = p.effort;
       }
     }
   }
@@ -409,6 +419,8 @@ function mapWorkItem(w: { id: number; rev: number; url: string; fields: Record<s
     originalEstimate: numOrUndef(f['Microsoft.VSTS.Scheduling.OriginalEstimate']),
     remainingWork: numOrUndef(f['Microsoft.VSTS.Scheduling.RemainingWork']),
     completedWork: numOrUndef(f['Microsoft.VSTS.Scheduling.CompletedWork']),
+    storyPoints: numOrUndef(f['Microsoft.VSTS.Scheduling.StoryPoints']),
+    effort: numOrUndef(f['Microsoft.VSTS.Scheduling.Effort']),
     changedDate: String(f['System.ChangedDate'] ?? ''),
     url: w.url,
   };
