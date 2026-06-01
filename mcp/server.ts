@@ -7,6 +7,7 @@
  *  - read:      orient, sprint_snapshot, list_my_work_items, workitem_get
  *  - guardrail: sprint_check_in, task_create, story_create
  *  - edits:     workitem_edit, workitem_reparent
+ *  - blocking:  workitem_block, workitem_unblock
  *  - sessions:  session_start, session_log, session_end
  *  - notes:     helper_notes_get, helper_note_set_summary, helper_note_add
  *  - calendar:  calendar_set_url, calendar_status, capacity_check
@@ -310,6 +311,21 @@ KEEPING MORAN'S NOTES (his dashboard's "helper's notes" space):
   - Never write effort or status to Azure DevOps from a note — notes are just your
     read for him; ADO writes still only happen via the confirm-first close-the-loop.
 
+BLOCKING (when something can't move forward right now):
+  Moran's ADO process template has no native Blocked field — the canonical
+  signal is a 'Blocked' tag. Sprint-helper bundles tagging + the structured
+  "why" into one call so neither half is ever stranded:
+    - To block: call \`workitem_block\` with reason and (if known) owner +
+      unblockCondition. This adds the tag in ADO, opens a session on the
+      item if one isn't already open, auto-flips waiting→going state, and
+      records a 'blocker'-type session event tying reason/owner/unblock-
+      condition to the item.
+    - To unblock: call \`workitem_unblock\` with a short summary of what
+      changed. Removes the tag and records a 'decision'-type session event.
+  NEVER add 'Blocked' as a raw tag via \`workitem_edit\` — that splits the
+  signal from the narrative, which is exactly the bug the dedicated tools
+  prevent. Same for unblocking: never just drop the tag silently.
+
 PREFER SPRINT-HELPER OVER RAW \`az\` — STRICT. Sprint-helper exists so Moran
 has ONE coordinated layer in front of Azure DevOps. Every board read and
 write goes through it; nothing else. Caches stay coherent, the dashboard and
@@ -323,6 +339,9 @@ always a sign you missed a sprint-helper tool. Concretely:
     tags, iteration path) → \`workitem_edit\`.
   - Moving an item under a different parent → \`workitem_reparent\`.
   - Creating a task / story → \`task_create\` / \`story_create\`.
+  - Blocking / unblocking → \`workitem_block\` / \`workitem_unblock\` (never
+    add a 'Blocked' tag through \`workitem_edit\` — that strands the why
+    from the what).
 
 If you genuinely think sprint-helper lacks an operation you need, STOP
 and tell Moran plainly: "sprint-helper doesn't have a tool for X yet —
@@ -605,6 +624,96 @@ server.registerTool(
       const result = await reparent(childId, newParentId);
       invalidateDashboardCache();
       return jsonResult(result);
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+/* ============================================================ */
+/*  Blocking                                                     */
+/* ============================================================ */
+
+server.registerTool(
+  'workitem_block',
+  {
+    title: 'Mark a work item blocked (atomic: tag + structured log)',
+    description:
+      "ONE call to block a work item — use this as the only way to mark something blocked. Does two things atomically: (1) adds the 'Blocked' tag in Azure DevOps (Moran's process has no native Blocked field, so the tag is the canonical board signal), and (2) writes a structured `blocker`-type entry into the item's session log capturing the reason, optional owner (the person holding it), and optional unblockCondition (what needs to happen). Auto-opens a session on the item if one isn't already open (so the 'why' has a home) and auto-flips the work item from any waiting state into a going state, same as session_start. NEVER tag 'Blocked' via workitem_edit and leave the blocker narrative stranded — that's the gap this tool exists to close.",
+    inputSchema: {
+      workItemId: workItemIdSchema,
+      reason: z.string().min(1).describe("Plain-English why it's blocked (e.g. 'NAT EIP attach is failing in prod')."),
+      owner: z.string().optional().describe("Who's holding the block, if known (e.g. 'Yosef', 'Platform team', 'waiting on Legal')."),
+      unblockCondition: z
+        .string()
+        .optional()
+        .describe('Concrete condition for unblocking (e.g. "Yosef finishes NAT EIP retry logic", "Legal sign-off on Article 12 wording").'),
+    },
+  },
+  async ({ workItemId, reason, owner, unblockCondition }) => {
+    try {
+      const tags = await updateTags(workItemId, { add: ['Blocked'] });
+      const session = startSession({ workItemId });
+      timerService.start(workItemId);
+
+      let stateFlip: {
+        flipped: boolean;
+        fromState: string;
+        toState: string;
+        error?: string;
+      };
+      try {
+        stateFlip = await ensureActive(workItemId);
+      } catch (e) {
+        stateFlip = {
+          flipped: false,
+          fromState: 'unknown',
+          toState: 'unknown',
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+
+      const parts = [`BLOCKED: ${reason}`];
+      if (owner) parts.push(`Owner: ${owner}`);
+      if (unblockCondition) parts.push(`Unblock when: ${unblockCondition}`);
+      const event = logEvent({ sessionId: session.id, type: 'blocker', text: parts.join(' · ') });
+
+      invalidateDashboardCache();
+      return jsonResult({ workItemId, tags, session, stateFlip, event });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'workitem_unblock',
+  {
+    title: 'Clear a block on a work item (atomic: untag + log)',
+    description:
+      "ONE call to unblock a work item — use this as the only way to clear a block. Removes the 'Blocked' tag in Azure DevOps and writes a `decision`-type entry in the item's session log explaining what got unblocked. Opens a session on the item if one isn't already open. Use this even for 'drive-by' unblocks (e.g. the owner pinged you that the dependency landed) — the log is how Moran sees later that the block went away and why.",
+    inputSchema: {
+      workItemId: workItemIdSchema,
+      summary: z
+        .string()
+        .min(1)
+        .describe("Short plain-English note: what got unblocked / what changed (e.g. 'Yosef merged the NAT EIP retry fix', 'Legal cleared Article 12')."),
+    },
+  },
+  async ({ workItemId, summary }) => {
+    try {
+      const tags = await updateTags(workItemId, { remove: ['Blocked'] });
+      const session = startSession({ workItemId });
+      timerService.start(workItemId);
+
+      const event = logEvent({
+        sessionId: session.id,
+        type: 'decision',
+        text: `UNBLOCKED: ${summary}`,
+      });
+
+      invalidateDashboardCache();
+      return jsonResult({ workItemId, tags, session, event });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
