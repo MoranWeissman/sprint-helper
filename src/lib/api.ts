@@ -94,6 +94,8 @@ export interface ApiUserStoryGroup {
   /** Story-level planning fields the POM delivery manager watches. */
   storyPoints?: number;
   effort?: number;
+  /** The Feature / Epic above this story, if any. The Daily view groups by this. */
+  feature?: { id: string; title: string; type: string };
   tasks: ApiWorkItem[];
   totalEstimateHours: number;
   completedHours: number;

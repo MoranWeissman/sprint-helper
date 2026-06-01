@@ -102,6 +102,8 @@ export interface UserStoryGroup {
   /** Story-level planning fields the POM delivery manager watches. */
   storyPoints?: number;
   effort?: number;
+  /** The Feature / Epic above this story, if there is one (or this item is itself a Feature/Epic). */
+  feature?: { id: string; title: string; type: string };
   /** Tasks (or other child items) assigned to the user that belong to this parent. */
   tasks: DashboardWorkItem[];
   /** Aggregate effort across this group's tasks (in hours). */
@@ -309,6 +311,18 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
 
     let parent: ParentInfo;
     if (raw.parentId && raw.parentTitle) {
+      const parentTypeLower = (raw.parentType ?? '').toLowerCase();
+      // If the parent IS a Feature/Epic, treat the parent itself as the feature.
+      // Otherwise, the feature is the grandparent (if any).
+      const feature = FEATURE_LIKE_TYPES.has(parentTypeLower)
+        ? { id: String(raw.parentId), title: raw.parentTitle, type: raw.parentType ?? 'Feature' }
+        : raw.grandparentId
+          ? {
+              id: String(raw.grandparentId),
+              title: raw.grandparentTitle ?? '',
+              type: raw.grandparentType ?? 'Feature',
+            }
+          : undefined;
       parent = {
         id: String(raw.parentId),
         title: raw.parentTitle,
@@ -321,9 +335,14 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
         parentRemaining: raw.parentRemainingWork,
         storyPoints: raw.parentStoryPoints,
         effort: raw.parentEffort,
+        feature,
       };
     } else {
       // No parent — treat the item itself as its own "story".
+      const typeLower = raw.type.toLowerCase();
+      const feature = FEATURE_LIKE_TYPES.has(typeLower)
+        ? { id: String(raw.id), title: raw.title, type: raw.type }
+        : undefined;
       parent = {
         id: String(raw.id),
         title: raw.title,
@@ -336,6 +355,7 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
         parentRemaining: raw.remainingWork,
         storyPoints: raw.storyPoints,
         effort: raw.effort,
+        feature,
       };
     }
     const key = parent.id;
@@ -379,6 +399,7 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
       parentRemaining: parent.parentRemaining,
       storyPoints: parent.storyPoints,
       effort: parent.effort,
+      feature: parent.feature,
       tasks,
       totalEstimateHours,
       completedHours,
@@ -411,7 +432,10 @@ interface ParentInfo {
   parentRemaining?: number;
   storyPoints?: number;
   effort?: number;
+  feature?: { id: string; title: string; type: string };
 }
+
+const FEATURE_LIKE_TYPES = new Set(['feature', 'epic']);
 
 function projectWorkItem(
   w: WorkItem,

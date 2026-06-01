@@ -37,6 +37,10 @@ export interface WorkItem {
   parentRemainingWork?: number;
   parentStoryPoints?: number;
   parentEffort?: number;
+  /** The story's parent — i.e. the Feature / Epic above it. */
+  grandparentId?: number;
+  grandparentTitle?: string;
+  grandparentType?: string;
   assignedTo?: string;
   iterationPath: string;
   originalEstimate?: number;
@@ -340,6 +344,13 @@ export async function getMyWorkItems(iterationPath: string): Promise<WorkItem[]>
   const parentIds = [...new Set(items.map(i => i.parentId).filter((x): x is number => !!x))];
   const parents = parentIds.length > 0 ? await getWorkItemBatch(parentIds) : [];
   const parentMap = new Map(parents.map(p => [p.id, p]));
+
+  // 3) Second hop: resolve the *grandparent* of each task (i.e. the Feature / Epic
+  //    above the user story) so the daily view can group stories by feature.
+  const grandparentIds = [...new Set(parents.map(p => p.parentId).filter((x): x is number => !!x))];
+  const grandparents = grandparentIds.length > 0 ? await getWorkItemBatch(grandparentIds) : [];
+  const grandparentMap = new Map(grandparents.map(g => [g.id, g]));
+
   for (const i of items) {
     if (i.parentId) {
       const p = parentMap.get(i.parentId);
@@ -354,6 +365,14 @@ export async function getMyWorkItems(iterationPath: string): Promise<WorkItem[]>
         i.parentRemainingWork = p.remainingWork;
         i.parentStoryPoints = p.storyPoints;
         i.parentEffort = p.effort;
+        if (p.parentId) {
+          const g = grandparentMap.get(p.parentId);
+          if (g) {
+            i.grandparentId = g.id;
+            i.grandparentTitle = g.title;
+            i.grandparentType = g.type;
+          }
+        }
       }
     }
   }
