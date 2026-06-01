@@ -2341,23 +2341,58 @@ html, body {
 
 .r21-app[data-density="generous"] .r21-capacity { padding: 28px 34px; gap: 18px; }
 
-/* Blocked badge — shown on Daily card header, Story chip, and Focus title row */
+/* Blocked — first-class state bucket alongside going / waiting / done.
+   Driven by ADO state ("Blocked" / "On Hold") with legacy fallback to tag. */
+:root {
+  --blocked-line: oklch(0.62 0.16 30 / 0.55);
+  --blocked-line-strong: oklch(0.62 0.16 30 / 0.7);
+  --blocked-ink: oklch(0.84 0.14 35);
+  --blocked-bg: oklch(0.42 0.12 30 / 0.18);
+}
 .r21-blocked-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 2px 9px;
   border-radius: 999px;
-  background: oklch(0.42 0.12 30 / 0.18);
-  border: 1px solid oklch(0.62 0.16 30 / 0.55);
-  color: oklch(0.84 0.14 35);
+  background: var(--blocked-bg);
+  border: 1px solid var(--blocked-line);
+  color: var(--blocked-ink);
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
-.r21-storychip.is-blocked { border-color: oklch(0.62 0.16 30 / 0.55); }
-.r21-daily-card.is-blocked { border-left: 3px solid oklch(0.62 0.16 30 / 0.7); }
+/* Daily state pill */
+.r21-daily-state.state-blocked,
+.r21-daily-task-state { /* default already styled */
+}
+.r21-daily-state.state-blocked {
+  background: var(--blocked-bg);
+  color: var(--blocked-ink);
+  border: 1px solid var(--blocked-line);
+}
+.r21-daily-task.is-blocked { border-left-color: var(--blocked-line-strong); }
+.r21-daily-task.is-blocked .r21-daily-task-state {
+  color: var(--blocked-ink);
+}
+/* Daily card — soft warm-red rail when story is blocked */
+.r21-daily-card.is-state-blocked { border-left: 3px solid var(--blocked-line-strong); }
+/* Story chip — same treatment */
+.r21-storychip.is-state-blocked { border-color: var(--blocked-line); }
+.r21-storychip-state {
+  display: inline-flex;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--blocked-bg);
+  color: var(--blocked-ink);
+  border: 1px solid var(--blocked-line);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+/* Focus header — blocked banner (this task vs parent story) */
 .r21-focal-blocked {
   display: inline-flex;
   align-items: center;

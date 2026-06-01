@@ -681,18 +681,18 @@ function R21Overview({
         </div>
         <div className="r21-stories-grid">
           {storyOnly.map(s => {
-            const blocked = isBlocked(s.tags);
+            const dominant = storyDominantState(s);
             return (
             <button
               key={s.id}
               type="button"
-              className={`r21-storychip ${s.hasActiveSession ? 'is-live' : ''} ${blocked ? 'is-blocked' : ''}`}
+              className={`r21-storychip is-state-${dominant} ${s.hasActiveSession ? 'is-live' : ''}`}
               onClick={() => (s.hasActiveSession ? onFocusStory(s.id) : onOpenItem(s.id))}
             >
               <div className="r21-storychip-head">
                 <span className="r21-storychip-kind">{s.type}</span>
                 <span className="r21-storychip-id">#{s.id}</span>
-                {blocked && <span className="r21-blocked-pill">blocked</span>}
+                {dominant === 'blocked' && <span className="r21-storychip-state">blocked</span>}
               </div>
               <h4 className="r21-storychip-title">{s.title}</h4>
               <div className="r21-storychip-counts">
@@ -988,10 +988,9 @@ function DailyStoryCard({
   const eff = story.effort != null ? `${fmtNum(story.effort)}h` : '—';
   const taskCount = story.counts.inProgress + story.counts.upNext + story.counts.done;
   const dominant = storyDominantState(story);
-  const blocked = isBlocked(story.tags);
 
   return (
-    <article className={`r21-daily-card is-state-${dominant} ${expanded ? 'is-expanded' : ''} ${story.hasActiveSession ? 'is-live' : ''} ${blocked ? 'is-blocked' : ''}`}>
+    <article className={`r21-daily-card is-state-${dominant} ${expanded ? 'is-expanded' : ''} ${story.hasActiveSession ? 'is-live' : ''}`}>
       <button
         type="button"
         className="r21-daily-card-head"
@@ -1002,7 +1001,6 @@ function DailyStoryCard({
             <span className={`r21-daily-kind kind-${kindSlug(story.type)}`}>{story.type}</span>
             <Mono className="r21-daily-card-id">#{story.id}</Mono>
             <span className={`r21-daily-state state-${dominant}`}>{storyStateLabel(dominant)}</span>
-            {blocked && <span className="r21-blocked-pill">blocked</span>}
           </span>
           <h2 className="r21-daily-card-title">{story.title}</h2>
         </span>
@@ -1051,7 +1049,7 @@ function DailyStoryCard({
         {expanded && story.tasks.length > 0 && (
           <ul className="r21-daily-tasks">
             {story.tasks.map(t => {
-              const sc = dailyStateClass(t.state);
+              const sc = dailyStateClass(t.state, t.tags);
               const est = t.originalEstimate != null ? `${fmtNum(t.originalEstimate)}h` : '—';
               const rem = t.remainingWork != null ? `${fmtNum(t.remainingWork)}h` : '—';
               return (
@@ -1064,7 +1062,7 @@ function DailyStoryCard({
                     <span className="r21-daily-task-dot" aria-hidden="true" />
                     <Mono className="r21-daily-task-id">#{t.id}</Mono>
                     <span className="r21-daily-task-title">{t.title}</span>
-                    <span className="r21-daily-task-state">{dailyStateLabel(t.state)}</span>
+                    <span className="r21-daily-task-state">{dailyStateLabel(t.state, t.tags)}</span>
                     <span className="r21-daily-task-numbers">
                       <span className="r21-daily-task-num">
                         <span className="cap">EST</span>
@@ -1102,26 +1100,36 @@ function fmtNum(n: number): string {
   return Number.isInteger(r) ? String(Math.round(r)) : r.toString();
 }
 
-type StoryState = 'going' | 'waiting' | 'done' | 'empty';
+type StoryState = 'going' | 'waiting' | 'done' | 'blocked' | 'empty';
 
-const STORY_STATE_ORDER: Record<StoryState, number> = { going: 0, waiting: 1, empty: 2, done: 3 };
+const STORY_STATE_ORDER: Record<StoryState, number> = { going: 0, blocked: 1, waiting: 2, empty: 3, done: 4 };
+
+function isBlockedState(state: string): boolean {
+  const s = state.toLowerCase();
+  return s === 'blocked' || s === 'on hold';
+}
 
 function isBlocked(tags: string[] | undefined): boolean {
   if (!tags) return false;
   return tags.some(t => t.trim().toLowerCase() === 'blocked');
 }
 
-function classifyAdoState(state: string): 'going' | 'done' | 'waiting' {
+function classifyAdoState(state: string): 'going' | 'done' | 'waiting' | 'blocked' {
   const s = state.toLowerCase();
+  if (s === 'blocked' || s === 'on hold') return 'blocked';
   if (s === 'active' || s === 'in progress' || s === 'doing' || s === 'committed') return 'going';
   if (s === 'done' || s === 'closed' || s === 'resolved' || s === 'completed' || s === 'removed') return 'done';
   return 'waiting';
 }
 
 function storyDominantState(s: ApiUserStoryGroup): StoryState {
-  // Live session beats everything — you're literally working on it now.
-  if (s.hasActiveSession) return 'going';
+  // State first — Blocked beats live session because we want to surface the block.
   const ownState = classifyAdoState(s.state);
+  if (ownState === 'blocked') return 'blocked';
+  // Legacy fallback: tag without state still counts as blocked while migrating.
+  if (isBlocked(s.tags)) return 'blocked';
+  // Live session — you're literally working on it now.
+  if (s.hasActiveSession) return 'going';
   // Story itself closed → whole card is done regardless of leftover tasks.
   if (ownState === 'done') return 'done';
   // Story itself active → show going even if child tasks haven't been flipped yet.
@@ -1135,20 +1143,23 @@ function storyDominantState(s: ApiUserStoryGroup): StoryState {
 
 function storyStateLabel(d: StoryState): string {
   if (d === 'going') return 'in work';
+  if (d === 'blocked') return 'blocked';
   if (d === 'waiting') return 'not started';
   if (d === 'done') return 'closed';
   return 'no tasks';
 }
 
-function dailyStateClass(state: string): string {
+function dailyStateClass(state: string, tags?: string[]): string {
+  if (isBlockedState(state) || isBlocked(tags)) return 'is-blocked';
   const s = state.toLowerCase();
   if (s === 'active' || s === 'in progress' || s === 'doing' || s === 'committed') return 'is-going';
   if (s === 'done' || s === 'closed' || s === 'resolved' || s === 'completed' || s === 'removed') return 'is-done';
   return 'is-waiting';
 }
 
-function dailyStateLabel(state: string): string {
-  const sc = dailyStateClass(state);
+function dailyStateLabel(state: string, tags?: string[]): string {
+  const sc = dailyStateClass(state, tags);
+  if (sc === 'is-blocked') return 'blocked';
   if (sc === 'is-going') return 'going';
   if (sc === 'is-done') return 'done';
   return 'waiting';

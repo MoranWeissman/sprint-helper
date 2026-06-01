@@ -21,6 +21,7 @@ const ADO_RESOURCE = '499b84ac-1321-427f-aa17-267ca6975798';
 export const STATE_BUCKET_CHAIN = {
   waiting: ['New', 'To Do', 'Proposed'],
   going:   ['Active', 'In Progress', 'Doing', 'Committed'],
+  blocked: ['Blocked', 'On Hold'],
   done:    ['Closed', 'Done', 'Resolved', 'Completed'],
 } as const;
 export type StateBucket = keyof typeof STATE_BUCKET_CHAIN;
@@ -167,7 +168,51 @@ export function transitionToDone(workItemId: number): Promise<string> {
   return setStateBucket(workItemId, 'done');
 }
 
+/**
+ * Transition to the "blocked" bucket (e.g. ADO "Blocked" or "On Hold" depending
+ * on type/process). Returns the prior state so callers can restore on unblock.
+ */
+export async function transitionToBlocked(workItemId: number): Promise<{
+  fromState: string;
+  toState: string;
+}> {
+  const current = await fetchEffortFields(workItemId);
+  const fromState = current.fields['System.State'] ?? '';
+  const toState = await setStateBucket(workItemId, 'blocked');
+  setSetting(`blocked_prior_state_${workItemId}`, fromState);
+  return { fromState, toState };
+}
+
+/**
+ * Transition out of "blocked" back to the captured prior state. Falls back to
+ * the "going" bucket (Active) if no prior state was captured.
+ */
+export async function transitionFromBlocked(workItemId: number): Promise<{
+  toState: string;
+  restored: boolean;
+}> {
+  const prior = getSetting(`blocked_prior_state_${workItemId}`);
+  if (prior) {
+    try {
+      await patchWorkItem(workItemId, [
+        { op: 'add', path: '/fields/System.State', value: prior },
+      ]);
+      setSetting(`blocked_prior_state_${workItemId}`, '');
+      return { toState: prior, restored: true };
+    } catch {
+      // Prior state name doesn't apply anymore (process changed, etc.) — fall through.
+    }
+  }
+  const toState = await setStateBucket(workItemId, 'going');
+  setSetting(`blocked_prior_state_${workItemId}`, '');
+  return { toState, restored: false };
+}
+
 const WAITING_STATES_LOWER = new Set(STATE_BUCKET_CHAIN.waiting.map(s => s.toLowerCase()));
+const BLOCKED_STATES_LOWER = new Set(STATE_BUCKET_CHAIN.blocked.map(s => s.toLowerCase()));
+export function isBlockedState(state: string): boolean {
+  return BLOCKED_STATES_LOWER.has(state.toLowerCase());
+}
 
 /**
  * If the work item is in any "waiting" state (New / To Do / Proposed),
