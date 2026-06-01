@@ -18,6 +18,8 @@ import { listActiveSessions, type SessionRow } from './sessions';
 export interface OrientLiveSession {
   workItemId: number;
   title: string;
+  /** Pre-formatted `**title** (#id)` ready to echo verbatim. */
+  displayName: string;
   startedAt: string;
   minutesOpen: number;
 }
@@ -25,15 +27,11 @@ export interface OrientLiveSession {
 export interface OrientLastSession {
   workItemId: number;
   title: string;
+  /** Pre-formatted `**title** (#id)` ready to echo verbatim. */
+  displayName: string;
   endedAt: string;
   summary: string | null;
   minutesAgo: number;
-}
-
-export interface OrientNudge {
-  id: number;
-  body: string;
-  createdAt: string;
 }
 
 export interface OrientPacket {
@@ -52,7 +50,12 @@ export interface OrientPacket {
   helperNotes: {
     summary: string | null;
     summaryAt: string | null;
-    openNudges: OrientNudge[];
+    /**
+     * Number of un-dismissed helper notes. Bodies are NOT included in this
+     * packet — call `helper_notes_get` to fetch them on demand. Keeping
+     * bodies out of the greeting prevents pasting them verbatim.
+     */
+    openNudgeCount: number;
   };
   gaps: {
     storiesMissingPlanning: number;
@@ -60,10 +63,36 @@ export interface OrientPacket {
   };
   /**
    * Real desk time vs planned hours for the sprint (from Outlook). Null when
-   * the dashboard couldn't compute it. The opening greeting should mention
-   * capacity only when there's a meaningful gap and `hasUrl` is true.
+   * the dashboard couldn't compute it.
    */
   capacity: Capacity | null;
+  /**
+   * Pre-formatted plain-English sentence about capacity. Null when no
+   * calendar is wired up. Echo verbatim in the greeting instead of
+   * computing your own phrasing from `capacity` — that's where the
+   * banned word "slack" used to slip in.
+   */
+  capacitySummary: string | null;
+}
+
+function displayNameFor(workItemId: number, title: string): string {
+  return `**${title}** (#${workItemId})`;
+}
+
+function plainCapacitySummary(c: Capacity | null): string | null {
+  if (!c) return null;
+  if (!c.hasUrl) return null;
+  if (c.fetchError) return null;
+  const planned = Math.round(c.plannedHours);
+  const desk = Math.round(c.realDeskHours);
+  const diff = Math.round(c.difference);
+  if (diff >= 8) {
+    return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${desk} hours of real desk time, so you're roughly ${diff} hours over what fits.`;
+  }
+  if (diff <= -8) {
+    return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${desk} hours of real desk time, so there's about ${Math.abs(diff)} hours of room left if you want to pull something in.`;
+  }
+  return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${desk} hours of real desk time — close to balanced.`;
 }
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -125,22 +154,30 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
     titleById.set(Number(g.id), g.title);
   }
 
-  const liveNow: OrientLiveSession[] = listActiveSessions().map(s => ({
-    workItemId: s.workItemId,
-    title: titleById.get(s.workItemId) ?? `#${s.workItemId}`,
-    startedAt: s.startedAt,
-    minutesOpen: minutesSince(s.startedAt, now),
-  }));
+  const liveNow: OrientLiveSession[] = listActiveSessions().map(s => {
+    const title = titleById.get(s.workItemId) ?? `#${s.workItemId}`;
+    return {
+      workItemId: s.workItemId,
+      title,
+      displayName: displayNameFor(s.workItemId, title),
+      startedAt: s.startedAt,
+      minutesOpen: minutesSince(s.startedAt, now),
+    };
+  });
 
   const lastRow = getLastEndedSession();
   const lastSession: OrientLastSession | null = lastRow
-    ? {
-        workItemId: lastRow.work_item_id,
-        title: titleById.get(lastRow.work_item_id) ?? `#${lastRow.work_item_id}`,
-        endedAt: lastRow.ended_at as string,
-        summary: lastRow.summary,
-        minutesAgo: minutesSince(lastRow.ended_at as string, now),
-      }
+    ? (() => {
+        const title = titleById.get(lastRow.work_item_id) ?? `#${lastRow.work_item_id}`;
+        return {
+          workItemId: lastRow.work_item_id,
+          title,
+          displayName: displayNameFor(lastRow.work_item_id, title),
+          endedAt: lastRow.ended_at as string,
+          summary: lastRow.summary,
+          minutesAgo: minutesSince(lastRow.ended_at as string, now),
+        };
+      })()
     : null;
 
   let storiesMissingPlanning = 0;
@@ -182,12 +219,13 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
     helperNotes: {
       summary: helperNotes.summary,
       summaryAt: helperNotes.summaryAt,
-      openNudges: helperNotes.notes.map(n => ({ id: n.id, body: n.body, createdAt: n.createdAt })),
+      openNudgeCount: helperNotes.notes.length,
     },
     gaps: {
       storiesMissingPlanning,
       tasksMissingEstimate,
     },
     capacity,
+    capacitySummary: plainCapacitySummary(capacity),
   };
 }

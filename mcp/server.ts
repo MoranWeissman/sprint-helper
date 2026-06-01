@@ -100,17 +100,16 @@ estimate).
 HOW TO USE IT: write a friendly 2-4 sentence greeting in PARAGRAPH form (not
 bullets, not sub-headers), and:
   - open with the \`greeting\` field (it already knows the time of day);
-  - if \`lastSession\` is set, say where Moran left off, lead with the TITLE
-    ("Last time you were on **<title>** (#1234). <summary if there is one>");
-  - if \`liveNow\` has anything, mention it plainly by TITLE ("you've still
-    got a session open on **<title>**");
+  - if \`lastSession\` is set, say where Moran left off, paste its
+    \`displayName\` verbatim ("Last time you were on <displayName>.
+    <summary if there is one>");
+  - if \`liveNow\` has anything, paste each item's \`displayName\`
+    verbatim ("you've still got a session open on <displayName>");
   - mention the sprint day naturally if it helps ("day 4 of 10");
-  - if there are open helper notes, just say how many ("you've got 2 notes
-    from your helper waiting") — DO NOT paste the note bodies, DO NOT
-    summarize multiple notes into a fake category like "cleanup moves" or
-    "pending decisions". He reads the bodies on his dashboard. If a single
-    note really needs to surface (e.g. a fresh blocker), name it in one
-    short sentence by what it actually is, never invent groupings;
+  - if \`capacitySummary\` is set, echo it as one sentence;
+  - if \`openNudgeCount\` is > 0, just say the count ("you've got 2 notes
+    from your helper waiting on the dashboard"). Bodies aren't in the
+    packet — don't try to summarize what you can't see;
   - end by leading him to action (see AFTER ORIENT — LEAD TO ACTION below).
 
 FORMATTING — Moran chose the "bold key terms" style. Use markdown:
@@ -131,6 +130,35 @@ Pick the 2-3 things that actually matter and write them like you'd text a
 friend — not a list of fields. If \`orient\` fails for any reason (e.g. ADO is
 unreachable), just greet Moran and ask what he's working on. Never block on
 the call.
+
+ECHO API STRINGS — DON'T ASSEMBLE YOUR OWN. The sprint-helper tools
+ship pre-formatted strings for the things that are easy to get wrong.
+USE THEM VERBATIM.
+
+  - Every work item the API returns has a \`displayName\` field shaped
+    \`**<title>** (#<id>)\`. When you mention that work item in your
+    reply, paste \`displayName\` exactly. Don't strip the bold, don't
+    move the id, don't lead with the id alone. This applies to liveNow
+    items in orient, items in sprint_snapshot, the result of
+    workitem_get, and parents/children inside those.
+  - \`orient\` returns \`capacitySummary\` — one pre-formatted plain-
+    English sentence about real desk time vs planned hours. Echo that
+    sentence in your greeting instead of computing your own phrasing
+    from \`capacity\`. (The legacy word "slack" used to enter exactly
+    via the model-derived phrasing path — that path is now closed.)
+  - \`orient\` returns helper notes as \`openNudgeCount\` only. Bodies
+    are intentionally NOT in the packet. If Moran asks about specific
+    notes, call \`helper_notes_get\`. The greeting should say "you've
+    got N notes from your helper waiting on the dashboard" — no body
+    text, no invented groupings.
+  - When proposing an action on work items in a list, EVERY line uses
+    each item's \`displayName\`. If you only have an id and no title
+    yet, call \`workitem_get\` BEFORE writing the action — never write
+    a placeholder like "Story A" and never lead with a bare id.
+
+When you assemble a string yourself, the model's freedom is exactly
+where banned words and bare-id lists slip in. Echoing the API string
+removes that freedom — there's nothing for you to invent.
 
 PLAIN ENGLISH OUTPUT — WRITE LIKE YOU'D TEXT A FRIEND. Moran does not
 speak project-manager-ese. He literally does not know what half these
@@ -487,18 +515,16 @@ CAPACITY (Moran's real desk time after meetings):
      mid-conversation.
 
   When to read capacity from orient:
-    - Always read \`orient.capacity\` once at the start of the chat.
-    - If \`capacity.hasUrl\` is true and \`difference\` is ≥ 8h
-      (planned > real desk), the opening greeting should mention it
-      plainly in his words ("you've planned about Xh more than fits in
-      your real desk time this sprint"). The system will have also
-      dropped a one-time-per-sprint helper note about this.
-    - If \`difference\` is ≤ -8h (more real desk time than planned work),
-      mention it gently: "you've got about Xh of room left if you want
-      to pull something else in." Never use the word "slack".
-    - Either way, spell out the numbers if Moran asks — "Yh of meetings,
-      Xh of real desk time, you've planned Zh of work" — instead of
-      jargon labels.
+    - Always read \`orient.capacitySummary\` (pre-formatted plain-English
+      sentence). If it's set, echo it as one sentence in your greeting.
+      Don't paraphrase tighter — the wording is deliberate and is the
+      single approved place this sentence is generated.
+    - If \`orient.capacitySummary\` is null and Moran asks about capacity,
+      it means the calendar isn't wired up — tell him plainly and point
+      him at \`docs/setup/outlook-calendar.md\`.
+    - The raw \`capacity\` object is still in the packet for cases where
+      Moran asks for specific numbers ("how many hours of meetings?").
+      Otherwise prefer the pre-formatted summary.
 
   When to call \`capacity_check\` directly:
     - When Moran asks "is this realistic?", "how much time do I really
@@ -718,6 +744,7 @@ server.registerTool(
         .map(w => ({
           workItemId: w.id,
           title: w.title,
+          displayName: displayNameFor(w.id, w.title),
           sessionId: w.activeSession!.id,
           startedAt: w.activeSession!.startedAt,
         })),
@@ -750,13 +777,25 @@ server.registerTool(
   },
 );
 
+function displayNameFor(id: number | string, title: string): string {
+  return `**${title}** (#${id})`;
+}
+
 function slim(w: Awaited<ReturnType<typeof buildDashboard>>['workItems']['inProgress'][number]) {
   return {
     id: w.id,
     title: w.title,
+    /** Pre-formatted `**title** (#id)` — echo verbatim. Never assemble yourself. */
+    displayName: displayNameFor(w.id, w.title),
     type: w.type,
     state: w.state,
-    parent: w.parent ? { id: w.parent.id, title: w.parent.title } : undefined,
+    parent: w.parent
+      ? {
+          id: w.parent.id,
+          title: w.parent.title,
+          displayName: displayNameFor(w.parent.id, w.parent.title),
+        }
+      : undefined,
     originalEstimate: w.originalEstimate,
     remainingWork: w.remainingWork,
     runningTimer: w.runningSince ? { startedAt: w.runningSince } : undefined,
@@ -861,14 +900,27 @@ server.registerTool(
         id: d.id,
         type: d.type,
         title: d.title,
+        displayName: displayNameFor(d.id, d.title),
         state: d.state,
         tags,
         assignedTo: d.assignedTo,
         iteration,
         parent: d.parent
-          ? { id: d.parent.id, title: d.parent.title, type: d.parent.type, state: d.parent.state }
+          ? {
+              id: d.parent.id,
+              title: d.parent.title,
+              displayName: displayNameFor(d.parent.id, d.parent.title),
+              type: d.parent.type,
+              state: d.parent.state,
+            }
           : undefined,
-        children: d.children.map(c => ({ id: c.id, title: c.title, type: c.type, state: c.state })),
+        children: d.children.map(c => ({
+          id: c.id,
+          title: c.title,
+          displayName: displayNameFor(c.id, c.title),
+          type: c.type,
+          state: c.state,
+        })),
         originalEstimate: d.originalEstimate,
         remainingWork: d.remainingWork,
         completedWork: d.completedWork,
