@@ -845,15 +845,17 @@ function DailyView({
                 </header>
                 {childStories.length > 0 && (
                   <div className="r21-daily-list">
-                    {childStories.map(s => (
-                      <DailyStoryCard
-                        key={s.id}
-                        story={s}
-                        expanded={expanded.has(s.id)}
-                        onOpenItem={onOpenItem}
-                        onToggleExpanded={() => toggleExpanded(s.id)}
-                      />
-                    ))}
+                    {[...childStories]
+                      .sort((a, b) => STORY_STATE_ORDER[storyDominantState(a)] - STORY_STATE_ORDER[storyDominantState(b)])
+                      .map(s => (
+                        <DailyStoryCard
+                          key={s.id}
+                          story={s}
+                          expanded={expanded.has(s.id)}
+                          onOpenItem={onOpenItem}
+                          onToggleExpanded={() => toggleExpanded(s.id)}
+                        />
+                      ))}
                   </div>
                 )}
               </section>
@@ -879,16 +881,7 @@ function DailyStoryCard({
   const sp = story.storyPoints != null ? `${fmtNum(story.storyPoints)}d` : '—';
   const eff = story.effort != null ? `${fmtNum(story.effort)}h` : '—';
   const taskCount = story.counts.inProgress + story.counts.upNext + story.counts.done;
-
-  // The dominant state — drives the top stripe color so each card is scannable.
-  const dominant =
-    story.counts.inProgress > 0
-      ? 'going'
-      : story.counts.done > 0 && story.counts.upNext === 0
-        ? 'done'
-        : story.counts.upNext > 0
-          ? 'waiting'
-          : 'empty';
+  const dominant = storyDominantState(story);
 
   return (
     <article className={`r21-daily-card is-state-${dominant} ${expanded ? 'is-expanded' : ''} ${story.hasActiveSession ? 'is-live' : ''}`}>
@@ -901,6 +894,7 @@ function DailyStoryCard({
           <span className="r21-daily-card-meta-row">
             <span className={`r21-daily-kind kind-${kindSlug(story.type)}`}>{story.type}</span>
             <Mono className="r21-daily-card-id">#{story.id}</Mono>
+            <span className={`r21-daily-state state-${dominant}`}>{storyStateLabel(dominant)}</span>
           </span>
           <h2 className="r21-daily-card-title">{story.title}</h2>
         </span>
@@ -998,6 +992,24 @@ function DailyStoryCard({
 function fmtNum(n: number): string {
   const r = Math.round(n * 10) / 10;
   return Number.isInteger(r) ? String(Math.round(r)) : r.toString();
+}
+
+type StoryState = 'going' | 'waiting' | 'done' | 'empty';
+
+const STORY_STATE_ORDER: Record<StoryState, number> = { going: 0, waiting: 1, empty: 2, done: 3 };
+
+function storyDominantState(s: ApiUserStoryGroup): StoryState {
+  if (s.counts.inProgress > 0) return 'going';
+  if (s.counts.done > 0 && s.counts.upNext === 0) return 'done';
+  if (s.counts.upNext > 0) return 'waiting';
+  return 'empty';
+}
+
+function storyStateLabel(d: StoryState): string {
+  if (d === 'going') return 'in work';
+  if (d === 'waiting') return 'not started';
+  if (d === 'done') return 'closed';
+  return 'no tasks';
 }
 
 function dailyStateClass(state: string): string {

@@ -2518,6 +2518,37 @@ html, body {
   border-color: color-mix(in oklch, var(--st-blocked) 50%, transparent);
   color: var(--st-blocked);
 }
+.r21-daily-state {
+  display: inline-flex; align-items: center;
+  padding: 3px 9px;
+  font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  color: var(--ink-3);
+}
+.r21-daily-state.state-going {
+  background: var(--st-going-bg);
+  border-color: color-mix(in oklch, var(--st-going) 50%, transparent);
+  color: var(--st-going);
+}
+.r21-daily-state.state-waiting {
+  background: var(--st-waiting-bg);
+  border-color: color-mix(in oklch, var(--st-waiting) 50%, transparent);
+  color: var(--st-waiting);
+}
+.r21-daily-state.state-done {
+  background: var(--st-done-bg);
+  border-color: color-mix(in oklch, var(--st-done) 50%, transparent);
+  color: var(--st-done);
+}
+
+/* Closed stories recede so in-work stories pop. */
+.r21-daily-card.is-state-done { opacity: 0.6; }
+.r21-daily-card.is-state-done:hover,
+.r21-daily-card.is-state-done:focus-within,
+.r21-daily-card.is-state-done.is-expanded { opacity: 1; }
+
 .r21-daily-card.is-live .r21-daily-kind {
   background: var(--accent-soft);
   border-color: var(--accent-deep);
