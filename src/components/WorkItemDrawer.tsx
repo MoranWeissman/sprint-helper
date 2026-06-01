@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import DOMPurify from 'dompurify';
+import MarkdownIt from 'markdown-it';
 import {
   useWorkItem,
   type ApiWorkItemDetail,
@@ -7,6 +8,12 @@ import {
   type ApiWorkItemComment,
 } from '../lib/api';
 import { Mono } from './Mono';
+
+// ADO descriptions arrive in two flavors: HTML (from rich-text editing) and
+// markdown (when something — or someone — writes it that way). markdown-it
+// with html:true preserves HTML blocks, parses markdown to HTML, and the
+// result is then DOMPurified for safety. Single pipeline, no detection.
+const md = new MarkdownIt({ html: true, linkify: true, breaks: false });
 
 interface WorkItemDrawerProps {
   /** ADO id of the item to show. Null = drawer closed. */
@@ -260,18 +267,24 @@ function EffortBlock({
 }
 
 function SafeHtml({ html }: { html: string }) {
-  const clean = DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: [
-      'p', 'div', 'span', 'br', 'hr',
-      'strong', 'em', 'b', 'i', 'u', 'code', 'pre',
-      'ul', 'ol', 'li',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'a', 'img',
-      'table', 'thead', 'tbody', 'tr', 'th', 'td',
-      'blockquote',
-    ],
-    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'target', 'rel'],
-  });
+  const clean = useMemo(() => {
+    // Render through markdown-it first so markdown bodies become real HTML.
+    // HTML inputs pass through (html:true), then DOMPurify enforces the
+    // tag/attr allow-list.
+    const rendered = md.render(html);
+    return DOMPurify.sanitize(rendered, {
+      ALLOWED_TAGS: [
+        'p', 'div', 'span', 'br', 'hr',
+        'strong', 'em', 'b', 'i', 'u', 'code', 'pre',
+        'ul', 'ol', 'li',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'a', 'img',
+        'table', 'thead', 'tbody', 'tr', 'th', 'td',
+        'blockquote',
+      ],
+      ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'target', 'rel'],
+    });
+  }, [html]);
   return (
     <div
       className="ember-drawer-html"

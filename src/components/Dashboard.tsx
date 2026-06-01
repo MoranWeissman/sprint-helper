@@ -998,7 +998,22 @@ type StoryState = 'going' | 'waiting' | 'done' | 'empty';
 
 const STORY_STATE_ORDER: Record<StoryState, number> = { going: 0, waiting: 1, empty: 2, done: 3 };
 
+function classifyAdoState(state: string): 'going' | 'done' | 'waiting' {
+  const s = state.toLowerCase();
+  if (s === 'active' || s === 'in progress' || s === 'doing' || s === 'committed') return 'going';
+  if (s === 'done' || s === 'closed' || s === 'resolved' || s === 'completed' || s === 'removed') return 'done';
+  return 'waiting';
+}
+
 function storyDominantState(s: ApiUserStoryGroup): StoryState {
+  // Live session beats everything — you're literally working on it now.
+  if (s.hasActiveSession) return 'going';
+  const ownState = classifyAdoState(s.state);
+  // Story itself closed → whole card is done regardless of leftover tasks.
+  if (ownState === 'done') return 'done';
+  // Story itself active → show going even if child tasks haven't been flipped yet.
+  if (ownState === 'going') return 'going';
+  // Otherwise fall back to child task counts.
   if (s.counts.inProgress > 0) return 'going';
   if (s.counts.done > 0 && s.counts.upNext === 0) return 'done';
   if (s.counts.upNext > 0) return 'waiting';
