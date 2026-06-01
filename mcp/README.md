@@ -20,7 +20,8 @@ To remove later: `claude mcp remove sprint-helper`.
 
 | Tool | What it does |
 |---|---|
-| `sprint_snapshot` | Current sprint + counts + in-progress items + live sessions. Good to call at the start of a chat. |
+| `orient` | **Opening ritual.** Call this as the very first tool on the first user message of a new session. Returns: time-of-day greeting, sprint day-of-N, live sessions still open, the last session that ended (where she left off), helper's notes summary + open nudges, and a quick gap count. Compose a short plain-English orientation from it — don't dump the raw fields. |
+| `sprint_snapshot` | Current sprint + counts + in-progress items + live sessions. Heavier than `orient`; call when you need the full board. |
 | `list_my_work_items` | Flat list of work items in the sprint. Optional `state` filter: `inProgress` / `upNext` / `done`. |
 | `sprint_check_in` | **Guardrail.** Before starting unplanned work, check whether it's in Moran's sprint. Returns matches + a `nextStep` (`confirm_match` / `choose_match` / `no_match`). |
 | `task_create` | Create a new Task in the current sprint. **Requires `estimateHours`** — ask Moran for it first. Sets both OriginalEstimate and RemainingWork. `adHoc: true` tags it for the quick 1–2h case. Optional `parentStoryId`. |
@@ -35,8 +36,8 @@ To remove later: `claude mcp remove sprint-helper`.
 
 ## Recommended flow at session start
 
-1. Call `sprint_snapshot` to see what's going on.
-2. Ask Moran what she wants to work on.
+1. Call `orient` first — compose a short greeting from it (where she left off, day of sprint, open nudges).
+2. Ask Moran what she wants to pick up today.
 3. Call `sprint_check_in` with her description.
 4. Based on `nextStep`:
    - `confirm_match` — confirm the match, then `session_start({workItemId})`.

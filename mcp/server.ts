@@ -4,7 +4,7 @@
  *
  * Exposes sprint-helper backend operations to Claude Code (or any MCP client)
  * over stdio. Tools fall into these buckets:
- *  - read:      sprint_snapshot, list_my_work_items
+ *  - read:      orient, sprint_snapshot, list_my_work_items
  *  - guardrail: sprint_check_in, task_create, story_create
  *  - edits:     workitem_edit
  *  - sessions:  session_start, session_log, session_end
@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { buildDashboard } from '../server/dashboard.js';
 import { sprintCheckIn } from '../server/guardrail.js';
 import { addNote, getHelperNotes, setSummary } from '../server/helper-notes.js';
+import { buildOrientPacket } from '../server/orient.js';
 import {
   endSession,
   isSessionEventType,
@@ -45,6 +46,27 @@ const SERVER_INSTRUCTIONS = `
 Sprint-helper keeps Moran aligned with her Azure DevOps sprint while she works
 in Claude Code. Treat it as her sprint conscience — use it proactively, don't
 wait to be asked.
+
+OPENING RITUAL — the FIRST thing you do in any new conversation:
+Before responding to Moran's first message in plain text, call \`orient\` with
+no arguments. It returns a small packet: time-of-day greeting, sprint day-of-N,
+any live sessions still open, the last session that ended (where she left off),
+the helper's notes summary, open nudges she hasn't ticked off, and a quick
+count of stories/tasks missing planning fields. Use it to compose a short
+plain-English opening — 2–4 sentences max — that:
+  - greets her using the greeting field (it already knows time of day);
+  - tells her where she left off if \`lastSession\` is present ("Last time you
+    were on #1234 — <title>. <summary if there is one>");
+  - if \`liveNow\` is non-empty, says so plainly ("session is still open on
+    #X");
+  - mentions the sprint day naturally if useful ("day 4 of 10");
+  - if there are open nudges, says how many ("2 notes from your helper
+    waiting") — DO NOT dump the bodies, she reads those on her dashboard;
+  - ends by asking what she wants to pick up today.
+Don't dump the raw fields. Don't list everything. Pick the 2–3 most useful
+signals and write them as you'd write a text to a friend. If \`orient\` errors
+(e.g. ADO unavailable), greet her plainly and ask what she's working on —
+don't block on the call.
 
 AT THE START OF WORK — before diving in:
 When Moran says she's starting or working on something (e.g. "I've started
@@ -111,6 +133,7 @@ KEEPING MORAN'S NOTES (her dashboard's "helper's notes" space):
   - Never write effort or status to Azure DevOps from a note — notes are just your
     read for her; ADO writes still only happen via the confirm-first close-the-loop.
 
+Call \`orient\` at the start of EVERY new session (see OPENING RITUAL above).
 Call \`sprint_snapshot\` whenever you need to see what's in the current sprint
 and what's already live. Use plain English with Moran — never say "ceremony",
 "session", or "work item id" to her; say "live", "task", and "#1234".
@@ -158,6 +181,23 @@ const workItemIdSchema = z
 /* ============================================================ */
 /*  Read tools                                                   */
 /* ============================================================ */
+
+server.registerTool(
+  'orient',
+  {
+    title: 'Orient at session start',
+    description:
+      "Read where Moran left off and what's waiting in her sprint right now. ALWAYS call this as the very first tool on the FIRST user message of a new session — it is how you know what to say in your opening greeting. Returns: greeting (time-of-day appropriate), sprint day-of-N, any live sessions still open, the last session that ended (where she left off), the helper's notes summary + open nudges she hasn't ticked off, and a quick gap count (stories/tasks missing planning fields). Compose a short plain-English orientation from this — don't dump the raw fields. See SERVER_INSTRUCTIONS → OPENING RITUAL.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      return jsonResult(await buildOrientPacket());
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
 
 server.registerTool(
   'sprint_snapshot',
