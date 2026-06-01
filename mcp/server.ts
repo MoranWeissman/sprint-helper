@@ -4,7 +4,7 @@
  *
  * Exposes sprint-helper backend operations to Claude Code (or any MCP client)
  * over stdio. Tools fall into these buckets:
- *  - read:      orient, sprint_snapshot, list_my_work_items
+ *  - read:      orient, sprint_snapshot, list_my_work_items, workitem_get
  *  - guardrail: sprint_check_in, task_create, story_create
  *  - edits:     workitem_edit
  *  - sessions:  session_start, session_log, session_end
@@ -35,6 +35,7 @@ import {
   startSession,
 } from '../server/sessions.js';
 import * as timerService from '../server/timer-service.js';
+import { getWorkItem } from '../server/ado.js';
 import {
   createStory,
   createTask,
@@ -44,6 +45,7 @@ import {
   setRemaining,
   setStateBucket,
   setStoryPoints,
+  updateTags,
   type StateBucket,
 } from '../server/writes.js';
 
@@ -293,6 +295,23 @@ KEEPING MORAN'S NOTES (his dashboard's "helper's notes" space):
   - Never write effort or status to Azure DevOps from a note — notes are just your
     read for him; ADO writes still only happen via the confirm-first close-the-loop.
 
+PREFER SPRINT-HELPER OVER RAW \`az\`. Sprint-helper exists so Moran has ONE
+coordinated layer in front of Azure DevOps — caches stay coherent, writes
+get invalidated, the dashboard and the assistant see the same state. If
+sprint-helper has a tool for what you need, USE IT, even if a one-line
+\`az boards ...\` call seems quicker. Concretely:
+  - Reading one item by id → \`workitem_get\`, NOT \`az boards work-item
+    show\`.
+  - Listing the sprint → \`sprint_snapshot\` or \`list_my_work_items\`.
+  - Any field change (state, estimate, remaining, story points, effort,
+    tags) → \`workitem_edit\`, NOT \`az boards work-item update\` or
+    direct PATCH.
+  - Creating a task / story → \`task_create\` / \`story_create\`.
+Only fall back to \`az\` if sprint-helper genuinely lacks the field or
+operation you need — and when you do, TELL Moran in your reply that you
+used az because feature X is missing from sprint-helper. That's how we
+find gaps and close them.
+
 Call \`orient\` at the start of EVERY new chat (see OPENING GREETING above).
 Call \`sprint_snapshot\` whenever you need to see what's in the current sprint
 and what's already live. Use plain English with Moran — never say "ceremony",
@@ -445,7 +464,7 @@ server.registerTool(
   {
     title: 'Edit work item fields',
     description:
-      "Update an existing work item in Azure DevOps. Use this to backfill planning fields the POM delivery manager needs. State uses Moran's plain English buckets: 'waiting' (New/To Do/Proposed), 'going' (Active/In Progress/Doing), 'done' (Closed/Done/Resolved). Effort fields are in hours. Story-level fields: storyPoints (his team treats 1 point = 1 day) and effort (total hours he thinks the story is) — use these to fix stories with blank planning.",
+      "Update an existing work item in Azure DevOps. Covers state, effort fields, story planning fields, and tags. State uses Moran's plain English buckets: 'waiting' (New/To Do/Proposed), 'going' (Active/In Progress/Doing), 'done' (Closed/Done/Resolved). Effort fields are in hours. Story-level: storyPoints (his team treats 1 point = 1 day) and effort (total hours). Tags: addTags adds them (case-insensitive dedup), removeTags removes them, both can be passed together.",
     inputSchema: {
       workItemId: workItemIdSchema,
       state: z.enum(['waiting', 'going', 'done']).optional(),
@@ -453,11 +472,18 @@ server.registerTool(
       remainingWork: z.number().min(0).optional().describe('Task field, in hours. Burns down as work happens.'),
       storyPoints: z.number().min(0).optional().describe('Story field. His team treats 1 point = 1 day.'),
       effort: z.number().min(0).optional().describe('Story field, in hours. Total hours he thinks the story is.'),
+      addTags: z.array(z.string().min(1)).optional().describe('Tag names to add to this item (e.g. ["Blocked"]). Case-insensitive dedup against existing tags.'),
+      removeTags: z.array(z.string().min(1)).optional().describe('Tag names to remove from this item.'),
     },
   },
-  async ({ workItemId, state, originalEstimate, remainingWork, storyPoints, effort }) => {
-    if (state == null && originalEstimate == null && remainingWork == null && storyPoints == null && effort == null) {
-      return errorResult('At least one of state, originalEstimate, remainingWork, storyPoints, effort is required.');
+  async ({ workItemId, state, originalEstimate, remainingWork, storyPoints, effort, addTags, removeTags }) => {
+    if (
+      state == null && originalEstimate == null && remainingWork == null &&
+      storyPoints == null && effort == null &&
+      (addTags == null || addTags.length === 0) &&
+      (removeTags == null || removeTags.length === 0)
+    ) {
+      return errorResult('At least one of state, originalEstimate, remainingWork, storyPoints, effort, addTags, removeTags is required.');
     }
     const applied: {
       state?: string;
@@ -465,6 +491,7 @@ server.registerTool(
       remainingWork?: number;
       storyPoints?: number;
       effort?: number;
+      tags?: string[];
     } = {};
     try {
       if (state) applied.state = await setStateBucket(workItemId, state as StateBucket);
@@ -484,8 +511,52 @@ server.registerTool(
         await setEffort(workItemId, effort);
         applied.effort = effort;
       }
+      if ((addTags && addTags.length > 0) || (removeTags && removeTags.length > 0)) {
+        applied.tags = await updateTags(workItemId, { add: addTags, remove: removeTags });
+      }
       invalidateDashboardCache();
       return jsonResult({ applied });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'workitem_get',
+  {
+    title: 'Read a single work item',
+    description:
+      "Fetch one work item by id from Azure DevOps. Returns id, type, title, state, tags (as an array), assignedTo, iteration (last segment), parent (id+title+type), children list, originalEstimate / remainingWork / completedWork, plus url. Use this instead of shelling out to 'az boards work-item show' so writes stay coordinated with sprint-helper's caches and Moran's POM delivery manager sees consistent state.",
+    inputSchema: {
+      workItemId: workItemIdSchema,
+    },
+  },
+  async ({ workItemId }) => {
+    try {
+      const d = await getWorkItem(workItemId);
+      const tags = (d.tags ?? '')
+        .split(';')
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
+      const iteration = d.iterationPath.split('\\').pop() ?? d.iterationPath;
+      return jsonResult({
+        id: d.id,
+        type: d.type,
+        title: d.title,
+        state: d.state,
+        tags,
+        assignedTo: d.assignedTo,
+        iteration,
+        parent: d.parent
+          ? { id: d.parent.id, title: d.parent.title, type: d.parent.type, state: d.parent.state }
+          : undefined,
+        children: d.children.map(c => ({ id: c.id, title: c.title, type: c.type, state: c.state })),
+        originalEstimate: d.originalEstimate,
+        remainingWork: d.remainingWork,
+        completedWork: d.completedWork,
+        webUrl: d.webUrl,
+      });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }

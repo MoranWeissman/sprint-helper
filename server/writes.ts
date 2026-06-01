@@ -32,6 +32,7 @@ interface AdoWorkItemSlim {
     'Microsoft.VSTS.Scheduling.CompletedWork'?: number;
     'Microsoft.VSTS.Scheduling.RemainingWork'?: number;
     'System.State'?: string;
+    'System.Tags'?: string;
   };
 }
 
@@ -45,10 +46,55 @@ async function fetchEffortFields(id: number): Promise<AdoWorkItemSlim> {
     'Microsoft.VSTS.Scheduling.CompletedWork',
     'Microsoft.VSTS.Scheduling.RemainingWork',
     'System.State',
+    'System.Tags',
   ].join(',');
   const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitems/${id}?fields=${encodeURIComponent(fields)}&api-version=7.1`;
   const { stdout } = await azExec(['rest', '--method', 'GET', '--uri', uri, '--resource', ADO_RESOURCE]);
   return JSON.parse(stdout) as AdoWorkItemSlim;
+}
+
+/** Parse ADO's "tag1; tag2; tag3" string into a clean lowercased Set. */
+function parseTags(raw: string | undefined): Set<string> {
+  if (!raw) return new Set();
+  return new Set(
+    raw
+      .split(';')
+      .map(t => t.trim())
+      .filter(t => t.length > 0),
+  );
+}
+
+/**
+ * Mutate the System.Tags field. Tags are case-sensitive in ADO display but
+ * case-insensitive in dedup. `add` and `remove` may overlap; remove wins.
+ * Returns the resulting tag list (in canonical order).
+ */
+export async function updateTags(
+  workItemId: number,
+  opts: { add?: string[]; remove?: string[] },
+): Promise<string[]> {
+  const current = await fetchEffortFields(workItemId);
+  const tagSet = parseTags(current.fields['System.Tags']);
+  // Case-insensitive lookups so we don't dup "Blocked" + "blocked".
+  const lowerToCanonical = new Map<string, string>();
+  for (const t of tagSet) lowerToCanonical.set(t.toLowerCase(), t);
+
+  for (const t of opts.add ?? []) {
+    const lower = t.trim().toLowerCase();
+    if (!lower) continue;
+    if (!lowerToCanonical.has(lower)) lowerToCanonical.set(lower, t.trim());
+  }
+  for (const t of opts.remove ?? []) {
+    const lower = t.trim().toLowerCase();
+    lowerToCanonical.delete(lower);
+  }
+
+  const final = Array.from(lowerToCanonical.values()).sort((a, b) => a.localeCompare(b));
+  const newValue = final.join('; ');
+  await patchWorkItem(workItemId, [
+    { op: 'add', path: '/fields/System.Tags', value: newValue },
+  ]);
+  return final;
 }
 
 /**
