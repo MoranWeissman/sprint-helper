@@ -84,6 +84,13 @@ function DashboardLive({
   const railDays = sprintCtx ? sprintDays(sprintCtx, now) : [];
 
   const stories = data.userStories;
+  // "My stories" surfaces shouldn't include parent groups that are actually
+  // Features or Epics — those happen when tasks are linked directly to a
+  // feature with no intermediate user story. Filter once at the top.
+  const storyOnlyAll = stories.filter(s => {
+    const t = s.type.toLowerCase();
+    return t !== 'feature' && t !== 'epic';
+  });
   const inProgress = data.workItems.inProgress;
   const upNext = data.workItems.upNext;
   const done = data.workItems.done;
@@ -221,7 +228,7 @@ function DashboardLive({
               </span>
             </div>
             <button className="r21-escape" onClick={() => setShowBoard(true)} title="Show the whole board — your work keeps logging">
-              <span><span className="v">{Math.max(0, stories.length - 1)}</span> more in sprint</span>
+              <span><span className="v">{Math.max(0, storyOnlyAll.length - 1)}</span> more in sprint</span>
               <span className="arr">↗</span>
             </button>
           </div>
@@ -548,6 +555,13 @@ function R21Overview({
   const logged = Math.round(capacity.completedHours);
   const estimate = Math.round(capacity.totalEstimateHours);
   const dailyItems = done.slice(0, 4);
+  // Overview's "My stories" should only show actual stories. Features and
+  // Epics sometimes appear in userStories because tasks can be parented
+  // directly to a feature — those parent groups don't belong in this list.
+  const storyOnly = stories.filter(s => {
+    const t = s.type.toLowerCase();
+    return t !== 'feature' && t !== 'epic';
+  });
   const sprintItems = [...inProgress, ...upNext].slice(0, 5);
 
   return (
@@ -583,10 +597,10 @@ function R21Overview({
       <section>
         <div className="r21-stories-head">
           <span className="r21-stories-title">My stories</span>
-          <span className="r21-stories-meta">{stories.length} in sprint · click to open</span>
+          <span className="r21-stories-meta">{storyOnly.length} in sprint · click to open</span>
         </div>
         <div className="r21-stories-grid">
-          {stories.map(s => (
+          {storyOnly.map(s => (
             <button
               key={s.id}
               type="button"
