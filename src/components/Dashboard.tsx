@@ -124,10 +124,9 @@ function DashboardLive({
   // is the manual "show the whole board" escape while a session is still live.
   const [focalId, setFocalId] = useState<string | null>(null);
   const [showBoard, setShowBoard] = useState(false);
-  // The "Daily view" is the DEFAULT body of Day mode. The sidebar button flips
-  // to the calmer "Overview" (helper's notes + headline + story chips). A live
-  // session still wins — it morphs to Focus regardless of this toggle.
-  const [dailyOpen, setDailyOpen] = useState(true);
+  // Day mode is now two-place: Daily (the board) and Focus (auto-morphs when
+  // a session is live). The old "Overview" place was merged into Daily —
+  // helper notes, capacity, and the stat strip all live at the top of Daily.
   const pickMode = (m: ModeId) => setMode(m);
   useEffect(() => {
     if (liveItems.length === 0) {
@@ -144,17 +143,8 @@ function DashboardLive({
     [liveItems, focalTask],
   );
   // Focus has top precedence — if a session is live and Moran hasn't asked to
-  // see the whole board, the screen morphs to Focus regardless of Daily/Overview.
+  // see the whole board, the screen morphs to Focus.
   const isFocus = mode === 'day' && !!focalTask && !showBoard;
-  const isDaily = mode === 'day' && !isFocus && dailyOpen;
-
-  const focusStory = (storyId: string) => {
-    const t = liveItems.find(w => (w.parent?.id ?? w.id) === storyId);
-    if (t) {
-      setFocalId(t.id);
-      setShowBoard(false);
-    }
-  };
 
   const sprintLabel = data.sprint?.name ?? '—';
 
@@ -178,11 +168,10 @@ function DashboardLive({
           today={today}
           totalDays={sprintCtx?.totalDays ?? 0}
           railDays={railDays}
-          view={isFocus ? 'focus' : (isDaily ? 'daily' : 'overview')}
+          view={isFocus ? 'focus' : 'daily'}
           hasLive={liveItems.length > 0}
-          onPickDaily={() => { setShowBoard(true); setDailyOpen(true); }}
-          onPickOverview={() => { setShowBoard(true); setDailyOpen(false); }}
-          onPickFocus={() => { setShowBoard(false); }}
+          onPickDaily={() => setShowBoard(true)}
+          onPickFocus={() => setShowBoard(false)}
         />
       )}
 
@@ -238,44 +227,34 @@ function DashboardLive({
         <div className="r21-bodywrap">
           {mode !== 'day' ? (
             <ModePlaceholder mode={mode} />
-          ) : isDaily ? (
+          ) : isFocus ? (
+            <div className="r21-body is-focus">
+              {focalTask && (
+                <R21Focus
+                  task={focalTask}
+                  secondary={secondaryLive}
+                  onOpenItem={openItem}
+                  onPromoteSecondary={() => secondaryLive && setFocalId(secondaryLive.id)}
+                />
+              )}
+            </div>
+          ) : (
             <DailyView
               stories={stories}
               sprintName={sprintLabel}
               onOpenItem={openItem}
+              capacity={data.capacity}
+              outlookCapacity={data.outlookCapacity}
+              helperNotes={data.helperNotes}
+              today={today}
+              totalDays={sprintCtx?.totalDays ?? 0}
+              goingCount={inProgress.length}
+              waitingCount={upNext.length}
+              live={liveItems.length > 0}
+              focalTitle={focalTask?.title}
+              onShowFocus={() => setShowBoard(false)}
+              onRefresh={onRefresh}
             />
-          ) : (
-            <>
-              <div className="r21-body is-overview" aria-hidden={isFocus}>
-                <R21Overview
-                  capacity={data.capacity}
-                  outlookCapacity={data.outlookCapacity}
-                  helperNotes={data.helperNotes}
-                  stories={stories}
-                  inProgress={inProgress}
-                  upNext={upNext}
-                  done={done}
-                  today={today}
-                  totalDays={sprintCtx?.totalDays ?? 0}
-                  live={liveItems.length > 0}
-                  focalTitle={focalTask?.title}
-                  onOpenItem={openItem}
-                  onShowFocus={() => setShowBoard(false)}
-                  onFocusStory={focusStory}
-                  onRefresh={onRefresh}
-                />
-              </div>
-              <div className="r21-body is-focus" aria-hidden={!isFocus}>
-                {focalTask && (
-                  <R21Focus
-                    task={focalTask}
-                    secondary={secondaryLive}
-                    onOpenItem={openItem}
-                    onPromoteSecondary={() => secondaryLive && setFocalId(secondaryLive.id)}
-                  />
-                )}
-              </div>
-            </>
           )}
         </div>
       </div>
@@ -363,7 +342,6 @@ function R21Sidebar({
   view,
   hasLive,
   onPickDaily,
-  onPickOverview,
   onPickFocus,
 }: {
   dateLabel: string;
@@ -375,10 +353,9 @@ function R21Sidebar({
   today: number;
   totalDays: number;
   railDays: Array<{ index: number; state: string; label: string }>;
-  view: 'daily' | 'overview' | 'focus';
+  view: 'daily' | 'focus';
   hasLive: boolean;
   onPickDaily: () => void;
-  onPickOverview: () => void;
   onPickFocus: () => void;
 }) {
   return (
@@ -397,15 +374,6 @@ function R21Sidebar({
             onClick={onPickDaily}
           >
             Daily
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === 'overview'}
-            className={`r21-place-seg ${view === 'overview' ? 'is-active' : ''}`}
-            onClick={onPickOverview}
-          >
-            Overview
           </button>
           <button
             type="button"
@@ -596,155 +564,6 @@ function CapacityTile({ capacity }: { capacity: ApiOutlookCapacity | null }) {
   );
 }
 
-function R21Overview({
-  capacity,
-  outlookCapacity,
-  helperNotes,
-  stories,
-  inProgress,
-  upNext,
-  done,
-  today,
-  totalDays,
-  live,
-  focalTitle,
-  onOpenItem,
-  onShowFocus,
-  onFocusStory,
-  onRefresh,
-}: {
-  capacity: ApiPayload['capacity'];
-  outlookCapacity: ApiOutlookCapacity | null;
-  helperNotes: ApiHelperNotes;
-  stories: ApiUserStoryGroup[];
-  inProgress: ApiWorkItem[];
-  upNext: ApiWorkItem[];
-  done: ApiWorkItem[];
-  today: number;
-  totalDays: number;
-  live: boolean;
-  focalTitle?: string;
-  onOpenItem: (id: string) => void;
-  onShowFocus: () => void;
-  onFocusStory: (storyId: string) => void;
-  onRefresh: () => void;
-}) {
-  const remaining = Math.round(capacity.remainingHours);
-  const logged = Math.round(capacity.completedHours);
-  const estimate = Math.round(capacity.totalEstimateHours);
-  const dailyItems = done.slice(0, 4);
-  // Overview's "My stories" should only show actual stories. Features and
-  // Epics sometimes appear in userStories because tasks can be parented
-  // directly to a feature — those parent groups don't belong in this list.
-  const storyOnly = stories.filter(s => {
-    const t = s.type.toLowerCase();
-    return t !== 'feature' && t !== 'epic';
-  });
-  const sprintItems = [...inProgress, ...upNext].slice(0, 5);
-
-  return (
-    <div className="r21-overview">
-      <section>
-        <div className="r21-headline">
-          <div className="r21-headline-left">
-            <div>
-              <div className="r21-headline-cap">REMAINING</div>
-              <div className="r21-headline-big"><Mono>{remaining}</Mono><span className="unit">h</span></div>
-            </div>
-            <div className="r21-headline-day">day <span className="v">{today}</span> of <span className="v">{totalDays || '—'}</span></div>
-          </div>
-          <div className="r21-headline-prompt">
-            {live && focalTitle
-              ? <>Live on <button type="button" className="linkish" onClick={onShowFocus}>{focalTitle}</button></>
-              : <>Nothing live — pick a story below</>}
-          </div>
-        </div>
-        <div className="r21-subline">
-          <span><span className="v">{logged}h</span> logged this sprint</span>
-          <span className="sep">·</span>
-          <span><span className="v">{estimate}h</span> estimate</span>
-          <span className="sep">·</span>
-          <span><span className="v">{inProgress.length}</span> going</span>
-          <span className="sep">·</span>
-          <span><span className="v">{upNext.length}</span> waiting</span>
-        </div>
-      </section>
-
-      <HelperNotesPanel notes={helperNotes} onRefresh={onRefresh} />
-
-      <CapacityTile capacity={outlookCapacity} />
-
-      <section>
-        <div className="r21-stories-head">
-          <span className="r21-stories-title">My stories</span>
-          <span className="r21-stories-meta">{storyOnly.length} in sprint · click to open</span>
-        </div>
-        <div className="r21-stories-grid">
-          {storyOnly.map(s => {
-            const dominant = storyDominantState(s);
-            return (
-            <button
-              key={s.id}
-              type="button"
-              className={`r21-storychip is-state-${dominant} ${s.hasActiveSession ? 'is-live' : ''}`}
-              onClick={() => (s.hasActiveSession ? onFocusStory(s.id) : onOpenItem(s.id))}
-            >
-              <div className="r21-storychip-head">
-                <span className="r21-storychip-kind">{s.type}</span>
-                <span className="r21-storychip-id">#{s.id}</span>
-                {dominant === 'blocked' && <span className="r21-storychip-state">blocked</span>}
-              </div>
-              <h4 className="r21-storychip-title">{s.title}</h4>
-              <div className="r21-storychip-counts">
-                {s.counts.inProgress > 0 && <span className="c-going">{s.counts.inProgress} going</span>}
-                {s.counts.inProgress > 0 && s.counts.upNext > 0 && <span className="sep">·</span>}
-                {s.counts.upNext > 0 && <span>{s.counts.upNext} waiting</span>}
-                {s.counts.done > 0 && <><span className="sep">·</span><span>{s.counts.done} done</span></>}
-              </div>
-            </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="r21-lists">
-        <div className="r21-list">
-          <div className="r21-list-head">
-            <span className="r21-list-title">For your daily</span>
-            <span className="r21-list-meta">recently closed</span>
-          </div>
-          <ul>
-            {dailyItems.length === 0 ? (
-              <li><span className="t" style={{ color: 'var(--ink-4)' }}>Nothing closed yet</span></li>
-            ) : (
-              dailyItems.map(w => (
-                <li key={w.id} onClick={() => onOpenItem(w.id)}>
-                  <Mono className="id">closed #{w.id}</Mono>
-                  <span className="t">{w.title}</span>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-        <div className="r21-list">
-          <div className="r21-list-head">
-            <span className="r21-list-title">In this sprint</span>
-            <span className="r21-list-meta">{inProgress.length + upNext.length} open</span>
-          </div>
-          <ul>
-            {sprintItems.map(w => (
-              <li key={w.id} onClick={() => onOpenItem(w.id)}>
-                <Mono className="id">#{w.id}</Mono>
-                <span className="t">{w.title}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 function R21Focus({
   task,
   secondary,
@@ -846,11 +665,34 @@ function DailyView({
   stories,
   sprintName,
   onOpenItem,
+  capacity,
+  outlookCapacity,
+  helperNotes,
+  today,
+  totalDays,
+  goingCount,
+  waitingCount,
+  live,
+  focalTitle,
+  onShowFocus,
+  onRefresh,
 }: {
   stories: ApiUserStoryGroup[];
   sprintName: string;
   onOpenItem: (id: string) => void;
+  capacity: ApiPayload['capacity'];
+  outlookCapacity: ApiOutlookCapacity | null;
+  helperNotes: ApiHelperNotes;
+  today: number;
+  totalDays: number;
+  goingCount: number;
+  waitingCount: number;
+  live: boolean;
+  focalTitle?: string;
+  onShowFocus: () => void;
+  onRefresh: () => void;
 }) {
+  const remaining = Math.round(capacity.remainingHours);
   // Which story cards are currently expanded (show per-task EST/REM). Default
   // is collapsed for every card — Moran expands just the one she's diving into.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -907,6 +749,34 @@ function DailyView({
           )}
         </div>
       </div>
+
+      {/* Merged-in from the old Overview place: a slim sprint strip, the
+          helper-notes panel, and the capacity tile. Together they give the
+          Daily page the at-a-glance read Moran used to switch to Overview
+          for, without the second view. */}
+      <div className="r21-daily-strip">
+        <div className="r21-daily-strip-left">
+          <span className="r21-daily-strip-cap">REMAINING</span>
+          <Mono className="r21-daily-strip-big">{remaining}</Mono>
+          <span className="r21-daily-strip-unit">h</span>
+        </div>
+        <div className="r21-daily-strip-mid">
+          day <span className="v">{today}</span> of <span className="v">{totalDays || '—'}</span>
+          <span className="sep">·</span>
+          <span className="v">{goingCount}</span> going
+          <span className="sep">·</span>
+          <span className="v">{waitingCount}</span> waiting
+        </div>
+        <div className="r21-daily-strip-right">
+          {live && focalTitle
+            ? <>Live on <button type="button" className="linkish" onClick={onShowFocus}>{focalTitle}</button></>
+            : <span className="r21-daily-strip-quiet">Nothing live</span>}
+        </div>
+      </div>
+
+      <HelperNotesPanel notes={helperNotes} onRefresh={onRefresh} />
+
+      <CapacityTile capacity={outlookCapacity} />
 
       {stories.length === 0 ? (
         <p className="r21-daily-empty">No stories in this sprint yet.</p>

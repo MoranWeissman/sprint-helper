@@ -2341,6 +2341,66 @@ html, body {
 
 .r21-app[data-density="generous"] .r21-capacity { padding: 28px 34px; gap: 18px; }
 
+/* Daily strip — merged in from the old Overview place: REMAINING + day count
+   + live indicator in a single calm row above the helper-notes panel. */
+.r21-daily-strip {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 22px;
+  border: 1px solid var(--line-hair);
+  border-radius: 12px;
+  background: var(--bg-1);
+}
+.r21-daily-strip-left {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.r21-daily-strip-cap {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.r21-daily-strip-big {
+  font-size: 28px;
+  color: var(--ink-1);
+  font-weight: 500;
+}
+.r21-daily-strip-unit {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.r21-daily-strip-mid {
+  flex: 1;
+  font-size: 13.5px;
+  color: var(--ink-3);
+  text-align: center;
+}
+.r21-daily-strip-mid .v { color: var(--ink-1); font-weight: 500; }
+.r21-daily-strip-mid .sep { margin: 0 8px; color: var(--ink-5, var(--ink-4)); opacity: 0.5; }
+.r21-daily-strip-right {
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.r21-daily-strip-right .linkish {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.r21-daily-strip-right .linkish:hover { text-decoration: underline; }
+.r21-daily-strip-quiet { color: var(--ink-4); }
+
+.r21-app[data-density="generous"] .r21-daily-strip { padding: 20px 28px; }
+.r21-daily > .r21-daily-strip,
+.r21-daily > .r21-notes,
+.r21-daily > .r21-capacity { margin-bottom: 16px; }
+
 /* Blocked — first-class state bucket alongside going / waiting / done.
    Driven by ADO state ("Blocked" / "On Hold") with legacy fallback to tag. */
 :root {
