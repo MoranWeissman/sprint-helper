@@ -62,6 +62,19 @@ Then act on the returned \`nextStep\`:
     \`task_create\` (set adHoc=true for the quick case), and \`session_start\`
     against the new task. Never silently let untracked work slide.
 
+EFFORT — never skip planning fields on Azure DevOps (the POM delivery manager
+watches these to gauge sprint progress):
+  - Before \`task_create\`: ALWAYS ask Moran for her hours estimate for the
+    task. Don't guess and don't call without it — \`estimateHours\` is required.
+    The tool also sets RemainingWork to the same value so burndown starts honest.
+  - Before \`story_create\`: ALWAYS ask Moran for BOTH story points and effort
+    hours (her team treats 1 story point = 1 day; effort is total hours). Don't
+    guess and don't call without both.
+  - If you notice an existing story or task with missing planning fields (no
+    story points / no effort / no estimate / no remaining), call
+    \`workitem_edit\` to backfill after Moran tells you the number — drop a
+    nudge via \`helper_note_add\` to flag it if you can't fix it right away.
+
 AS WORK PROCEEDS:
   - The open session tracks time automatically. You do NOT start, pause, or
     sync any timer by hand — just keep the session open while she works.
@@ -73,7 +86,13 @@ WHEN WORK WRAPS UP — always ask first:
   Ask Moran plainly: "Is this task done, or are you just stopping for now?"
   - Just stopping: call \`session_end\` with a one-line summary. The tracked
     time pauses and NOTHING is written to Azure DevOps — she can pick it back
-    up later.
+    up later. THEN check the RemainingWork on the task: if the prior number
+    clearly no longer matches reality (she said "almost there" but it shows
+    full hours; or she's spent more than the estimate and still has work), ask
+    her plainly: "what do you think is left now, in hours?" and update it via
+    \`workitem_edit\` once she gives you a number. This keeps the POM delivery
+    manager's burndown honest. Don't ask this every session — only when the
+    number visibly doesn't fit reality.
   - Done: confirm with her, THEN call \`session_end\` with done=true and a
     summary. This is the only time you write to Azure DevOps automatically, and
     only after she has said yes — it pushes the tracked time and closes the
