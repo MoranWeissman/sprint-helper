@@ -6,7 +6,7 @@
  * over stdio. Tools fall into these buckets:
  *  - read:      orient, sprint_snapshot, list_my_work_items, workitem_get
  *  - guardrail: sprint_check_in, task_create, story_create
- *  - edits:     workitem_edit
+ *  - edits:     workitem_edit, workitem_reparent
  *  - sessions:  session_start, session_log, session_end
  *  - notes:     helper_notes_get, helper_note_set_summary, helper_note_add
  *  - calendar:  calendar_set_url, calendar_status, capacity_check
@@ -40,8 +40,10 @@ import {
   createStory,
   createTask,
   ensureActive,
+  reparent,
   setEffort,
   setEstimate,
+  setIterationPath,
   setRemaining,
   setStateBucket,
   setStoryPoints,
@@ -295,22 +297,26 @@ KEEPING MORAN'S NOTES (his dashboard's "helper's notes" space):
   - Never write effort or status to Azure DevOps from a note — notes are just your
     read for him; ADO writes still only happen via the confirm-first close-the-loop.
 
-PREFER SPRINT-HELPER OVER RAW \`az\`. Sprint-helper exists so Moran has ONE
-coordinated layer in front of Azure DevOps — caches stay coherent, writes
-get invalidated, the dashboard and the assistant see the same state. If
-sprint-helper has a tool for what you need, USE IT, even if a one-line
-\`az boards ...\` call seems quicker. Concretely:
-  - Reading one item by id → \`workitem_get\`, NOT \`az boards work-item
-    show\`.
+PREFER SPRINT-HELPER OVER RAW \`az\` — STRICT. Sprint-helper exists so Moran
+has ONE coordinated layer in front of Azure DevOps. Every board read and
+write goes through it; nothing else. Caches stay coherent, the dashboard and
+the assistant see the same state. Reaching for \`az boards\` is almost
+always a sign you missed a sprint-helper tool. Concretely:
+  - Reading one item by id → \`workitem_get\`.
+  - Listing an epic / story's children → \`workitem_get\` (its \`children\`
+    array has id/title/type/state for each direct child).
   - Listing the sprint → \`sprint_snapshot\` or \`list_my_work_items\`.
   - Any field change (state, estimate, remaining, story points, effort,
-    tags) → \`workitem_edit\`, NOT \`az boards work-item update\` or
-    direct PATCH.
+    tags, iteration path) → \`workitem_edit\`.
+  - Moving an item under a different parent → \`workitem_reparent\`.
   - Creating a task / story → \`task_create\` / \`story_create\`.
-Only fall back to \`az\` if sprint-helper genuinely lacks the field or
-operation you need — and when you do, TELL Moran in your reply that you
-used az because feature X is missing from sprint-helper. That's how we
-find gaps and close them.
+
+If you genuinely think sprint-helper lacks an operation you need, STOP
+and tell Moran plainly: "sprint-helper doesn't have a tool for X yet —
+should I use raw az for this one thing, or pause and ask for a sprint-
+helper tool to be added?" Don't silently shell out to az to work around
+a perceived gap. The whole point is that we find gaps and close them
+together, not route around them.
 
 Call \`orient\` at the start of EVERY new chat (see OPENING GREETING above).
 Call \`sprint_snapshot\` whenever you need to see what's in the current sprint
@@ -474,16 +480,18 @@ server.registerTool(
       effort: z.number().min(0).optional().describe('Story field, in hours. Total hours he thinks the story is.'),
       addTags: z.array(z.string().min(1)).optional().describe('Tag names to add to this item (e.g. ["Blocked"]). Case-insensitive dedup against existing tags.'),
       removeTags: z.array(z.string().min(1)).optional().describe('Tag names to remove from this item.'),
+      iterationPath: z.string().min(1).optional().describe('Full ADO iteration path, backslash-separated (e.g. "IDP - DevOps\\\\2026" for the year-level, or "IDP - DevOps\\\\2026\\\\Q2\\\\26_11" for a specific sprint). Use this to move an item to a different sprint or to a parent iteration node.'),
     },
   },
-  async ({ workItemId, state, originalEstimate, remainingWork, storyPoints, effort, addTags, removeTags }) => {
+  async ({ workItemId, state, originalEstimate, remainingWork, storyPoints, effort, addTags, removeTags, iterationPath }) => {
     if (
       state == null && originalEstimate == null && remainingWork == null &&
       storyPoints == null && effort == null &&
       (addTags == null || addTags.length === 0) &&
-      (removeTags == null || removeTags.length === 0)
+      (removeTags == null || removeTags.length === 0) &&
+      iterationPath == null
     ) {
-      return errorResult('At least one of state, originalEstimate, remainingWork, storyPoints, effort, addTags, removeTags is required.');
+      return errorResult('At least one of state, originalEstimate, remainingWork, storyPoints, effort, addTags, removeTags, iterationPath is required.');
     }
     const applied: {
       state?: string;
@@ -492,6 +500,7 @@ server.registerTool(
       storyPoints?: number;
       effort?: number;
       tags?: string[];
+      iterationPath?: string;
     } = {};
     try {
       if (state) applied.state = await setStateBucket(workItemId, state as StateBucket);
@@ -513,6 +522,10 @@ server.registerTool(
       }
       if ((addTags && addTags.length > 0) || (removeTags && removeTags.length > 0)) {
         applied.tags = await updateTags(workItemId, { add: addTags, remove: removeTags });
+      }
+      if (iterationPath != null) {
+        await setIterationPath(workItemId, iterationPath);
+        applied.iterationPath = iterationPath;
       }
       invalidateDashboardCache();
       return jsonResult({ applied });
@@ -557,6 +570,28 @@ server.registerTool(
         completedWork: d.completedWork,
         webUrl: d.webUrl,
       });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'workitem_reparent',
+  {
+    title: 'Move a work item under a different parent',
+    description:
+      "Reparent a work item: remove its existing parent relation(s) and link it under a new parent in Azure DevOps. Use this when reorganizing the board (e.g. moving a task from one user story to another, or pulling a follow-up out of a finished story and putting it under the right one). Returns the previous parent ids that were removed and confirms the new parent.",
+    inputSchema: {
+      childId: workItemIdSchema.describe('The work item to move.'),
+      newParentId: workItemIdSchema.describe('The new parent (User Story / Feature / Epic) to nest the child under.'),
+    },
+  },
+  async ({ childId, newParentId }) => {
+    try {
+      const result = await reparent(childId, newParentId);
+      invalidateDashboardCache();
+      return jsonResult(result);
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }

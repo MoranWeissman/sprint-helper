@@ -459,6 +459,65 @@ function escapeHtml(s: string): string {
     .replace(/\n/g, '<br>');
 }
 
+/**
+ * Move a work item to a different iteration (e.g. from sprint 26_11 to the
+ * 2026 year-level node). `iterationPath` is the full ADO path string
+ * (backslash-separated), like 'IDP - DevOps\\2026' or 'IDP - DevOps\\2026\\Q2\\26_11'.
+ */
+export async function setIterationPath(workItemId: number, iterationPath: string): Promise<void> {
+  await patchWorkItem(workItemId, [
+    { op: 'add', path: '/fields/System.IterationPath', value: iterationPath },
+  ]);
+}
+
+/**
+ * Reparent a work item under a different parent. Removes any existing
+ * Hierarchy-Reverse relations (typical ADO items have exactly one parent),
+ * then adds a single new one pointing at `newParentId`. Returns the parent
+ * ids that were removed so the caller can surface what changed.
+ */
+export async function reparent(
+  childId: number,
+  newParentId: number,
+): Promise<{ removedParents: number[]; newParent: number }> {
+  const cfg = await loadAdoConfig();
+  // Read current relations.
+  const readUri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitems/${childId}?$expand=relations&api-version=7.1`;
+  const { stdout } = await azExec(['rest', '--method', 'GET', '--uri', readUri, '--resource', ADO_RESOURCE]);
+  const w = JSON.parse(stdout) as { relations?: Array<{ rel: string; url: string }> };
+  const relations = w.relations ?? [];
+
+  const parentIndices: number[] = [];
+  const removedParents: number[] = [];
+  for (let i = 0; i < relations.length; i++) {
+    if (relations[i].rel === 'System.LinkTypes.Hierarchy-Reverse') {
+      parentIndices.push(i);
+      const m = relations[i].url.match(/\/workItems\/(\d+)$/i);
+      if (m) removedParents.push(Number(m[1]));
+    }
+  }
+  if (removedParents.includes(newParentId) && removedParents.length === 1) {
+    // Already parented under that exact id — no-op.
+    return { removedParents: [], newParent: newParentId };
+  }
+
+  const patch: Array<Record<string, unknown>> = [];
+  // Remove in reverse index order so earlier indices stay valid.
+  for (const idx of [...parentIndices].sort((a, b) => b - a)) {
+    patch.push({ op: 'remove', path: `/relations/${idx}` });
+  }
+  patch.push({
+    op: 'add',
+    path: '/relations/-',
+    value: {
+      rel: 'System.LinkTypes.Hierarchy-Reverse',
+      url: `${cfg.organization}/_apis/wit/workItems/${newParentId}`,
+    },
+  });
+  await patchWorkItem(childId, patch);
+  return { removedParents, newParent: newParentId };
+}
+
 /* ============================================================ */
 /*  Low-level                                                    */
 /* ============================================================ */
