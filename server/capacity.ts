@@ -15,11 +15,13 @@
  */
 import { listBusyInWindow, getCalendarUrl, type BusyInterval } from './calendar';
 
-const DEFAULT_WORKDAY_HOURS = 8;
+// Moran-specific defaults (2026-06-01): 9h workday, TENTATIVE meetings
+// ignored entirely (he doesn't count "maybes" against capacity), Mon-Fri.
+const DEFAULT_WORKDAY_HOURS = 9;
 const DEFAULT_WORKDAY_START = 8;  // 08:00 local
 const DEFAULT_WORKDAY_END = 18;   // 18:00 local
 const DEFAULT_WORKING_DAYS = new Set([1, 2, 3, 4, 5]); // Mon-Fri
-const TENTATIVE_WEIGHT = 0.5;
+const TENTATIVE_WEIGHT = 0;
 
 export interface Capacity {
   sprintStart: string;

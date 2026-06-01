@@ -42,6 +42,8 @@ export function clearCalendarCache(): void {
   cache = null;
 }
 
+const FETCH_TIMEOUT_MS = 15_000;
+
 async function fetchIcs(force = false): Promise<string> {
   const url = getCalendarUrl();
   if (!url) {
@@ -52,7 +54,19 @@ async function fetchIcs(force = false): Promise<string> {
   if (!force && cache && cache.url === url && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
     return cache.ics;
   }
-  const res = await fetch(url);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: controller.signal });
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') {
+      throw new Error(`Calendar fetch timed out after ${FETCH_TIMEOUT_MS / 1000}s — Outlook's publish endpoint may be slow right now. Try again in a moment.`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
     throw new Error(`Calendar fetch failed: HTTP ${res.status} ${res.statusText}`);
   }

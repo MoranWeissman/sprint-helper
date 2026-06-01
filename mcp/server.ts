@@ -24,6 +24,7 @@ import { z } from 'zod';
 import { getCalendarUrl, setCalendarUrl } from '../server/calendar.js';
 import { computeCapacity } from '../server/capacity.js';
 import { buildDashboard } from '../server/dashboard.js';
+import { buildDashboardCached } from '../server/dashboard-cache.js';
 import { sprintCheckIn } from '../server/guardrail.js';
 import { addNote, getHelperNotes, setSummary } from '../server/helper-notes.js';
 import { buildOrientPacket } from '../server/orient.js';
@@ -182,10 +183,11 @@ CAPACITY (Moran's real desk time after meetings):
     - When the orient packet shows a meaningful gap between planned hours
       and real desk hours (planned much higher than capacity), surface it
       in your opening greeting or drop a helper note.
-  The tool returns: workingHoursTotal (8h × working days), meetingHours
-  (BUSY full, TENTATIVE half, OOF full, clipped to 08:00–18:00 on Mon–Fri),
-  realDeskHours = total − weighted, plannedHours (sum of RemainingWork),
-  difference = planned − realDesk. If \`hasUrl\` is false, the calendar
+  The tool returns: workingHoursTotal (9h × working days, Mon-Fri),
+  meetingHours (BUSY full, TENTATIVE IGNORED entirely per Moran's
+  preference, OOF full, clipped to 08:00–18:00 on Mon-Fri), realDeskHours
+  = total − meetingHours, plannedHours (sum of RemainingWork), difference
+  = planned − realDesk. If \`hasUrl\` is false, the calendar
   isn't wired up — tell Moran plainly that capacity-vs-meetings is unknown
   and point him at docs/setup/outlook-calendar.md.
   If \`fetchError\` is set, the URL is configured but the fetch failed
@@ -686,15 +688,15 @@ server.registerTool(
   },
   async () => {
     try {
-      const d = await buildDashboard();
-      if (!d.sprint) return errorResult('No current sprint — set a sprint first.');
-      const plannedHours = d.capacity.remainingHours;
+      const { payload } = await buildDashboardCached();
+      if (!payload.sprint) return errorResult('No current sprint — set a sprint first.');
+      const plannedHours = payload.capacity.remainingHours;
       const cap = await computeCapacity({
-        sprintStart: new Date(d.sprint.startDate),
-        sprintEnd: new Date(d.sprint.finishDate),
+        sprintStart: new Date(payload.sprint.startDate),
+        sprintEnd: new Date(payload.sprint.finishDate),
         plannedHours,
       });
-      return jsonResult({ sprintName: d.sprint.name, ...cap });
+      return jsonResult({ sprintName: payload.sprint.name, ...cap });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
@@ -708,6 +710,13 @@ server.registerTool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  // Pre-warm the dashboard cache so the first orient/capacity_check
+  // call doesn't pay the 10–15s cold ADO fetch. Fire-and-forget;
+  // don't block the MCP handshake.
+  void buildDashboardCached().catch(() => {
+    // eslint-disable-next-line no-console
+    console.error('sprint-helper: dashboard pre-warm failed (will lazy-load on first call).');
+  });
   // stdio transport keeps the process alive; nothing else needed.
 }
 
