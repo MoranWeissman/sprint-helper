@@ -99,6 +99,9 @@ export interface UserStoryGroup {
   /** Direct effort fields on the parent itself (separate from rolled-up task hours). */
   parentEstimate?: number;
   parentRemaining?: number;
+  /** Story-level planning fields the POM delivery manager watches. */
+  storyPoints?: number;
+  effort?: number;
   /** Tasks (or other child items) assigned to the user that belong to this parent. */
   tasks: DashboardWorkItem[];
   /** Aggregate effort across this group's tasks (in hours). */
@@ -316,6 +319,8 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
         area: lastPathSegment(raw.parentAreaPath ?? ''),
         parentEstimate: raw.parentOriginalEstimate,
         parentRemaining: raw.parentRemainingWork,
+        storyPoints: raw.parentStoryPoints,
+        effort: raw.parentEffort,
       };
     } else {
       // No parent — treat the item itself as its own "story".
@@ -329,6 +334,8 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
         area: lastPathSegment(raw.areaPath),
         parentEstimate: raw.originalEstimate,
         parentRemaining: raw.remainingWork,
+        storyPoints: raw.storyPoints,
+        effort: raw.effort,
       };
     }
     const key = parent.id;
@@ -370,6 +377,8 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
       area: parent.area,
       parentEstimate: parent.parentEstimate,
       parentRemaining: parent.parentRemaining,
+      storyPoints: parent.storyPoints,
+      effort: parent.effort,
       tasks,
       totalEstimateHours,
       completedHours,
@@ -400,6 +409,8 @@ interface ParentInfo {
   area?: string;
   parentEstimate?: number;
   parentRemaining?: number;
+  storyPoints?: number;
+  effort?: number;
 }
 
 function projectWorkItem(

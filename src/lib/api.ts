@@ -91,6 +91,9 @@ export interface ApiUserStoryGroup {
   area?: string;
   parentEstimate?: number;
   parentRemaining?: number;
+  /** Story-level planning fields the POM delivery manager watches. */
+  storyPoints?: number;
+  effort?: number;
   tasks: ApiWorkItem[];
   totalEstimateHours: number;
   completedHours: number;
