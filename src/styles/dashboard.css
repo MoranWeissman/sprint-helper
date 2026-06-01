@@ -2325,6 +2325,22 @@ html, body {
   gap: 24px;
 }
 .r21-daily-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--line-hair); }
+.r21-daily-head-actions { display: inline-flex; gap: 10px; align-items: center; }
+.r21-daily-bulk {
+  flex: none;
+  padding: 10px 14px;
+  border: 1px solid var(--line-soft);
+  background: transparent;
+  color: var(--ink-3);
+  border-radius: 8px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  font: inherit;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+.r21-daily-bulk:hover { color: var(--accent); border-color: var(--accent-deep); background: var(--accent-soft); }
+.r21-daily-bulk:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .r21-daily-cap { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; }
 .r21-daily-title { margin: 6px 0 0; font-size: 28px; font-weight: 500; color: var(--ink-0); letter-spacing: -0.01em; }
 .r21-daily-close {
@@ -2464,6 +2480,42 @@ html, body {
 .r21-daily-task-num .cap { font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-4); }
 .r21-daily-task-num .val { font-family: var(--font-mono); font-size: 13px; color: var(--ink-1); }
 .r21-daily-task-num .val.is-missing { color: var(--ink-4); }
+
+/* External link to Azure DevOps (sits under description) */
+.r21-daily-card-ext {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; letter-spacing: 0.02em;
+  color: var(--ink-3);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--line-soft);
+  padding-bottom: 1px;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+.r21-daily-card-ext:hover { color: var(--accent); border-color: var(--accent); }
+.r21-daily-card-ext:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 2px; }
+
+/* Show / hide task details — at the bottom of each story card */
+.r21-daily-toggle {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 6px 14px;
+  font-size: 11.5px; letter-spacing: 0.06em;
+  color: var(--ink-3);
+  background: transparent;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+.r21-daily-toggle:hover { color: var(--accent); border-color: var(--accent-deep); background: var(--accent-soft); }
+.r21-daily-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Collapsed card: task rows show NAME + dot only — no state label, no EST/REM */
+.r21-daily-card:not(.is-expanded) .r21-daily-task { grid-template-columns: 10px 60px minmax(0, 1fr); }
+.r21-daily-card:not(.is-expanded) .r21-daily-task-state,
+.r21-daily-card:not(.is-expanded) .r21-daily-task-numbers { display: none; }
 
 .r21-app[data-density="generous"] .r21-daily { padding: 60px 88px 72px; gap: 30px; }
 .r21-app[data-density="generous"] .r21-daily-card-head { padding: 28px 36px 22px; }

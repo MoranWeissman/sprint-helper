@@ -717,6 +717,20 @@ function DailyView({
   onOpenItem: (id: string) => void;
   onClose: () => void;
 }) {
+  // Which story cards are currently expanded (show per-task EST/REM). Default
+  // is collapsed for every card — Moran expands just the one she's diving into.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpanded = (id: string) =>
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const expandAll = () => setExpanded(new Set(stories.map(s => s.id)));
+  const collapseAll = () => setExpanded(new Set());
+  const anyExpanded = expanded.size > 0;
+
   return (
     <div className="r21-daily">
       <div className="r21-daily-head">
@@ -724,14 +738,26 @@ function DailyView({
           <span className="r21-daily-cap">DAILY · {sprintName}</span>
           <h1 className="r21-daily-title">Your stories &amp; tasks</h1>
         </div>
-        <button
-          type="button"
-          className="r21-daily-close"
-          onClick={onClose}
-          title="Back to overview"
-        >
-          ← back
-        </button>
+        <div className="r21-daily-head-actions">
+          {stories.length > 0 && (
+            <button
+              type="button"
+              className="r21-daily-bulk"
+              onClick={anyExpanded ? collapseAll : expandAll}
+              title={anyExpanded ? 'Collapse every card' : 'Expand every card'}
+            >
+              {anyExpanded ? 'collapse all' : 'expand all'}
+            </button>
+          )}
+          <button
+            type="button"
+            className="r21-daily-close"
+            onClick={onClose}
+            title="Back to overview"
+          >
+            ← back
+          </button>
+        </div>
       </div>
 
       {stories.length === 0 ? (
@@ -739,7 +765,13 @@ function DailyView({
       ) : (
         <div className="r21-daily-list">
           {stories.map(s => (
-            <DailyStoryCard key={s.id} story={s} onOpenItem={onOpenItem} />
+            <DailyStoryCard
+              key={s.id}
+              story={s}
+              expanded={expanded.has(s.id)}
+              onOpenItem={onOpenItem}
+              onToggleExpanded={() => toggleExpanded(s.id)}
+            />
           ))}
         </div>
       )}
@@ -749,17 +781,21 @@ function DailyView({
 
 function DailyStoryCard({
   story,
+  expanded,
   onOpenItem,
+  onToggleExpanded,
 }: {
   story: ApiUserStoryGroup;
+  expanded: boolean;
   onOpenItem: (id: string) => void;
+  onToggleExpanded: () => void;
 }) {
   const sp = story.storyPoints != null ? `${fmtNum(story.storyPoints)}d` : '—';
   const eff = story.effort != null ? `${fmtNum(story.effort)}h` : '—';
   const taskCount = story.counts.inProgress + story.counts.upNext + story.counts.done;
 
   return (
-    <article className={`r21-daily-card ${story.hasActiveSession ? 'is-live' : ''}`}>
+    <article className={`r21-daily-card ${expanded ? 'is-expanded' : ''} ${story.hasActiveSession ? 'is-live' : ''}`}>
       <button
         type="button"
         className="r21-daily-card-head"
@@ -787,6 +823,18 @@ function DailyStoryCard({
       <div className="r21-daily-card-body">
         {story.descriptionPreview && (
           <p className="r21-daily-desc">{story.descriptionPreview}</p>
+        )}
+
+        {story.url && (
+          <a
+            className="r21-daily-card-ext"
+            href={story.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open this story in Azure DevOps"
+          >
+            Open in Azure DevOps <span aria-hidden="true">↗</span>
+          </a>
         )}
 
         <div className="r21-daily-counts">
@@ -834,6 +882,17 @@ function DailyStoryCard({
               );
             })}
           </ul>
+        )}
+
+        {story.tasks.length > 0 && (
+          <button
+            type="button"
+            className="r21-daily-toggle"
+            onClick={onToggleExpanded}
+            aria-expanded={expanded}
+          >
+            {expanded ? '▴  hide task details' : '▾  show task details'}
+          </button>
         )}
       </div>
     </article>
