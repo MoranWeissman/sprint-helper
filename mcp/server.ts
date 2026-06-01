@@ -6,6 +6,7 @@
  * over stdio. Tools fall into these buckets:
  *  - read:      orient, sprint_snapshot, list_my_work_items, workitem_get
  *  - guardrail: sprint_check_in, task_create, story_create
+ *  - estimate:  estimate_anchor
  *  - edits:     workitem_edit, workitem_reparent
  *  - blocking:  workitem_block, workitem_unblock
  *  - sessions:  session_start, session_log, session_end
@@ -28,6 +29,7 @@ import { buildDashboard } from '../server/dashboard.js';
 import { buildDashboardCached, invalidateDashboardCache } from '../server/dashboard-cache.js';
 import { sprintCheckIn } from '../server/guardrail.js';
 import { addNote, getHelperNotes, setSummary } from '../server/helper-notes.js';
+import { buildEstimateAnchor } from '../server/estimate-anchor.js';
 import { buildOrientPacket } from '../server/orient.js';
 import {
   endSession,
@@ -188,23 +190,38 @@ The POM delivery manager watches Azure DevOps planning fields to track
 sprint progress, so these must always be set and they must stay honest
 through the life of the task.
 
-  AT CREATION — PROPOSE first, then confirm:
-  - Before \`task_create\`: based on the task description, PROPOSE an
-    hours estimate with brief reasoning ("sounds like ~3 hours: 1h
-    reading existing code, 1.5h writing the new module, 30min tests").
-    Then ask Moran "sound right?". He'll confirm or adjust. Never just
-    "what's your estimate?" — that pushes the work back to him. Use the
-    confirmed number for \`estimateHours\`. The tool sets both
-    OriginalEstimate and RemainingWork to that value so burndown starts
-    honest.
-  - Before \`story_create\`: PROPOSE both storyPoints (his team: 1
-    point = 1 day) AND effortHours (total hours you think the story is)
-    with reasoning. Ask him to confirm or adjust. Same pattern — your
-    proposal first, his nod second.
+  AT CREATION — DECOMPOSE, ANCHOR, then PROPOSE:
+  - STEP 1 (decompose): mentally break the task into 2-4 concrete
+    sub-steps before proposing a number. "Read existing code · write
+    new handler · wire it up · test · review feedback loop." This
+    kills single-shot anchoring bias — most under-estimates come from
+    forgetting setup, testing, or review.
+  - STEP 2 (anchor): call \`estimate_anchor({ parentId })\` to pull real
+    "estimate vs actual" data from Moran's closed tasks. Read the
+    siblings (closed tasks under the same parent story) — pick the
+    1-3 most semantically similar by title/type and use their ACTUAL
+    hours, not their estimates, as the prior. If sibling data is
+    sparse (≤ 2 samples), use the calibration.overallRatio as a
+    multiplier on your gut sum from STEP 1. If \`isColdStart\` is
+    true, say so plainly: "no history to anchor on yet — proposing a
+    gut number, want to tighten it?"
+  - STEP 3 (propose): present the proposal honestly, citing the anchor:
+    "Similar past tasks under this story ran 4-6h actual (gut would
+    have said 3h). Decomposed I get ~5h (1h reading · 2h core · 1h
+    tests · 1h cleanup). Proposing 5h. Sound right?" Then ask Moran
+    "sound right?". He'll confirm or adjust. Never just "what's your
+    estimate?" — that pushes the work back to him. Use the confirmed
+    number for \`estimateHours\`. \`task_create\` sets both
+    OriginalEstimate and RemainingWork to that value so burndown
+    starts honest.
+  - Before \`story_create\`: same three steps for effortHours, and
+    propose storyPoints (his team: 1 point = 1 day) consistent with
+    the hours. Anchor by passing the Feature/Epic id as \`parentId\`
+    to estimate_anchor — its calibration ratio still helps even
+    without sibling stories.
   - Backfilling existing items with blank planning: same approach.
-    PROPOSE numbers based on what's visible (description, similar past
-    work, child task count), confirm with Moran, then call
-    \`workitem_edit\`.
+    Decompose, anchor (use the existing parentId), propose, confirm
+    with Moran, then call \`workitem_edit\`.
 
   AS WORK PROGRESSES — keep RemainingWork honest:
   - This is sprint-helper's PRIMARY job during work: keep Remaining
@@ -339,6 +356,8 @@ always a sign you missed a sprint-helper tool. Concretely:
     tags, iteration path) → \`workitem_edit\`.
   - Moving an item under a different parent → \`workitem_reparent\`.
   - Creating a task / story → \`task_create\` / \`story_create\`.
+  - Anchoring an estimate on real history → \`estimate_anchor\` (always
+    before proposing an OriginalEstimate, never propose blind).
   - Blocking / unblocking → \`workitem_block\` / \`workitem_unblock\` (never
     add a 'Blocked' tag through \`workitem_edit\` — that strands the why
     from the what).
@@ -816,6 +835,35 @@ server.registerTool(
         parentFeatureId,
       });
       return jsonResult(created);
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+/* ============================================================ */
+/*  Estimation help                                              */
+/* ============================================================ */
+
+server.registerTool(
+  'estimate_anchor',
+  {
+    title: 'Anchor an hour estimate on real past actuals',
+    description:
+      "Pull real estimate-vs-actual data from Moran's closed Azure DevOps tasks so you propose hour estimates anchored to history, not to gut. Call this BEFORE proposing OriginalEstimate for any new task (in task_create or workitem_edit). Returns: (1) siblings — closed tasks under the SAME parent story with their estimate / actual / ratio; (2) calibration — Moran's recent closed tasks across the project with median/average actual-over-estimate ratios. The AI picks the most semantically similar siblings (read titles + types) and uses them as the primary anchor; the calibration ratio is a fallback multiplier when sibling data is sparse. If isColdStart is true (no usable history at all), say so plainly to Moran — propose a labeled gut estimate and ask if it feels right.",
+    inputSchema: {
+      parentId: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe('Parent User Story id (or Feature/Epic if no story above). Sharper sibling anchor with it; without it, only the global calibration ratio comes back.'),
+    },
+  },
+  async ({ parentId }) => {
+    try {
+      const anchor = await buildEstimateAnchor({ parentId });
+      return jsonResult(anchor);
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }

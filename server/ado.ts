@@ -414,6 +414,59 @@ async function getWorkItemBatch(ids: number[]): Promise<WorkItem[]> {
   return parsed.value.map(w => mapWorkItem(w));
 }
 
+/**
+ * Closed tasks (assigned to @Me) under a given parent — sorted newest first.
+ * Used by the estimate-anchor flow to find "what did similar past tasks
+ * under this story actually take?" Includes only items where both
+ * OriginalEstimate AND CompletedWork are populated so the ratio is meaningful.
+ */
+export async function listClosedSiblings(parentId: number): Promise<WorkItem[]> {
+  const fieldList = WORK_ITEM_FIELDS.map(f => `[${f}]`).join(', ');
+  const wiql = [
+    `SELECT ${fieldList} FROM WorkItems`,
+    `WHERE [System.AssignedTo] = @Me`,
+    `  AND [System.Parent] = ${parentId}`,
+    `  AND [System.State] IN ('Done', 'Closed', 'Resolved', 'Completed')`,
+    `  AND [Microsoft.VSTS.Scheduling.OriginalEstimate] > 0`,
+    `  AND [Microsoft.VSTS.Scheduling.CompletedWork] > 0`,
+    'ORDER BY [System.ChangedDate] DESC',
+  ].join(' ');
+  const { stdout } = await azJson(['boards', 'query', '--wiql', wiql]);
+  const raw = JSON.parse(stdout) as Array<{
+    id: number;
+    rev: number;
+    url: string;
+    fields: Record<string, unknown>;
+  }>;
+  return raw.map(w => mapWorkItem(w));
+}
+
+/**
+ * Recently-closed tasks (assigned to @Me) across the whole project, for
+ * computing a personal calibration ratio (actual / estimate). Includes only
+ * items where both OriginalEstimate AND CompletedWork are populated.
+ */
+export async function listClosedCalibration(daysBack = 90, limit = 100): Promise<WorkItem[]> {
+  const fieldList = WORK_ITEM_FIELDS.map(f => `[${f}]`).join(', ');
+  const wiql = [
+    `SELECT ${fieldList} FROM WorkItems`,
+    `WHERE [System.AssignedTo] = @Me`,
+    `  AND [System.State] IN ('Done', 'Closed', 'Resolved', 'Completed')`,
+    `  AND [System.ChangedDate] >= @Today - ${daysBack}`,
+    `  AND [Microsoft.VSTS.Scheduling.OriginalEstimate] > 0`,
+    `  AND [Microsoft.VSTS.Scheduling.CompletedWork] > 0`,
+    'ORDER BY [System.ChangedDate] DESC',
+  ].join(' ');
+  const { stdout } = await azJson(['boards', 'query', '--wiql', wiql]);
+  const raw = JSON.parse(stdout) as Array<{
+    id: number;
+    rev: number;
+    url: string;
+    fields: Record<string, unknown>;
+  }>;
+  return raw.slice(0, limit).map(w => mapWorkItem(w));
+}
+
 function mapWorkItem(w: { id: number; rev: number; url: string; fields: Record<string, unknown> }): WorkItem {
   const f = w.fields;
   const assignedToRaw = f['System.AssignedTo'];
