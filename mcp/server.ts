@@ -32,6 +32,12 @@ import { addNote, getHelperNotes, setSummary } from '../server/helper-notes.js';
 import { buildEstimateAnchor } from '../server/estimate-anchor.js';
 import { buildOrientPacket } from '../server/orient.js';
 import {
+  resolveStoryMatch,
+  setLearnedStoryId,
+  clearLearnedStoryId,
+  type SprintStory,
+} from '../server/story-match.js';
+import {
   endSession,
   isSessionEventType,
   logEvent,
@@ -264,20 +270,44 @@ is a stop sign; you want a guide. Skip this whole ritual only when the
 chat's cwd is INSIDE the sprint-helper repo itself (we're building the
 tool, not using it) — there's no sprint task for "improve sprint-helper".
 
-REGARDLESS of whether there's a live session, do a CONTEXT CROSS-CHECK:
-  - Read the chat's current working directory (the cwd shown in your
-    environment — e.g. /Users/weissmmo/projects/github-msd/devex-infrastructure).
-    The basename of the cwd is a strong hint about which repo Moran is in.
-  - If you have time and it's worth it, glance at \`git log --oneline -5\`
-    to see what he's been touching. Don't run this on every orient — only
-    when the live-session story title and the cwd basename look unrelated.
-  - Then EXPLICITLY mention the cwd in your greeting and ask if the
-    matching story is right. The shape:
-      "You're in \`<cwd-basename>\`. Live session is on **<title>** (#nnn).
-       Same story for this chat, or a different one?"
-  - Don't assume the live session = the right story for THIS chat.
-    Moran works in multiple repos; the live session might be on a
-    DIFFERENT codebase than the one this chat is open in. Always ask.
+REGARDLESS of whether there's a live session, do a CONTEXT CROSS-CHECK
+by calling \`story_match\` with the chat's cwd:
+
+  1. Read the chat's current working directory from your environment
+     (e.g. /Users/weissmmo/projects/github-msd/devex-infrastructure).
+  2. Optionally glance at \`git -C <cwd> log --oneline -8\` and pass the
+     subjects as \`recentCommits\` to sharpen the match. Cheap and worth
+     it on the first orient of a chat.
+  3. Call \`story_match\` with \`{ cwd, recentCommits? }\`. The tool
+     returns three things you must use:
+       - \`learnedMatch\`: a previously-confirmed mapping for this cwd
+         in this sprint, if any. If set, propose that story by default —
+         no need to re-ask the full list.
+       - \`topMatch\`: the strongest heuristic candidate above the
+         confidence threshold, or null. Use this when learnedMatch is
+         absent.
+       - \`allStories\`: every open sprint story sorted by score.
+
+  How to use the response in your greeting:
+    - If \`learnedMatch\` is set: "Back in \`<cwd>\` — still on
+      <learnedMatch.displayName>? (Or pick a different one from your
+      sprint.)" — show the alternatives only if Moran says he switched.
+    - Else if \`topMatch\` is set: "You're in \`<cwd>\`. Looks like
+      <topMatch.displayName>. Other open stories in your sprint:
+      <allStories[1].displayName>, <allStories[2].displayName>, …
+      (top 3-5 max). Which one?"
+    - Else: "You're in \`<cwd>\`. I don't have a confident guess.
+      Open stories this sprint: <allStories[0..N].displayName, one per
+      line>. Which one? Or is this a new story?"
+
+  After Moran confirms, call \`story_match_set\` with the confirmed
+  storyId so the next chat in this same cwd this sprint won't re-ask.
+  If he says "different now" on a learnedMatch, call
+  \`story_match_set\` with \`clear: true\` first, then either re-match
+  or take his explicit choice.
+
+  ECHO \`displayName\` VERBATIM from the response — never assemble
+  \`title (#id)\` yourself.
 
 If \`orient.liveNow\` has an item AND Moran confirms it's the right story:
   - Don't call session_start, the session is already open. Read its
@@ -620,6 +650,9 @@ always a sign you missed a sprint-helper tool. Concretely:
   - Creating a task / story → \`task_create\` / \`story_create\`.
   - Anchoring an estimate on real history → \`estimate_anchor\` (always
     before proposing an OriginalEstimate, never propose blind).
+  - Matching this chat's cwd to a sprint story → \`story_match\` (always
+    after orient on the first message of a chat); persisting a confirmed
+    match → \`story_match_set\`.
   - Blocking / unblocking → \`workitem_block\` / \`workitem_unblock\` (never
     add a 'Blocked' tag through \`workitem_edit\` — that strands the why
     from the what).
@@ -1373,6 +1406,83 @@ server.registerTool(
         plannedHours,
       });
       return jsonResult({ sprintName: payload.sprint.name, ...cap });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+/* ============================================================ */
+/*  Story match (slice R7a)                                      */
+/* ============================================================ */
+
+server.registerTool(
+  'story_match',
+  {
+    title: 'Match a chat to a sprint story',
+    description:
+      "Given the chat's cwd (plus optional git remote and recent commit subjects), rank current-sprint stories by relevance. Returns three things: `learnedMatch` (a previously-confirmed story for this cwd in this sprint, if any), `topMatch` (the strongest heuristic candidate above the confidence threshold, or null), and `allStories` (every open sprint story sorted by score descending so the assistant can show alternatives). Call this on first activity in a chat to identify which story to attach to, BEFORE asking Moran to pick — and show him the top guess alongside the full list so he can override.",
+    inputSchema: {
+      cwd: z.string().min(1).describe("The chat's current working directory (absolute path). Strongest signal for matching."),
+      gitRemote: z.string().optional().describe('Optional: the chat\'s git remote URL or short name. The last path segment is used.'),
+      recentCommits: z.array(z.string()).optional().describe('Optional: recent commit subject lines for this repo, newest first. Bounded to ~10 for relevance.'),
+      recentFiles: z.array(z.string()).optional().describe('Optional: file paths recently touched in this chat. Basenames are used.'),
+    },
+  },
+  async ({ cwd, gitRemote, recentCommits, recentFiles }) => {
+    try {
+      const { payload } = await buildDashboardCached();
+      if (!payload.sprint) return errorResult('No current sprint — set a sprint first.');
+      const openStories: SprintStory[] = payload.userStories
+        .filter(s => !/(closed|done|removed|resolved)/i.test(s.state ?? ''))
+        .map(s => ({
+          storyId: Number(s.id),
+          title: s.title,
+          featureTitle: s.feature?.title,
+        }));
+      const result = resolveStoryMatch(
+        { cwd, gitRemote, recentCommits, recentFiles },
+        payload.sprint.name,
+        openStories,
+      );
+      return jsonResult({
+        sprintName: payload.sprint.name,
+        ...result,
+      });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'story_match_set',
+  {
+    title: 'Remember a confirmed cwd → story mapping',
+    description:
+      "Persist a confirmed mapping from a cwd to a sprint story id. Call this after Moran confirms 'yes, this chat is on **<title>**' so the next chat in the same repo this sprint doesn't have to re-ask. Pass `storyId: 0` (or omit) with `clear: true` to forget a previous mapping (e.g. when Moran switches what a repo is for).",
+    inputSchema: {
+      cwd: z.string().min(1).describe('Absolute path of the cwd this mapping applies to.'),
+      storyId: workItemIdSchema.optional().describe('The story id Moran confirmed. Required unless `clear: true`.'),
+      clear: z.boolean().optional().describe('Set true to clear the existing mapping for this cwd in the current sprint.'),
+    },
+  },
+  async ({ cwd, storyId, clear }) => {
+    try {
+      const { payload } = await buildDashboardCached();
+      if (!payload.sprint) return errorResult('No current sprint — set a sprint first.');
+      if (clear) {
+        clearLearnedStoryId(cwd, payload.sprint.name);
+        return jsonResult({ cleared: true, cwd, sprintName: payload.sprint.name });
+      }
+      if (storyId == null) return errorResult('storyId is required unless `clear: true`.');
+      setLearnedStoryId(cwd, payload.sprint.name, storyId);
+      return jsonResult({
+        learned: true,
+        cwd,
+        storyId,
+        sprintName: payload.sprint.name,
+      });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
