@@ -41,6 +41,17 @@ export interface OrientLiveSession {
    * should be closed. Never act on this without confirming.
    */
   mayBeStale: boolean;
+  /**
+   * Id of the parent story (or feature) the live task hangs under, if any.
+   * R7d uses this so the assistant can compare against `story_match.topMatch`
+   * and ask once if the chat's cwd seems to be on a different story now.
+   */
+  parentStoryId: number | null;
+  /**
+   * Pre-formatted `**title** (#id)` for the parent story; null when the task
+   * has no parent. Echo verbatim — don't assemble.
+   */
+  parentStoryDisplayName: string | null;
 }
 
 export interface OrientLastSession {
@@ -166,8 +177,17 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
   const now = new Date();
 
   const titleById = new Map<number, string>();
+  const parentByTaskId = new Map<number, { id: number; title: string }>();
   for (const list of [payload.workItems.inProgress, payload.workItems.upNext, payload.workItems.done]) {
-    for (const w of list) titleById.set(Number(w.id), w.title);
+    for (const w of list) {
+      titleById.set(Number(w.id), w.title);
+      if (w.parent) {
+        parentByTaskId.set(Number(w.id), {
+          id: Number(w.parent.id),
+          title: w.parent.title,
+        });
+      }
+    }
   }
   for (const g of payload.userStories) {
     titleById.set(Number(g.id), g.title);
@@ -179,6 +199,7 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
     const title = titleById.get(s.workItemId) ?? `#${s.workItemId}`;
     const lastActivity = lastEventBySession.get(s.id) ?? s.startedAt;
     const idleMinutes = minutesSince(lastActivity, now);
+    const parent = parentByTaskId.get(s.workItemId) ?? null;
     return {
       workItemId: s.workItemId,
       title,
@@ -187,6 +208,8 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
       minutesOpen: minutesSince(s.startedAt, now),
       idleMinutes,
       mayBeStale: idleMinutes >= STALE_IDLE_MINUTES,
+      parentStoryId: parent?.id ?? null,
+      parentStoryDisplayName: parent ? displayNameFor(parent.id, parent.title) : null,
     };
   });
 

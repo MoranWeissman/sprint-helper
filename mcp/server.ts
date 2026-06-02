@@ -343,6 +343,47 @@ Never end a session silently because it looks abandoned. The open
 session is a real signal — sometimes he's still on it and just
 hasn't typed. Always ask.
 
+STORY DRIFT — when this chat's cwd points somewhere else:
+Each liveNow item also carries \`parentStoryId\` and
+\`parentStoryDisplayName\` (the User Story the live task hangs under).
+The cwd cross-check returned \`storyMatch.topMatch\` — a confident guess
+at which story this chat is for. When those disagree, Moran has very
+likely drifted: he opened a session on Story A, then over the day
+switched to Story B without closing the first session.
+
+Drift detection rule — ALL of these must hold before raising it:
+  1. \`storyMatch.topMatch\` is set (the cwd produced a confident
+     guess, not a tie or zero match).
+  2. There's at least one item in \`liveNow\`.
+  3. Some liveNow item's \`parentStoryId\` does NOT equal
+     \`storyMatch.topMatch.workItemId\`.
+  4. The cwd is NOT inside the sprint-helper repo (we're not in a
+     "building the tool" chat).
+  5. There's no \`storyMatch.learnedMatch\` already pointing at the
+     live session's parent story — a learned match means Moran
+     already told us this cwd maps here.
+
+When all five hold, ask ONCE, with both names:
+  - "you've got a session open on <liveNow[i].displayName> under
+    <parentStoryDisplayName>, but your cwd looks more like
+    <storyMatch.topMatch.displayName> — did you switch stories?"
+
+On his answer:
+  - "yes I switched" → route to "If orient.liveNow has an item but
+    Moran says this chat is a DIFFERENT story" below. Don't close the
+    old session; he may switch back. Call \`story_match_set\` with
+    the new storyId so we remember this cwd belongs there now.
+  - "no, still on the original" → no-op. Call \`story_match_set\`
+    against the original story so we stop asking about this cwd
+    again this sprint.
+  - "actually it's a new third thing" → run the identify flow below
+    (sprint_snapshot + ask by title).
+
+Raise drift AT MOST ONCE per orient — even if multiple liveNow items
+disagree, fold them into one question by listing the liveNow titles
+together. Never act on drift without his confirmation; the live
+session stays open until he says to close it.
+
 If \`orient.liveNow\` has an item AND Moran confirms it's the right story:
   - Don't call session_start, the session is already open. Read its
     current effort fields and tell him where he is ("estimate is 4h,
