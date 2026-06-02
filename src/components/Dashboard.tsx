@@ -7,6 +7,7 @@ import {
   type ApiHelperNotes,
   type ApiOutlookCapacity,
   type ApiPayload,
+  type ApiSessionEvent,
   type ApiUserStoryGroup,
   type ApiWorkItem,
   type ModeId,
@@ -292,18 +293,58 @@ const EVENT_LABELS: Record<string, string> = {
  * mistake) get written as one dense paragraph; this splits them visually
  * without changing the stored content. Short entries stay as-is — they
  * already read fine. Combined with `white-space: pre-line` in CSS,
- * inserting `\n\n` produces real paragraph breaks.
+ * inserting `\n` produces real paragraph breaks.
  */
 function prettifyEventBody(text: string): string {
   if (text.length < 160) return text;
   // Numbered list markers like ". (1) ... (2) ..." get a line break.
   let out = text.replace(/\.\s+\((\d+)\)\s/g, '.\n($1) ');
   // Sentence breaks: `.`/`?`/`!` followed by space-then-uppercase becomes a
-  // line break. Single `\n` (not `\n\n`) — one line-height of space, the
-  // standard sentence break. Skips lowercase continuations like "e.g. blah"
-  // because the following char isn't uppercase.
+  // line break. Single `\n` — one line-height of space, the standard
+  // sentence break. Skips lowercase continuations like "e.g. blah".
   out = out.replace(/([.!?])\s+(?=[A-Z])/g, '$1\n');
   return out;
+}
+
+/** First-sentence summary for collapsed activity rows; truncated at ~100 chars. */
+function collapsedSummary(text: string): string {
+  const trimmed = text.trim();
+  const match = trimmed.match(/^[^.!?]+[.!?]/);
+  const firstSentence = (match ? match[0] : trimmed).trim();
+  return firstSentence.length > 100
+    ? firstSentence.slice(0, 97).trimEnd() + '…'
+    : firstSentence;
+}
+
+/**
+ * One row in the recent-activity feed. Collapsed by default — shows the
+ * first sentence as a summary. Click to expand the full body. Entries whose
+ * body equals their summary skip the chevron and aren't toggleable.
+ */
+function ActivityEntry({ event }: { event: ApiSessionEvent }) {
+  const [open, setOpen] = useState(false);
+  const summary = collapsedSummary(event.text);
+  const hasMore = event.text.trim().length > summary.length + 1;
+
+  return (
+    <div className={`r21-ev t-${event.type} ${open ? 'is-open' : ''}`}>
+      <button
+        type="button"
+        className="r21-ev-head"
+        onClick={() => hasMore && setOpen(o => !o)}
+        aria-expanded={hasMore ? open : undefined}
+        data-toggleable={hasMore ? 'true' : 'false'}
+      >
+        <span className="r21-ev-time">{fmtClockISO(event.createdAt)}</span>
+        <span className="r21-ev-type">{EVENT_LABELS[event.type] ?? event.type}</span>
+        <span className="r21-ev-summary">{summary}</span>
+        {hasMore && <span className="r21-ev-chev">{open ? '▾' : '▸'}</span>}
+      </button>
+      {hasMore && open && (
+        <p className="r21-ev-body">{prettifyEventBody(event.text)}</p>
+      )}
+    </div>
+  );
 }
 
 const R21_MODES: { id: ModeId; label: string; glyph: JSX.Element }[] = [
@@ -670,15 +711,7 @@ function R21Focus({
           {events.length === 0 ? (
             <div className="r21-feed-empty">Nothing logged yet. Claude Code will note things here as you work.</div>
           ) : (
-            events.map(e => (
-              <div className={`r21-ev t-${e.type}`} key={e.id}>
-                <div className="r21-ev-head">
-                  <span className="r21-ev-time">{fmtClockISO(e.createdAt)}</span>
-                  <span className="r21-ev-type">{EVENT_LABELS[e.type] ?? e.type}</span>
-                </div>
-                <p className="r21-ev-body">{prettifyEventBody(e.text)}</p>
-              </div>
-            ))
+            events.map(e => <ActivityEntry key={e.id} event={e} />)
           )}
         </div>
       </div>

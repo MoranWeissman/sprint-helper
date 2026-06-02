@@ -2262,20 +2262,27 @@ html, body {
 .r21-feed-meta { font-size: 13px; color: var(--ink-4); letter-spacing: 0.04em; }
 .r21-feed-list { display: flex; flex-direction: column; }
 .r21-feed-empty { font-size: 15px; color: var(--ink-3); padding: 14px 0; }
-/* Activity entry: header row (time + type label) over a wider body block
-   with a type-tinted left accent. Long progress notes stay readable as
-   a real paragraph, not a column crammed into a third of the width. */
-.r21-ev { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 8px; padding: 14px 0 18px; border-top: 1px solid var(--line-hair); --ev-accent: var(--ink-4); }
+/* Activity entry: collapsed by default — head row shows time + type +
+   first-sentence summary + chevron. Expanded reveals the full body with
+   a type-tinted left accent. Entries whose summary equals their body
+   skip the chevron and aren't toggleable. */
+.r21-ev { display: flex; flex-direction: column; row-gap: 10px; padding: 10px 0 12px; border-top: 1px solid var(--line-hair); --ev-accent: var(--ink-4); }
 .r21-ev:first-child { border-top: none; padding-top: 4px; }
 .r21-ev.t-focus { --ev-accent: var(--ev-focus); }
 .r21-ev.t-progress { --ev-accent: var(--ev-progress); }
 .r21-ev.t-blocker { --ev-accent: var(--ev-blocker); }
 .r21-ev.t-decision { --ev-accent: var(--ev-decision); }
 .r21-ev.t-note { --ev-accent: var(--ev-note); }
-.r21-ev-head { display: flex; align-items: baseline; gap: 14px; }
-.r21-ev-time { font-family: var(--font-mono); font-feature-settings: "tnum" 1; font-size: 14px; color: var(--ink-3); min-width: 52px; }
-.r21-ev-type { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--ev-accent); }
-.r21-ev-body { margin: 0; font-size: 15px; color: var(--ink-1); line-height: 1.65; text-wrap: pretty; max-width: 78ch; padding: 4px 0 4px 16px; border-left: 2px solid color-mix(in oklch, var(--ev-accent) 60%, transparent); white-space: pre-line; }
+.r21-ev-head { display: flex; align-items: baseline; gap: 14px; background: none; border: none; padding: 4px 0; margin: 0; font: inherit; color: inherit; text-align: left; width: 100%; -webkit-appearance: none; appearance: none; cursor: default; border-radius: 6px; transition: background 0.12s ease; }
+.r21-ev-head[data-toggleable="true"] { cursor: pointer; }
+.r21-ev-head[data-toggleable="true"]:hover { background: oklch(0.18 0.018 258 / 0.6); }
+.r21-ev-head[data-toggleable="true"]:hover .r21-ev-summary { color: var(--ink-0); }
+.r21-ev-time { font-family: var(--font-mono); font-feature-settings: "tnum" 1; font-size: 14px; color: var(--ink-3); min-width: 52px; flex-shrink: 0; }
+.r21-ev-type { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--ev-accent); min-width: 80px; flex-shrink: 0; }
+.r21-ev-summary { font-size: 15px; color: var(--ink-1); line-height: 1.5; flex: 1; min-width: 0; text-wrap: pretty; transition: color 0.12s ease; }
+.r21-ev-chev { font-family: var(--font-mono); color: var(--ink-3); font-size: 12px; line-height: 1; flex-shrink: 0; padding: 0 4px; transition: color 0.12s ease; }
+.r21-ev-head:hover .r21-ev-chev { color: var(--ink-1); }
+.r21-ev-body { margin: 0; font-size: 15px; color: var(--ink-1); line-height: 1.65; text-wrap: pretty; max-width: 78ch; padding: 4px 0 4px 16px; margin-left: 146px; border-left: 2px solid color-mix(in oklch, var(--ev-accent) 60%, transparent); white-space: pre-line; }
 
 /* Moran's chosen tweaks (locked from Claude Design): generous density + whisper focal. */
 .r21-app[data-density="generous"] .r21-overview { padding: 60px 88px 44px; gap: 56px; }
