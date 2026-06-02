@@ -2262,27 +2262,37 @@ html, body {
 .r21-feed-meta { font-size: 13px; color: var(--ink-4); letter-spacing: 0.04em; }
 .r21-feed-list { display: flex; flex-direction: column; }
 .r21-feed-empty { font-size: 15px; color: var(--ink-3); padding: 14px 0; }
-/* Activity entry: collapsed by default — head row shows time + type +
-   first-sentence summary + chevron. Expanded reveals the full body with
-   a type-tinted left accent. Entries whose summary equals their body
-   skip the chevron and aren't toggleable. */
-.r21-ev { display: flex; flex-direction: column; row-gap: 10px; padding: 10px 0 12px; border-top: 1px solid var(--line-hair); --ev-accent: var(--ink-4); }
-.r21-ev:first-child { border-top: none; padding-top: 4px; }
+/* Activity entry as a card. Each row is a lifted surface with rounded
+   corners, a type-tinted left accent strip, and a clear chevron — so it
+   reads as a clickable card, not a text row. Click to expand the full
+   body inline. Short entries (summary == body) keep the same card
+   surface but skip the chevron. */
+.r21-ev { display: flex; flex-direction: column; background: var(--surface-3); border: 1px solid var(--line-soft); border-left: 3px solid color-mix(in oklch, var(--ev-accent) 70%, var(--line-soft)); border-radius: 10px; margin-bottom: 10px; overflow: hidden; transition: border-color 0.15s ease, background 0.15s ease; --ev-accent: var(--ink-3); }
+.r21-ev:last-child { margin-bottom: 0; }
 .r21-ev.t-focus { --ev-accent: var(--ev-focus); }
 .r21-ev.t-progress { --ev-accent: var(--ev-progress); }
 .r21-ev.t-blocker { --ev-accent: var(--ev-blocker); }
 .r21-ev.t-decision { --ev-accent: var(--ev-decision); }
 .r21-ev.t-note { --ev-accent: var(--ev-note); }
-.r21-ev-head { display: flex; align-items: baseline; gap: 14px; background: none; border: none; padding: 4px 0; margin: 0; font: inherit; color: inherit; text-align: left; width: 100%; -webkit-appearance: none; appearance: none; cursor: default; border-radius: 6px; transition: background 0.12s ease; }
+.r21-ev-head { display: flex; align-items: center; gap: 14px; background: none; border: none; padding: 14px 18px; margin: 0; font: inherit; color: inherit; text-align: left; width: 100%; -webkit-appearance: none; appearance: none; cursor: default; transition: background 0.12s ease; }
 .r21-ev-head[data-toggleable="true"] { cursor: pointer; }
-.r21-ev-head[data-toggleable="true"]:hover { background: oklch(0.18 0.018 258 / 0.6); }
+.r21-ev-head[data-toggleable="true"]:hover { background: oklch(0.205 0.022 258 / 0.5); }
+.r21-ev[data-has-toggleable-head] { /* anchor — no-op */ }
+.r21-ev.t-focus:has(.r21-ev-head[data-toggleable="true"]:hover),
+.r21-ev.t-progress:has(.r21-ev-head[data-toggleable="true"]:hover),
+.r21-ev.t-blocker:has(.r21-ev-head[data-toggleable="true"]:hover),
+.r21-ev.t-decision:has(.r21-ev-head[data-toggleable="true"]:hover),
+.r21-ev.t-note:has(.r21-ev-head[data-toggleable="true"]:hover) {
+  border-color: color-mix(in oklch, var(--ev-accent) 35%, var(--line-soft));
+}
+.r21-ev-time { font-family: var(--font-mono); font-feature-settings: "tnum" 1; font-size: 13px; color: var(--ink-3); min-width: 44px; flex-shrink: 0; }
+.r21-ev-type { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--ev-accent); padding: 4px 10px; border-radius: 999px; background: color-mix(in oklch, var(--ev-accent) 14%, transparent); border: 1px solid color-mix(in oklch, var(--ev-accent) 28%, transparent); min-width: auto; flex-shrink: 0; line-height: 1; }
+.r21-ev-summary { font-size: 15px; color: var(--ink-1); line-height: 1.4; flex: 1; min-width: 0; text-wrap: pretty; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color 0.12s ease; }
 .r21-ev-head[data-toggleable="true"]:hover .r21-ev-summary { color: var(--ink-0); }
-.r21-ev-time { font-family: var(--font-mono); font-feature-settings: "tnum" 1; font-size: 14px; color: var(--ink-3); min-width: 52px; flex-shrink: 0; }
-.r21-ev-type { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--ev-accent); min-width: 80px; flex-shrink: 0; }
-.r21-ev-summary { font-size: 15px; color: var(--ink-1); line-height: 1.5; flex: 1; min-width: 0; text-wrap: pretty; transition: color 0.12s ease; }
-.r21-ev-chev { font-family: var(--font-mono); color: var(--ink-3); font-size: 12px; line-height: 1; flex-shrink: 0; padding: 0 4px; transition: color 0.12s ease; }
-.r21-ev-head:hover .r21-ev-chev { color: var(--ink-1); }
-.r21-ev-body { margin: 0; font-size: 15px; color: var(--ink-1); line-height: 1.65; text-wrap: pretty; max-width: 78ch; padding: 4px 0 4px 16px; margin-left: 146px; border-left: 2px solid color-mix(in oklch, var(--ev-accent) 60%, transparent); white-space: pre-line; }
+.r21-ev-chev { font-family: var(--font-mono); color: var(--ink-3); font-size: 13px; line-height: 1; flex-shrink: 0; width: 18px; text-align: center; transition: color 0.12s ease, transform 0.15s ease; }
+.r21-ev-head:hover .r21-ev-chev { color: var(--ink-0); }
+.r21-ev.is-open .r21-ev-chev { color: var(--ev-accent); }
+.r21-ev-body { margin: 0; font-size: 15px; color: var(--ink-1); line-height: 1.65; text-wrap: pretty; padding: 14px 22px 18px; max-width: 78ch; white-space: pre-line; border-top: 1px solid var(--line-hair); }
 
 /* Moran's chosen tweaks (locked from Claude Design): generous density + whisper focal. */
 .r21-app[data-density="generous"] .r21-overview { padding: 60px 88px 44px; gap: 56px; }
