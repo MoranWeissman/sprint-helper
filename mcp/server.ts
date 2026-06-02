@@ -571,6 +571,18 @@ through the life of the task.
     small steps batch into one decrement when the chunk is done.
   - If you genuinely don't know what's left, omit the field. Better
     to skip than to add noise.
+  - NEVER pass \`remainingHoursAfter: 0\` — session_log refuses it.
+    Zero means the task is DONE, and the only path that handles that
+    correctly is \`session_end\` with \`done=true\`: it pushes
+    CompletedWork (computed from the burndown), closes the task in
+    ADO, and confirms with Moran first. If you set Remaining=0 via
+    session_log instead, the task ends up in a broken state:
+    Remaining=0, session still open, CompletedWork never pushed.
+    Moran caught this on 2026-06-02 — don't repeat it. If a progress
+    event leaves "almost nothing" but not literally zero, pass a
+    small positive value (0.25, 0.5). If it's truly done, ask "is
+    this task done?" and call \`session_end\` with \`done=true\` once
+    he confirms.
   - Legacy path: \`workitem_edit({remainingWork: …})\` still works for
     fixing burn-down outside a session event (e.g. catching up at
     session_end), but during a session prefer the session_log
@@ -1413,15 +1425,22 @@ server.registerTool(
       text: z.string().min(1),
       remainingHoursAfter: z
         .number()
-        .min(0)
+        .gt(0)
         .optional()
         .describe(
-          "Honest estimate of how many hours of work are LEFT on this task after this progress event. If set, sprint-helper writes RemainingWork = remainingHoursAfter on the work item in the same call. Only include when the event represents a substantial chunk of work landing (not for tweaks, focus shifts, blockers, or pure notes). The whole point is keeping the burn-down honest without forcing a separate tool call.",
+          "Honest estimate of how many hours of work are LEFT on this task after this progress event. MUST be strictly > 0 — if the task is done, call session_end with done=true instead, which runs the proper close-the-loop (push CompletedWork, close the task). Setting RemainingWork to 0 via session_log leaves the task in a broken state (Remaining=0 but session still open, CompletedWork not pushed). If set, sprint-helper writes RemainingWork on the work item in the same call. Only include when the event represents a substantial chunk of work landing (not for tweaks, focus shifts, blockers, or pure notes). The whole point is keeping the burn-down honest without forcing a separate tool call.",
         ),
     },
   },
   async ({ sessionId, type, text, remainingHoursAfter }) => {
     if (!isSessionEventType(type)) return errorResult(`Unknown event type: ${type}`);
+    if (remainingHoursAfter != null && remainingHoursAfter <= 0) {
+      // Schema's `.gt(0)` already rejects 0, but keep the defensive guard
+      // in case the schema gets loosened or a caller bypasses it.
+      return errorResult(
+        `remainingHoursAfter must be > 0. If the task is done, call session_end with done=true instead — that's the only path that pushes CompletedWork and closes the task properly. Setting RemainingWork to 0 via session_log leaves the task in a broken state (Remaining=0, session still open, CompletedWork not pushed).`,
+      );
+    }
     const event = logEvent({ sessionId, type, text });
     if (!event) return errorResult(`Session not found: ${sessionId}`);
     if (remainingHoursAfter == null) return jsonResult({ event });
