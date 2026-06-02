@@ -484,15 +484,23 @@ through the life of the task.
     accurate so the burn-down chart is honest. Moran shouldn't have to
     update it manually.
   - When you log a \`session_log\` "progress" event that completes a
-    SUBSTANTIAL chunk of a task (more than a tweak), also call
-    \`workitem_edit({ workItemId: <task id>, remainingWork: <new value> })\`
-    with an honest estimate of what's left. No prompt for normal
-    decreases — just do it. Same authority as state flips.
-  - Skip the update for small tweaks. The signal is "I just finished
-    a meaningful part of this" — multiple small steps batch into one
-    decrement when the chunk is done.
-  - If you genuinely don't know, leave it alone. Better to skip than
-    to add noise.
+    SUBSTANTIAL chunk of a task (more than a tweak), pass
+    \`remainingHoursAfter: <honest estimate of hours left>\` IN THE SAME
+    CALL. session_log writes the new RemainingWork to ADO atomically
+    with the event log — no second tool call, no chance to forget.
+    Authority is the same as state flips: no prompt for normal
+    decreases, just do it.
+  - Skip \`remainingHoursAfter\` (omit the field) for small tweaks,
+    blocker events, decisions, focus shifts, and pure notes. The
+    signal is "I just finished a meaningful part of this" — multiple
+    small steps batch into one decrement when the chunk is done.
+  - If you genuinely don't know what's left, omit the field. Better
+    to skip than to add noise.
+  - Legacy path: \`workitem_edit({remainingWork: …})\` still works for
+    fixing burn-down outside a session event (e.g. catching up at
+    session_end), but during a session prefer the session_log
+    parameter — one call, atomic, the assistant has fewer steps to
+    forget.
 
   WHEN A TASK CLOSES — compute Completed from the burndown:
   - The canonical model: CompletedWork = OriginalEstimate - new
@@ -1244,20 +1252,48 @@ server.registerTool(
 server.registerTool(
   'session_log',
   {
-    title: 'Log a session event',
+    title: 'Log a session event (and optionally burn down RemainingWork)',
     description:
-      "Record an event in an open session. Types: 'focus' (switching attention), 'progress' (what got done so far), 'blocker' (something getting in the way), 'decision' (a tradeoff Moran chose), 'note' (anything else). These surface in his Day dashboard.",
+      "Record an event in an open session. Types: 'focus' (switching attention), 'progress' (what got done so far), 'blocker' (something getting in the way), 'decision' (a tradeoff Moran chose), 'note' (anything else). These surface in his Day dashboard. PLUS — for 'progress' events that completed a substantial chunk of work, pass `remainingHoursAfter` to burn down RemainingWork on the task in the same call. Single tool call replaces logEvent + workitem_edit; you cannot forget the second step. Skip the field for small tweaks or non-progress events.",
     inputSchema: {
       sessionId: z.string().describe('Session id returned by session_start.'),
       type: z.enum(['focus', 'progress', 'blocker', 'decision', 'note']),
       text: z.string().min(1),
+      remainingHoursAfter: z
+        .number()
+        .min(0)
+        .optional()
+        .describe(
+          "Honest estimate of how many hours of work are LEFT on this task after this progress event. If set, sprint-helper writes RemainingWork = remainingHoursAfter on the work item in the same call. Only include when the event represents a substantial chunk of work landing (not for tweaks, focus shifts, blockers, or pure notes). The whole point is keeping the burn-down honest without forcing a separate tool call.",
+        ),
     },
   },
-  async ({ sessionId, type, text }) => {
+  async ({ sessionId, type, text, remainingHoursAfter }) => {
     if (!isSessionEventType(type)) return errorResult(`Unknown event type: ${type}`);
     const event = logEvent({ sessionId, type, text });
     if (!event) return errorResult(`Session not found: ${sessionId}`);
-    return jsonResult(event);
+    if (remainingHoursAfter == null) return jsonResult({ event });
+    try {
+      await setRemaining(event.workItemId, remainingHoursAfter);
+      invalidateDashboardCache();
+      return jsonResult({
+        event,
+        remainingWork: {
+          applied: remainingHoursAfter,
+          workItemId: event.workItemId,
+        },
+      });
+    } catch (e) {
+      // Event was already logged; surface the partial success + the write error.
+      return jsonResult({
+        event,
+        remainingWork: {
+          applied: null,
+          workItemId: event.workItemId,
+          error: e instanceof Error ? e.message : String(e),
+        },
+      });
+    }
   },
 );
 
