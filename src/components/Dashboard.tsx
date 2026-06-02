@@ -305,20 +305,52 @@ const md = new MarkdownIt({
 });
 
 /**
- * Light pre-pass for legacy entries that are still one giant paragraph.
- * For ANY entry, leave the markdown source alone past 160 chars — markdown
- * needs explicit `\n\n` for paragraph breaks. We insert single `\n` at
- * sentence boundaries and before "(1)/(2)/(3)" markers; with markdown-it's
- * `breaks: true` those render as `<br>` so old entries still read line by
- * line. Short entries stay untouched.
+ * Pre-pass for legacy session_log entries that are still one giant
+ * paragraph. New entries SHOULD be written as real markdown
+ * (paragraphs, bullets, code), but the DB has plenty of older
+ * blob-style writes. We rescue them in two passes:
+ *
+ *   1. Convert "(1) ... (2) ... (3) ..." into a real markdown ordered
+ *      list (`1. ... 2. ... 3. ...`). markdown-it renders these as an
+ *      indented `<ol>` so they stand out from surrounding prose.
+ *   2. Insert single `\n` at sentence boundaries. With markdown-it's
+ *      `breaks: true` those render as `<br>` so prose-blob entries
+ *      still read line by line instead of as a wall.
+ *
+ * Short entries (< 160 chars) and entries that already use markdown
+ * (`\n\n` paragraphs, `- ` bullets, `# ` headings, code fences) are
+ * left untouched — the writer either knew what they were doing or
+ * doesn't need rescue.
  */
 function prepEventBody(text: string): string {
   if (text.length < 160) return text;
-  // If the entry already uses markdown features (lists, headings, code
-  // fences, explicit paragraphs), don't touch it — the writer knows.
   if (/(\n\n)|(^[\-*] )|(^#{1,6} )|(^```)|(\n[\-*] )/m.test(text)) return text;
-  let out = text.replace(/\.\s+\((\d+)\)\s/g, '.\n($1) ');
-  out = out.replace(/([.!?])\s+(?=[A-Z])/g, '$1\n');
+
+  // Pass 1: sentence breaks (period/?/! + space + uppercase or open-paren)
+  // become single newlines. Treating "(" as a sentence start catches "...
+  // (1) foo" boundaries before pass 2 runs.
+  let out = text.replace(/([.!?])\s+(?=[A-Z(])/g, '$1\n');
+
+  // Pass 2: turn "(N) " at start-of-line into a markdown ordered-list
+  // item ("N. "). The first list item needs a blank line above it so
+  // markdown-it starts a list; subsequent items just sit on their own
+  // line. The list ends naturally on the first line that isn't "N. ".
+  let inList = false;
+  out = out
+    .split('\n')
+    .map(line => {
+      const match = line.match(/^\((\d+)\)\s+(.*)$/);
+      if (match) {
+        const [, num, rest] = match;
+        const prefix = inList ? '' : '\n';
+        inList = true;
+        return `${prefix}${num}. ${rest}`;
+      }
+      inList = false;
+      return line;
+    })
+    .join('\n');
+
   return out;
 }
 
