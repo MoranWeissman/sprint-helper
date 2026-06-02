@@ -2275,7 +2275,7 @@ html, body {
 .r21-ev-head { display: flex; align-items: baseline; gap: 14px; }
 .r21-ev-time { font-family: var(--font-mono); font-feature-settings: "tnum" 1; font-size: 14px; color: var(--ink-3); min-width: 52px; }
 .r21-ev-type { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--ev-accent); }
-.r21-ev-body { margin: 0; font-size: 15px; color: var(--ink-1); line-height: 1.65; text-wrap: pretty; max-width: 78ch; padding: 4px 0 4px 16px; border-left: 2px solid color-mix(in oklch, var(--ev-accent) 60%, transparent); }
+.r21-ev-body { margin: 0; font-size: 15px; color: var(--ink-1); line-height: 1.65; text-wrap: pretty; max-width: 78ch; padding: 4px 0 4px 16px; border-left: 2px solid color-mix(in oklch, var(--ev-accent) 60%, transparent); white-space: pre-line; }
 
 /* Moran's chosen tweaks (locked from Claude Design): generous density + whisper focal. */
 .r21-app[data-density="generous"] .r21-overview { padding: 60px 88px 44px; gap: 56px; }

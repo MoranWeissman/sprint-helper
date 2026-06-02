@@ -635,18 +635,49 @@ DO NOT write a session_log for:
   - Routine commits with no narrative value — though most real
     commits ARE worth logging, so when in doubt, log.
 
-Style:
-  - One line, plain English. Write it the way Moran would in a
-    standup. "Shipped R7c, commit c6b205d" beats "Successfully
-    completed implementation of the idle wrap-up nudge feature with
-    associated test coverage".
+Style — KEEP THEM SHORT, this is the load-bearing rule:
+  - One log = one checkpoint. Not five things bundled into one
+    dense paragraph. If three things happened in the last hour,
+    write three separate \`session_log\` calls, not one summary
+    that crams them together. The UI renders each log as its own
+    card in the Focus view; bundled summaries become walls of text
+    that Moran cannot read at a glance.
+  - One to three sentences per log. If you find yourself writing
+    a fourth sentence, you're probably bundling — break it up.
+  - Plain English, standup-voice. "Shipped R7c, commit c6b205d"
+    beats "Successfully completed implementation of the idle
+    wrap-up nudge feature with associated test coverage".
   - "Why" beats "what" when there's a why — the commit subject
     already says what.
-  - Plain-English bans (slack, cleanup moves, burndown, etc.) apply
-    here too. The next chat reads what you wrote today.
-  - You don't need to announce that you logged. Log silently while
-    working — the entries are for retros and resumes, not for
-    Moran's attention right now.
+  - Plain-English bans (slack, cleanup moves, burndown, etc.)
+    apply here too. The next chat reads what you wrote today.
+  - You don't need to announce that you logged. Log silently
+    while working — the entries are for retros and resumes, not
+    for Moran's attention right now.
+  - WHEN YOU MUST PUT MULTIPLE THINGS IN ONE LOG (e.g. a single
+    checkpoint that wrapped up several follow-ups together), use
+    real newline characters (\\n) between thoughts. The UI also
+    auto-breaks at sentence boundaries and at numbered patterns
+    like "(1) ... (2) ..." so even old bundled logs render as
+    separate lines. But prefer multiple short logs over one
+    bundled log with formatting tricks. Always.
+
+BUNDLED VS SPLIT — concrete example:
+
+  BAD (one bundled log, no breaks):
+    "Three follow-ups closed. Field name in eks block renamed.
+    cp-output chart rewrite walked through. README updated by
+    devex-expert. Also caught a missing fourth chart in the
+    Layout listing."
+
+  GOOD (three short logs, written as work happens):
+    log 1: "Renamed eks block's securityGroupId →
+      clusterSecurityGroupId. Repo-wide grep clean."
+    log 2: "Walked cp-output chart rewrite with the contract
+      owner. Confirmed two-loop structure (services depth 5,
+      global depth 4) and kindIs map for sub-resource descent."
+    log 3: "devex-expert updated mock/README. Caught a missing
+      fourth chart in the Layout listing on the way."
 
 WHEN WORK WRAPS UP — always ask first:
   Ask Moran plainly: "Is this task done, or are you just stopping for now?"

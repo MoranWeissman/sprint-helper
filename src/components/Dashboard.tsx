@@ -287,6 +287,25 @@ const EVENT_LABELS: Record<string, string> = {
   note: 'Note',
 };
 
+/**
+ * Make a session-log body actually readable. Older entries (and any future
+ * mistake) get written as one dense paragraph; this splits them visually
+ * without changing the stored content. Short entries stay as-is — they
+ * already read fine. Combined with `white-space: pre-line` in CSS,
+ * inserting `\n\n` produces real paragraph breaks.
+ */
+function prettifyEventBody(text: string): string {
+  if (text.length < 160) return text;
+  // Numbered list markers like ". (1) ... (2) ..." get a line break.
+  let out = text.replace(/\.\s+\((\d+)\)\s/g, '.\n($1) ');
+  // Sentence breaks: `.`/`?`/`!` followed by space-then-uppercase becomes a
+  // line break. Single `\n` (not `\n\n`) — one line-height of space, the
+  // standard sentence break. Skips lowercase continuations like "e.g. blah"
+  // because the following char isn't uppercase.
+  out = out.replace(/([.!?])\s+(?=[A-Z])/g, '$1\n');
+  return out;
+}
+
 const R21_MODES: { id: ModeId; label: string; glyph: JSX.Element }[] = [
   { id: 'day', label: 'Day', glyph: <circle cx="7" cy="7" r="3" fill="currentColor" /> },
   { id: 'preplan', label: 'Pre-plan', glyph: <><rect x="2" y="3" width="10" height="8" rx="1" stroke="currentColor" fill="none" /><line x1="2" y1="6" x2="12" y2="6" stroke="currentColor" /></> },
@@ -657,7 +676,7 @@ function R21Focus({
                   <span className="r21-ev-time">{fmtClockISO(e.createdAt)}</span>
                   <span className="r21-ev-type">{EVENT_LABELS[e.type] ?? e.type}</span>
                 </div>
-                <p className="r21-ev-body">{e.text}</p>
+                <p className="r21-ev-body">{prettifyEventBody(e.text)}</p>
               </div>
             ))
           )}
