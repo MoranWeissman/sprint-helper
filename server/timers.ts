@@ -60,6 +60,15 @@ export function startTimer(workItemId: number): TimeEntryRow {
 /**
  * Pause the running timer for a work item. No-op if none is running.
  * Returns the closed row, or null if there was nothing to close.
+ *
+ * Also marks the closed entry as `synced_to_ado = 1`. This is the new
+ * model after Moran caught the 211h-of-ghost-time bug 2026-06-02:
+ * `localUncapturedSeconds` is only meaningful for currently-running
+ * timers (i.e. live elapsed counters). Once a session ends, its time
+ * should NOT keep contributing to capacity — by then the assistant has
+ * called `remainingHoursAfter` to keep ADO's RemainingWork honest, and
+ * `CompletedWork` is derived from the burndown (Estimate − Remaining).
+ * Keeping closed-unsynced rows around just inflates the numbers forever.
  */
 export function pauseTimer(workItemId: number): TimeEntryRow | null {
   const db = getDb();
@@ -72,8 +81,11 @@ export function pauseTimer(workItemId: number): TimeEntryRow | null {
     .get(workItemId);
   if (!running) return null;
   const endedAt = new Date().toISOString();
-  db.prepare(`UPDATE time_entries SET ended_at = ? WHERE id = ?`).run(endedAt, running.id);
-  return { ...running, ended_at: endedAt };
+  db.prepare(`UPDATE time_entries SET ended_at = ?, synced_to_ado = 1 WHERE id = ?`).run(
+    endedAt,
+    running.id,
+  );
+  return { ...running, ended_at: endedAt, synced_to_ado: 1 };
 }
 
 /** Mark all CLOSED entries for an item as synced. Called after a successful push. */

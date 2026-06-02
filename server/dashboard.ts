@@ -247,10 +247,14 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     else upNext.push(projected);
   }
 
-  // Capacity: ADO effort fields + local-uncaptured seconds (so the dashboard
-  // shows what the user actually worked, even before they sync).
+  // Capacity rolls up TASKS only. User Stories / Features / Epics carry
+  // aggregate effort fields that are rollups of their child tasks; counting
+  // them alongside the tasks themselves double-counts. (Moran caught this
+  // 2026-06-02 when a sprint summary showed 316h logged against 82h
+  // estimated — Stories contributed 91h of "extra" rolled-up time.)
   const capacity = items.reduce(
     (acc, w) => {
+      if (w.type !== 'Task') return acc;
       const localHours = (uncaptured.get(w.id) ?? 0) / 3600;
       acc.remainingHours += w.remainingWork ?? 0;
       acc.completedHours += (w.completedWork ?? 0) + localHours;
@@ -396,14 +400,18 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
 
   // Roll up effort + counts per bucket. Local-uncaptured time is added
   // into completedHours and subtracted from remainingHours so the story
-  // reflects reality even before changes are pushed to ADO.
+  // reflects reality even before changes are pushed to ADO. Hours sum
+  // over TASK-type children only — Story / Feature / Epic children carry
+  // rollup numbers that double-count if added in (see capacity reducer
+  // above).
   const groups: UserStoryGroup[] = Array.from(buckets.values()).map(({ parent, tasks }) => {
-    const totalEstimateHours = tasks.reduce((s, t) => s + (t.originalEstimate ?? 0), 0);
-    const completedHours = tasks.reduce(
+    const taskOnly = tasks.filter(t => t.type === 'Task');
+    const totalEstimateHours = taskOnly.reduce((s, t) => s + (t.originalEstimate ?? 0), 0);
+    const completedHours = taskOnly.reduce(
       (s, t) => s + (t.completedWork ?? 0) + t.localUncapturedSeconds / 3600,
       0,
     );
-    const remainingHours = tasks.reduce(
+    const remainingHours = taskOnly.reduce(
       (s, t) => s + Math.max(0, (t.remainingWork ?? 0) - t.localUncapturedSeconds / 3600),
       0,
     );
