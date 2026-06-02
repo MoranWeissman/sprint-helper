@@ -13,7 +13,14 @@ import type { Capacity } from './capacity';
 import { buildDashboardCached } from './dashboard-cache';
 import { getDb } from './db';
 import { ensureCapacityNudge, getHelperNotes } from './helper-notes';
-import { listActiveSessions, type SessionRow } from './sessions';
+import { getLastEventTimestampMap, listActiveSessions, type SessionRow } from './sessions';
+
+/**
+ * Minutes of no activity (no session_log event) before an open session looks
+ * quiet enough to ask Moran whether it's still going. Tuned to "left for
+ * lunch / a meeting / a context switch" but not "stepped away for 20 min".
+ */
+const STALE_IDLE_MINUTES = 120;
 
 export interface OrientLiveSession {
   workItemId: number;
@@ -22,6 +29,18 @@ export interface OrientLiveSession {
   displayName: string;
   startedAt: string;
   minutesOpen: number;
+  /**
+   * Minutes since the most recent `session_log` event against this session,
+   * or `minutesOpen` if no events have been logged yet. R7c uses this to
+   * surface sessions that may have been left open by accident.
+   */
+  idleMinutes: number;
+  /**
+   * `true` when `idleMinutes` crosses {@link STALE_IDLE_MINUTES}. The
+   * assistant should gently ask Moran whether the session is still going or
+   * should be closed. Never act on this without confirming.
+   */
+  mayBeStale: boolean;
 }
 
 export interface OrientLastSession {
@@ -154,14 +173,20 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
     titleById.set(Number(g.id), g.title);
   }
 
-  const liveNow: OrientLiveSession[] = listActiveSessions().map(s => {
+  const activeSessions = listActiveSessions();
+  const lastEventBySession = getLastEventTimestampMap(activeSessions.map(s => s.id));
+  const liveNow: OrientLiveSession[] = activeSessions.map(s => {
     const title = titleById.get(s.workItemId) ?? `#${s.workItemId}`;
+    const lastActivity = lastEventBySession.get(s.id) ?? s.startedAt;
+    const idleMinutes = minutesSince(lastActivity, now);
     return {
       workItemId: s.workItemId,
       title,
       displayName: displayNameFor(s.workItemId, title),
       startedAt: s.startedAt,
       minutesOpen: minutesSince(s.startedAt, now),
+      idleMinutes,
+      mayBeStale: idleMinutes >= STALE_IDLE_MINUTES,
     };
   });
 

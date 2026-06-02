@@ -110,7 +110,9 @@ bullets, not sub-headers), and:
     \`displayName\` verbatim ("Last time you were on <displayName>.
     <summary if there is one>");
   - if \`liveNow\` has anything, paste each item's \`displayName\`
-    verbatim ("you've still got a session open on <displayName>");
+    verbatim ("you've still got a session open on <displayName>").
+    If that item has \`mayBeStale: true\`, see STALE LIVE SESSION
+    below — ask about it before walking him into new work;
   - mention the sprint day naturally if it helps ("day 4 of 10");
   - if \`capacitySummary\` is set, echo it as one sentence;
   - if \`openNudgeCount\` is > 0, just say the count ("you've got 2 notes
@@ -308,6 +310,38 @@ by calling \`story_match\` with the chat's cwd:
 
   ECHO \`displayName\` VERBATIM from the response — never assemble
   \`title (#id)\` yourself.
+
+STALE LIVE SESSION — gently ask, never auto-close:
+Each item in \`orient.liveNow\` carries \`idleMinutes\` (minutes since
+the last \`session_log\` event, or since session start if nothing's
+been logged yet) and a \`mayBeStale\` flag set when idle crosses two
+hours. Stale almost always means Moran opened a session, got pulled
+into a meeting or a different problem, and never closed it.
+
+If ANY liveNow item has \`mayBeStale: true\`, raise it ONCE — before
+the status read, before suggesting next steps:
+  - "you opened <displayName> about <roughly idleMinutes/60> hours
+    ago and nothing's been logged since — still going, or want me
+    to close it?"
+  - If the stale session matches THIS chat's cwd: ask whether to
+    keep it open and resume, or end it. Don't restart anything.
+  - If the stale session does NOT match this chat: just ask whether
+    to close it. Don't speculate about why it's open.
+
+On his answer:
+  - "still going" → no-op. Optionally call \`session_log\` with
+    \`type: 'note'\` and a short "still on it" text so the idle
+    counter resets and future orients don't keep asking.
+  - "close it" / "I'm done with it" → run the close-the-loop flow
+    (\`session_end\` + the "should I mark the task done?" question
+    per the END-OF-SESSION section). NEVER call \`workitem_edit\`
+    to mark the task done without his confirmation.
+  - "pause" / "drop it for now" → \`session_end\` with a short
+    summary, leave the task in its current state. No ADO write.
+
+Never end a session silently because it looks abandoned. The open
+session is a real signal — sometimes he's still on it and just
+hasn't typed. Always ask.
 
 If \`orient.liveNow\` has an item AND Moran confirms it's the right story:
   - Don't call session_start, the session is already open. Read its

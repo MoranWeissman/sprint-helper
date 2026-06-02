@@ -253,6 +253,27 @@ export function getRecentEventsMap(
   return m;
 }
 
+/**
+ * For a list of session ids, return the timestamp of the most recent event
+ * logged against each. Sessions with no events are omitted. Used by orient to
+ * tell whether an open session has gone quiet for a long time (R7c).
+ */
+export function getLastEventTimestampMap(sessionIds: string[]): Map<string, string> {
+  const m = new Map<string, string>();
+  if (sessionIds.length === 0) return m;
+  const placeholders = sessionIds.map(() => '?').join(',');
+  const rows = getDb()
+    .prepare<string[], { session_id: string; last_at: string }>(
+      `SELECT session_id, MAX(created_at) AS last_at
+       FROM session_events
+       WHERE session_id IN (${placeholders})
+       GROUP BY session_id`,
+    )
+    .all(...sessionIds);
+  for (const r of rows) m.set(r.session_id, r.last_at);
+  return m;
+}
+
 /** {workItemId → activeSession} map. Used by the dashboard payload. */
 export function getActiveSessionMap(): Map<number, Session> {
   const m = new Map<number, Session>();
