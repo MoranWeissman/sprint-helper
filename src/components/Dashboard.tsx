@@ -326,10 +326,11 @@ function prepEventBody(text: string): string {
   if (text.length < 160) return text;
   if (/(\n\n)|(^[\-*] )|(^#{1,6} )|(^```)|(\n[\-*] )/m.test(text)) return text;
 
-  // Pass 1: sentence breaks (period/?/! + space + uppercase or open-paren)
-  // become single newlines. Treating "(" as a sentence start catches "...
-  // (1) foo" boundaries before pass 2 runs.
-  let out = text.replace(/([.!?])\s+(?=[A-Z(])/g, '$1\n');
+  // Pass 1: sentence breaks (.!? + space + uppercase, "(", or backtick).
+  // Backtick covers sentences starting with `code` spans.
+  let out = text.replace(/([.!?])\s+(?=[A-Z(`])/g, '$1\n');
+  // Pass 1b: colon/semicolon + " (N) " (intro-then-list pattern).
+  out = out.replace(/([:;])\s+(?=\(\d+\)\s)/g, '$1\n');
 
   // Pass 2: turn "(N) " at start-of-line into a markdown ordered-list
   // item ("N. "). The first list item needs a blank line above it so

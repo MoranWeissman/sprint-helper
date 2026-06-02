@@ -23,6 +23,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
+import { mirrorSprintSummary, mirrorTaskFile } from '../server/archive.js';
 import { getCalendarUrl, setCalendarUrl } from '../server/calendar.js';
 import { computeCapacity } from '../server/capacity.js';
 import { buildDashboard } from '../server/dashboard.js';
@@ -1411,6 +1412,7 @@ server.registerTool(
   async ({ workItemId, client }) => {
     const session = startSession({ workItemId, client });
     timerService.start(workItemId); // silent time tracking begins with the session
+    void mirrorTaskFile(workItemId); // background — keep the archive file fresh
 
     // Auto-flip waiting → going in ADO. If the flip throws, don't fail
     // the whole session_start; report the error in the payload.
@@ -1466,6 +1468,7 @@ server.registerTool(
     }
     const event = logEvent({ sessionId, type, text });
     if (!event) return errorResult(`Session not found: ${sessionId}`);
+    void mirrorTaskFile(event.workItemId); // background — keep the archive file fresh
     if (remainingHoursAfter == null) return jsonResult({ event });
     try {
       await setRemaining(event.workItemId, remainingHoursAfter);
@@ -1509,6 +1512,8 @@ server.registerTool(
   async ({ sessionId, summary, done }) => {
     const session = endSession({ sessionId, summary });
     if (!session) return errorResult(`Session not found: ${sessionId}`);
+    void mirrorTaskFile(session.workItemId); // background — keep the archive file fresh
+    void mirrorSprintSummary(); // and refresh the sprint overview
     try {
       const timer = done
         ? await timerService.markDone(session.workItemId)
