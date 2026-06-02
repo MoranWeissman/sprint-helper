@@ -2234,8 +2234,10 @@ html, body {
 .r21-focal-context .sep { color: var(--ink-4); }
 .r21-focal-context .story-title { font-size: 15px; color: var(--ink-1); }
 .r21-focal-context .id { font-family: var(--font-mono); color: var(--ink-3); font-size: 14px; }
-.r21-focal-context a { color: inherit; text-decoration: none; background: none; border: none; font: inherit; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 12px; }
-.r21-focal-context a:hover .story-title { color: var(--accent); }
+.r21-focal-context a,
+.r21-focal-context button { color: inherit; text-decoration: none; background: none; border: none; font: inherit; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 12px; -webkit-appearance: none; appearance: none; }
+.r21-focal-context a:hover .story-title,
+.r21-focal-context button:hover .story-title { color: var(--accent); }
 .r21-focal-id { font-family: var(--font-mono); font-feature-settings: "tnum" 1; font-size: 15px; color: var(--ink-3); margin-bottom: 14px; }
 .r21-focal-title { font-size: 44px; line-height: 1.1; letter-spacing: -0.025em; font-weight: 400; color: var(--ink-0); margin: 0; text-wrap: pretty; max-width: 24ch; }
 .r21-focal-meta { display: flex; align-items: baseline; gap: 22px; flex-wrap: wrap; margin-top: 22px; padding-bottom: 22px; border-bottom: 1px solid var(--line-hair); }
@@ -2260,16 +2262,20 @@ html, body {
 .r21-feed-meta { font-size: 13px; color: var(--ink-4); letter-spacing: 0.04em; }
 .r21-feed-list { display: flex; flex-direction: column; }
 .r21-feed-empty { font-size: 15px; color: var(--ink-3); padding: 14px 0; }
-.r21-ev { display: grid; grid-template-columns: 64px 96px 1fr; gap: 16px; align-items: baseline; padding: 11px 0; border-top: 1px solid var(--line-hair); }
-.r21-ev:first-child { border-top: none; }
-.r21-ev-time { font-family: var(--font-mono); font-feature-settings: "tnum" 1; font-size: 14px; color: var(--ink-3); }
-.r21-ev-type { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; }
-.r21-ev-type.t-focus { color: var(--ev-focus); }
-.r21-ev-type.t-progress { color: var(--ev-progress); }
-.r21-ev-type.t-blocker { color: var(--ev-blocker); }
-.r21-ev-type.t-decision { color: var(--ev-decision); }
-.r21-ev-type.t-note { color: var(--ev-note); }
-.r21-ev-body { font-size: 13.5px; color: var(--ink-1); line-height: 1.5; text-wrap: pretty; }
+/* Activity entry: header row (time + type label) over a wider body block
+   with a type-tinted left accent. Long progress notes stay readable as
+   a real paragraph, not a column crammed into a third of the width. */
+.r21-ev { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 8px; padding: 14px 0 18px; border-top: 1px solid var(--line-hair); --ev-accent: var(--ink-4); }
+.r21-ev:first-child { border-top: none; padding-top: 4px; }
+.r21-ev.t-focus { --ev-accent: var(--ev-focus); }
+.r21-ev.t-progress { --ev-accent: var(--ev-progress); }
+.r21-ev.t-blocker { --ev-accent: var(--ev-blocker); }
+.r21-ev.t-decision { --ev-accent: var(--ev-decision); }
+.r21-ev.t-note { --ev-accent: var(--ev-note); }
+.r21-ev-head { display: flex; align-items: baseline; gap: 14px; }
+.r21-ev-time { font-family: var(--font-mono); font-feature-settings: "tnum" 1; font-size: 14px; color: var(--ink-3); min-width: 52px; }
+.r21-ev-type { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--ev-accent); }
+.r21-ev-body { margin: 0; font-size: 15px; color: var(--ink-1); line-height: 1.65; text-wrap: pretty; max-width: 78ch; padding: 4px 0 4px 16px; border-left: 2px solid color-mix(in oklch, var(--ev-accent) 60%, transparent); }
 
 /* Moran's chosen tweaks (locked from Claude Design): generous density + whisper focal. */
 .r21-app[data-density="generous"] .r21-overview { padding: 60px 88px 44px; gap: 56px; }

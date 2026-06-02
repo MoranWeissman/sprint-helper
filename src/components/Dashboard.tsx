@@ -652,10 +652,12 @@ function R21Focus({
             <div className="r21-feed-empty">Nothing logged yet. Claude Code will note things here as you work.</div>
           ) : (
             events.map(e => (
-              <div className="r21-ev" key={e.id}>
-                <span className="r21-ev-time">{fmtClockISO(e.createdAt)}</span>
-                <span className={`r21-ev-type t-${e.type}`}>{EVENT_LABELS[e.type] ?? e.type}</span>
-                <span className="r21-ev-body">{e.text}</span>
+              <div className={`r21-ev t-${e.type}`} key={e.id}>
+                <div className="r21-ev-head">
+                  <span className="r21-ev-time">{fmtClockISO(e.createdAt)}</span>
+                  <span className="r21-ev-type">{EVENT_LABELS[e.type] ?? e.type}</span>
+                </div>
+                <p className="r21-ev-body">{e.text}</p>
               </div>
             ))
           )}
