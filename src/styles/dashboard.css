@@ -15,6 +15,17 @@
   --bg-3: oklch(0.275 0.030 254);
   --line: oklch(0.36 0.030 252 / 0.55);
   --line-soft: oklch(0.36 0.030 252 / 0.28);
+  --line-strong: oklch(0.40 0.040 250 / 0.85);
+  --line-hair: oklch(0.36 0.030 252 / 0.18);
+
+  /* Surface stack (2026-06-02): explicit step ramp for panel separation.
+   * Each step is ~0.025 lighter in OKLCH which is just enough to read as
+   * "different surface" without breaking the calm dark warm-dusk feel.
+   * Use --surface-1 for the page, --surface-2 for cards, --surface-3 for
+   * elevated tiles (helper notes, capacity tile, daily strip). */
+  --surface-1: oklch(0.125 0.026 260);
+  --surface-2: oklch(0.155 0.030 258);
+  --surface-3: oklch(0.180 0.034 256);
 
   /* Zone-specific backgrounds — each is a small hue + lightness shift
    * relative to bg-0 so zones feel distinct without competing. */
@@ -163,24 +174,33 @@ html, body {
 /* Sprint picker */
 .ember-sprint-pick {
   display: inline-flex; align-items: stretch;
-  background: oklch(0.18 0.030 254);
-  border: 1px solid var(--line-soft);
+  background: linear-gradient(180deg, oklch(0.215 0.038 254), oklch(0.180 0.030 256));
+  border: 1px solid var(--line);
   border-radius: 999px;
   overflow: hidden;
-  font-size: 14px;
+  font-size: 15px;
+  box-shadow: 0 1px 0 oklch(0.40 0.030 250 / 0.18) inset;
+}
+.ember-sprint-pick::before {
+  content: "sprint";
+  align-self: center;
+  padding: 0 10px 0 14px;
+  font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600;
+  border-right: 1px solid var(--line-soft);
 }
 .ember-sprint-pick button,
 .ember-sprint-pick select {
   appearance: none; -webkit-appearance: none;
   background: transparent; border: none; cursor: pointer;
-  font-family: inherit; font-size: 14px;
-  padding: 8px 12px;
-  color: var(--ink-2);
+  font-family: inherit; font-size: 15px;
+  padding: 9px 14px;
+  color: var(--ink-1);
   transition: background 0.15s ease, color 0.15s ease;
 }
 .ember-sprint-pick button:hover,
 .ember-sprint-pick select:hover {
-  background: oklch(0.22 0.035 252);
+  background: oklch(0.255 0.040 252);
   color: var(--ink-0);
 }
 .ember-sprint-pick button[disabled] {
@@ -190,11 +210,12 @@ html, body {
   background: transparent; color: var(--ink-4);
 }
 .ember-sprint-pick .ember-sprint-current {
-  padding: 8px 14px;
-  color: var(--ink-1); font-weight: 500;
+  padding: 9px 16px;
+  color: var(--ink-0); font-weight: 600;
   border-left: 1px solid var(--line-soft);
   border-right: 1px solid var(--line-soft);
   font-family: var(--font-mono);
+  letter-spacing: 0.02em;
 }
 
 /* main split */
@@ -2050,62 +2071,62 @@ html, body {
 
 /* MODE RAIL */
 .r21-rail {
-  width: 64px; flex-shrink: 0;
-  display: flex; flex-direction: column; gap: 4px;
-  padding: 18px 8px 14px;
-  border-right: 1px solid var(--line-soft);
-  background: oklch(0.118 0.024 260);
+  width: 84px; flex-shrink: 0;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 22px 10px 18px;
+  border-right: 1px solid var(--line-strong, oklch(0.30 0.030 258 / 0.7));
+  background: oklch(0.108 0.024 260);
 }
 .r21-rail-cap {
-  font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
-  color: var(--ink-4); font-weight: 600;
+  font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600;
   writing-mode: vertical-rl; transform: rotate(180deg);
-  align-self: center; margin-bottom: 8px;
+  align-self: center; margin-bottom: 10px;
 }
 .r21-rail-tile {
   appearance: none; border: 1px solid transparent; background: transparent;
   cursor: pointer; font-family: inherit;
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 10px 4px; border-radius: 6px;
-  color: var(--ink-3); position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 14px 6px; border-radius: 8px;
+  color: var(--ink-2); position: relative;
   transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
-.r21-rail-tile .glyph { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; color: currentColor; }
+.r21-rail-tile .glyph { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; color: currentColor; }
 .r21-rail-tile .glyph svg { width: 100%; height: 100%; }
-.r21-rail-tile .lbl { font-size: 9px; letter-spacing: 0.10em; text-transform: uppercase; font-weight: 500; line-height: 1; }
-.r21-rail-tile:hover { color: var(--ink-1); background: oklch(0.18 0.030 258 / 0.6); }
+.r21-rail-tile .lbl { font-size: 11px; letter-spacing: 0.10em; text-transform: uppercase; font-weight: 500; line-height: 1; }
+.r21-rail-tile:hover { color: var(--ink-0); background: oklch(0.18 0.030 258 / 0.7); }
 .r21-rail-tile.is-active {
   color: var(--ink-0);
-  background: linear-gradient(180deg, oklch(0.225 0.040 256), oklch(0.180 0.030 258));
+  background: linear-gradient(180deg, oklch(0.235 0.040 256), oklch(0.185 0.030 258));
   border-color: var(--line-soft);
 }
 .r21-rail-tile.is-active::before {
-  content: ""; position: absolute; left: -9px; top: 12px; bottom: 12px; width: 2px;
+  content: ""; position: absolute; left: -11px; top: 14px; bottom: 14px; width: 3px;
   background: var(--accent); border-radius: 2px;
 }
 .r21-rail-tile.is-suggested::after {
-  content: ""; position: absolute; top: 6px; right: 8px;
-  width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
+  content: ""; position: absolute; top: 8px; right: 10px;
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
 }
 .r21-rail-gear {
   margin-top: auto;
   appearance: none; background: transparent; border: 1px solid transparent;
-  cursor: pointer; font-family: inherit; color: var(--ink-3);
-  padding: 8px 4px; border-radius: 6px;
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  cursor: pointer; font-family: inherit; color: var(--ink-2);
+  padding: 12px 6px; border-radius: 8px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
   transition: color 0.15s ease, background 0.15s ease;
 }
-.r21-rail-gear:hover { color: var(--ink-0); background: oklch(0.18 0.030 258 / 0.6); }
-.r21-rail-gear .glyph { width: 14px; height: 14px; display: inline-flex; }
+.r21-rail-gear:hover { color: var(--ink-0); background: oklch(0.18 0.030 258 / 0.7); }
+.r21-rail-gear .glyph { width: 22px; height: 22px; display: inline-flex; }
 .r21-rail-gear .glyph svg { width: 100%; height: 100%; }
-.r21-rail-gear .lbl { font-size: 8.5px; letter-spacing: 0.10em; text-transform: uppercase; font-weight: 500; }
+.r21-rail-gear .lbl { font-size: 10.5px; letter-spacing: 0.10em; text-transform: uppercase; font-weight: 500; }
 .r21-rail { transition: opacity 220ms ease; }
 
 /* LEFT SIDEBAR — fades out in Focus */
 .r21-sidewrap {
   position: relative; width: 260px; flex-shrink: 0;
-  border-right: 1px solid var(--line-hair);
-  background: oklch(0.128 0.026 260);
+  border-right: 1px solid var(--line-strong);
+  background: var(--surface-2);
   overflow: hidden;
 }
 .r21-side {
@@ -2274,14 +2295,15 @@ html, body {
 
 /* R3 — helper's notes: the assistant's plain-English read on the sprint */
 .r21-notes {
-  border: 1px solid var(--line-hair);
-  border-left: 2px solid var(--accent-deep);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent-deep);
   border-radius: 12px;
-  background: var(--bg-1);
+  background: var(--surface-3);
   padding: 22px 26px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  box-shadow: 0 1px 0 oklch(0.40 0.030 250 / 0.10) inset;
 }
 .r21-notes-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .r21-notes-title { font-size: 14.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
@@ -2317,14 +2339,15 @@ html, body {
 
 /* R5b — capacity tile: real desk time vs planned hours */
 .r21-capacity {
-  border: 1px solid var(--line-hair);
-  border-left: 2px solid var(--line-soft);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
   border-radius: 12px;
-  background: var(--bg-1);
+  background: var(--surface-3);
   padding: 22px 26px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  box-shadow: 0 1px 0 oklch(0.40 0.030 250 / 0.10) inset;
 }
 .r21-capacity.is-over { border-left-color: var(--ev-blocker); }
 .r21-capacity.is-under { border-left-color: var(--ev-progress, var(--accent-deep)); }
@@ -2353,9 +2376,10 @@ html, body {
   justify-content: space-between;
   gap: 24px;
   padding: 16px 22px;
-  border: 1px solid var(--line-hair);
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: var(--bg-1);
+  background: var(--surface-3);
+  box-shadow: 0 1px 0 oklch(0.40 0.030 250 / 0.10) inset;
 }
 .r21-daily-strip-left {
   display: flex;
