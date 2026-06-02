@@ -2292,7 +2292,26 @@ html, body {
 .r21-ev-chev { font-family: var(--font-mono); color: var(--ink-3); font-size: 13px; line-height: 1; flex-shrink: 0; width: 18px; text-align: center; transition: color 0.12s ease, transform 0.15s ease; }
 .r21-ev-head:hover .r21-ev-chev { color: var(--ink-0); }
 .r21-ev.is-open .r21-ev-chev { color: var(--ev-accent); }
-.r21-ev-body { margin: 0; font-size: 15px; color: var(--ink-1); line-height: 1.65; text-wrap: pretty; padding: 14px 22px 18px; max-width: 78ch; white-space: pre-line; border-top: 1px solid var(--line-hair); }
+/* Activity body renders parsed markdown via dangerouslySetInnerHTML;
+   styles below shape paragraphs, lists, inline code, bold, and links to
+   match the rest of the dashboard. Paragraph spacing is tight so calm
+   multi-paragraph entries don't shout. */
+.r21-ev-body { font-size: 15px; color: var(--ink-1); line-height: 1.65; text-wrap: pretty; padding: 14px 22px 18px; max-width: 78ch; border-top: 1px solid var(--line-hair); }
+.r21-ev-body p { margin: 0 0 0.55em; }
+.r21-ev-body p:last-child { margin-bottom: 0; }
+.r21-ev-body ul, .r21-ev-body ol { margin: 0.4em 0 0.6em; padding-left: 1.4em; }
+.r21-ev-body li { margin-bottom: 0.25em; }
+.r21-ev-body li:last-child { margin-bottom: 0; }
+.r21-ev-body code { font-family: var(--font-mono); font-size: 0.92em; background: oklch(0.22 0.018 258 / 0.7); border: 1px solid var(--line-hair); padding: 1px 6px; border-radius: 4px; color: var(--ink-0); }
+.r21-ev-body pre { font-family: var(--font-mono); font-size: 0.92em; background: oklch(0.165 0.018 258); border: 1px solid var(--line-hair); padding: 10px 14px; border-radius: 6px; margin: 0.6em 0; overflow-x: auto; color: var(--ink-0); }
+.r21-ev-body pre code { background: none; border: none; padding: 0; }
+.r21-ev-body strong { color: var(--ink-0); font-weight: 600; }
+.r21-ev-body em { color: var(--ink-1); font-style: italic; }
+.r21-ev-body a { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in oklch, var(--accent) 35%, transparent); }
+.r21-ev-body a:hover { border-bottom-color: var(--accent); }
+.r21-ev-body h1, .r21-ev-body h2, .r21-ev-body h3, .r21-ev-body h4 { font-size: 1em; font-weight: 600; color: var(--ink-0); margin: 0.6em 0 0.3em; letter-spacing: 0; }
+.r21-ev-body blockquote { margin: 0.5em 0; padding: 4px 0 4px 12px; border-left: 2px solid var(--line-soft); color: var(--ink-2); }
+.r21-ev-body hr { border: none; border-top: 1px solid var(--line-hair); margin: 0.8em 0; }
 
 /* Moran's chosen tweaks (locked from Claude Design): generous density + whisper focal. */
 .r21-app[data-density="generous"] .r21-overview { padding: 60px 88px 44px; gap: 56px; }

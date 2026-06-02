@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import MarkdownIt from 'markdown-it';
 import {
   dismissHelperNote,
   nameFromEmail,
@@ -289,19 +290,34 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 /**
- * Make a session-log body actually readable. Older entries (and any future
- * mistake) get written as one dense paragraph; this splits them visually
- * without changing the stored content. Short entries stay as-is — they
- * already read fine. Combined with `white-space: pre-line` in CSS,
- * inserting `\n` produces real paragraph breaks.
+ * Markdown renderer for activity body text. New entries SHOULD be written
+ * as proper markdown (bullets, `code`, **bold**, paragraphs separated by
+ * blank lines). `breaks: true` turns a lone newline into <br>, so legacy
+ * entries that only got auto-prettified to single \n breaks still render
+ * with their sentence-level line spacing. `html: false` blocks any raw
+ * HTML from sneaking in.
  */
-function prettifyEventBody(text: string): string {
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true,
+  typographer: false,
+});
+
+/**
+ * Light pre-pass for legacy entries that are still one giant paragraph.
+ * For ANY entry, leave the markdown source alone past 160 chars — markdown
+ * needs explicit `\n\n` for paragraph breaks. We insert single `\n` at
+ * sentence boundaries and before "(1)/(2)/(3)" markers; with markdown-it's
+ * `breaks: true` those render as `<br>` so old entries still read line by
+ * line. Short entries stay untouched.
+ */
+function prepEventBody(text: string): string {
   if (text.length < 160) return text;
-  // Numbered list markers like ". (1) ... (2) ..." get a line break.
+  // If the entry already uses markdown features (lists, headings, code
+  // fences, explicit paragraphs), don't touch it — the writer knows.
+  if (/(\n\n)|(^[\-*] )|(^#{1,6} )|(^```)|(\n[\-*] )/m.test(text)) return text;
   let out = text.replace(/\.\s+\((\d+)\)\s/g, '.\n($1) ');
-  // Sentence breaks: `.`/`?`/`!` followed by space-then-uppercase becomes a
-  // line break. Single `\n` — one line-height of space, the standard
-  // sentence break. Skips lowercase continuations like "e.g. blah".
   out = out.replace(/([.!?])\s+(?=[A-Z])/g, '$1\n');
   return out;
 }
@@ -341,7 +357,10 @@ function ActivityEntry({ event }: { event: ApiSessionEvent }) {
         {hasMore && <span className="r21-ev-chev">{open ? '▾' : '▸'}</span>}
       </button>
       {hasMore && open && (
-        <p className="r21-ev-body">{prettifyEventBody(event.text)}</p>
+        <div
+          className="r21-ev-body"
+          dangerouslySetInnerHTML={{ __html: md.render(prepEventBody(event.text)) }}
+        />
       )}
     </div>
   );

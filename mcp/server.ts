@@ -647,32 +647,55 @@ DO NOT write a session_log for:
   - Routine commits with no narrative value — though most real
     commits ARE worth logging, so when in doubt, log.
 
-Style — KEEP THEM SHORT, this is the load-bearing rule:
+Style — KEEP THEM SHORT, and WRITE THEM AS MARKDOWN:
+The Focus view renders session_log bodies as markdown. Write them
+that way. The next chat reads what you wrote today, and Moran reads
+them in retros — both deserve real structure, not prose blobs.
+
   - One log = one checkpoint. Not five things bundled into one
     dense paragraph. If three things happened in the last hour,
     write three separate \`session_log\` calls, not one summary
-    that crams them together. The UI renders each log as its own
-    card in the Focus view; bundled summaries become walls of text
-    that Moran cannot read at a glance.
-  - One to three sentences per log. If you find yourself writing
-    a fourth sentence, you're probably bundling — break it up.
-  - Plain English, standup-voice. "Shipped R7c, commit c6b205d"
-    beats "Successfully completed implementation of the idle
-    wrap-up nudge feature with associated test coverage".
+    that crams them together.
+  - One to three sentences per log when the checkpoint is a single
+    thing. If you find yourself writing a fourth sentence, you're
+    probably bundling — break it into separate logs.
+  - Use markdown for everything beyond a one-liner:
+      • Real paragraphs: blank line between them (\`\\n\\n\`).
+      • Bulleted lists: lines starting with \`- \` for related items.
+      • Inline code: \`backticks\` around file paths, identifiers,
+        commit shas, ADO ids, command names, variable names.
+      • Bold: \`**text**\` for the most important word/phrase.
+      • Links: \`[label](url)\` if there's a real URL worth pointing
+        to (PRs, docs, dashboards).
+  - Plain English, standup-voice. "Shipped \`R7c\`, commit
+    \`c6b205d\`" beats "Successfully completed implementation of
+    the idle wrap-up nudge feature with associated test coverage".
   - "Why" beats "what" when there's a why — the commit subject
     already says what.
   - Plain-English bans (slack, cleanup moves, burndown, etc.)
-    apply here too. The next chat reads what you wrote today.
+    apply here too.
   - You don't need to announce that you logged. Log silently
     while working — the entries are for retros and resumes, not
     for Moran's attention right now.
-  - WHEN YOU MUST PUT MULTIPLE THINGS IN ONE LOG (e.g. a single
-    checkpoint that wrapped up several follow-ups together), use
-    real newline characters (\\n) between thoughts. The UI also
-    auto-breaks at sentence boundaries and at numbered patterns
-    like "(1) ... (2) ..." so even old bundled logs render as
-    separate lines. But prefer multiple short logs over one
-    bundled log with formatting tricks. Always.
+
+GOOD (markdown, structured):
+  text: \`\`\`
+  Three follow-ups closed:
+
+  - Renamed \`securityGroupId\` → \`clusterSecurityGroupId\` in the
+    \`eks\` block across both YAMLs and the spec note.
+  - Walked the \`cp-output-configmap\` chart rewrite with the
+    contract owner — two-loop structure confirmed.
+  - \`devex-expert\` updated \`mock/README.md\`; caught a missing
+    fourth chart in the Layout listing on the way.
+  \`\`\`
+
+BAD (one prose blob, no structure):
+  "Three follow-ups closed. Field name in the eks block renamed
+  from securityGroupId to clusterSecurityGroupId across both
+  eks.yaml source files. cp-output-configmap chart rewrite walked
+  through with the contract owner. mock/README.md updated by
+  devex-expert. Also caught a missing fourth chart."
 
 BUNDLED VS SPLIT — concrete example:
 
