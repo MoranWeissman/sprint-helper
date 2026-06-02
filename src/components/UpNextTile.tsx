@@ -2,6 +2,17 @@ import type { ApiUpcomingCeremony, ModeId } from '../lib/api';
 import { ModeGlyph } from './ModeGlyphs';
 import { Mono } from './Mono';
 
+/**
+ * Recompute minutes-until from `startsAt` + a fresh client `now`. The server
+ * ships its own `minutesUntil` but the stale-while-revalidate dashboard cache
+ * can serve a value computed up to a few minutes ago, which is enough to
+ * make "started 1h ago" look like "starting now". The client always has a
+ * fresh time; trust it for relative phrasing.
+ */
+function minutesUntilFresh(startsAtISO: string, now: Date): number {
+  return Math.round((new Date(startsAtISO).getTime() - now.getTime()) / 60000);
+}
+
 /** Map a schedule entry id back to its mode id (daily → day, others 1:1). */
 function modeForCeremony(id: ApiUpcomingCeremony['id']): ModeId {
   return id === 'daily' ? 'day' : id;
@@ -40,11 +51,13 @@ function formatPeekItem(c: ApiUpcomingCeremony, now: Date): string {
 interface UpNextTileProps {
   next: ApiUpcomingCeremony | null;
   upcoming: ApiUpcomingCeremony[];
+  /** Fresh client-side current time. Used to recompute relative phrasing locally. */
+  now: Date;
   onJump: (mode: ModeId) => void;
   onOpenSchedule: () => void;
 }
 
-export function UpNextTile({ next, upcoming, onJump, onOpenSchedule }: UpNextTileProps) {
+export function UpNextTile({ next, upcoming, now, onJump, onOpenSchedule }: UpNextTileProps) {
   // Empty state
   if (!next) {
     return (
@@ -68,14 +81,16 @@ export function UpNextTile({ next, upcoming, onJump, onOpenSchedule }: UpNextTil
     );
   }
 
+  // Recompute from the fresh client clock — don't trust the payload's
+  // (possibly cached) minutesUntil for relative phrasing.
+  const minutesUntil = minutesUntilFresh(next.startsAt, now);
   // "Imminent" = within 15 min of start OR overdue by up to 60 min.
-  const imminent = next.minutesUntil <= 15 && next.minutesUntil >= -60;
+  const imminent = minutesUntil <= 15 && minutesUntil >= -60;
   // Peek list = next 2 entries AFTER the headline one (de-duped by id+date).
   const headlineKey = `${next.id}-${next.startsAt}`;
   const peek = upcoming
     .filter(u => `${u.id}-${u.startsAt}` !== headlineKey)
     .slice(0, 2);
-  const now = new Date();
 
   return (
     <button
@@ -111,7 +126,7 @@ export function UpNextTile({ next, upcoming, onJump, onOpenSchedule }: UpNextTil
       <h4 className="up-next-name">{next.label}</h4>
       <div className="up-next-when">
         <Mono className="time">{formatTime(next.startsAt)}</Mono>
-        <span className="rel">{formatRelative(next.minutesUntil)}</span>
+        <span className="rel">{formatRelative(minutesUntil)}</span>
       </div>
       {peek.length > 0 && (
         <div className="up-next-peek">

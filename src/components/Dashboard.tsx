@@ -164,6 +164,7 @@ function DashboardLive({
           userName={userName}
           sub={greetingCopy(inProgress.length, daysRemaining)}
           next={ceremonies.next}
+          now={now}
           sprintLabel={sprintLabel}
           today={today}
           totalDays={sprintCtx?.totalDays ?? 0}
@@ -335,6 +336,7 @@ function R21Sidebar({
   userName,
   sub,
   next,
+  now,
   sprintLabel,
   today,
   totalDays,
@@ -349,6 +351,8 @@ function R21Sidebar({
   userName: string;
   sub: string;
   next: ApiPayload['ceremonies']['next'];
+  /** Fresh client-side clock — recompute relative-time locally; don't trust the server's stale minutesUntil. */
+  now: Date;
   sprintLabel: string;
   today: number;
   totalDays: number;
@@ -393,7 +397,7 @@ function R21Sidebar({
             <span className="cap">Up next · {next.label}</span>
             <div className="row">
               <span className="when"><Mono>{fmtClockISO(next.startsAt)}</Mono></span>
-              <span className="rel">{relUntil(next.minutesUntil)}</span>
+              <span className="rel">{relUntil(minutesUntilFresh(next.startsAt, now))}</span>
             </div>
             <span className="name">{next.label}</span>
           </div>
@@ -1051,11 +1055,23 @@ function fmtClockISO(iso: string): string {
 }
 
 function relUntil(min: number): string {
-  if (min <= 0) return 'now';
-  if (min < 60) return `in ${min}m`;
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m === 0 ? `in ${h}h` : `in ${h}h ${m}m`;
+  if (min === 0) return 'now';
+  if (min > 0) {
+    if (min < 60) return `in ${min}m`;
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return m === 0 ? `in ${h}h` : `in ${h}h ${m}m`;
+  }
+  // min < 0 — already started or already ended.
+  const ago = -min;
+  if (ago < 60) return `${ago}m ago`;
+  const h = Math.floor(ago / 60);
+  const m = ago % 60;
+  return m === 0 ? `${h}h ago` : `${h}h ${m}m ago`;
+}
+
+function minutesUntilFresh(startsAtISO: string, now: Date): number {
+  return Math.round((new Date(startsAtISO).getTime() - now.getTime()) / 60000);
 }
 
 /** "just now" / "20m ago" / "3h ago" / "2d ago" — for the helper-notes timestamp. */
