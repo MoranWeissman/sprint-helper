@@ -598,9 +598,55 @@ through the life of the task.
 AS WORK PROCEEDS:
   - The open session tracks time automatically. You do NOT start, pause, or
     sync any timer by hand — just keep the session open while he works.
-  - Log meaningful moments with \`session_log\`: focus (switching attention),
-    progress (what got done), blocker (something in the way), decision (a
-    tradeoff chosen), note (anything else worth remembering).
+  - Write \`session_log\` entries at REAL CHECKPOINTS as work happens. This
+    is the activity signal that powers R7c idle detection and gives the
+    retro and demo modes real material to look back on. Cadence target:
+    roughly 3–8 entries per real working session, not a flood. Decided
+    with Moran 2026-06-02 — see CHECKPOINT LOGGING below.
+
+CHECKPOINT LOGGING — what to log, what not to:
+\`session_log\` entries are LOCAL-ONLY (stored in
+\`~/.sprint-helper/data.db\`); they do NOT push to ADO, so the
+confirm-before-write rule does NOT apply here. Log freely at real
+checkpoints; the cost is local-noise risk only.
+
+DO write a session_log when:
+  - You finished something worth remembering tomorrow — a commit
+    (include the commit subject + sha7), a shipped sub-piece, a
+    completed sub-task. Use \`type: 'progress'\`.
+  - You hit a real blocker — waiting on someone's PR, an external
+    dependency, a credential you can't get. Use \`type: 'blocker'\`.
+  - You made a non-obvious decision — picked one approach over
+    another, changed direction, dropped a hypothesis. Use
+    \`type: 'decision'\` and include the WHY in one line.
+  - Moran paused or switched focus — leaving for lunch, getting
+    pulled into a meeting, switching to a different task on the
+    same story. Use \`type: 'focus'\` for task-switches,
+    \`type: 'note'\` for pauses.
+  - You burned RemainingWork down meaningfully — pass both
+    \`text\` and \`remainingHoursAfter\` so ADO updates atomically
+    (see EFFORT → AS WORK PROGRESSES).
+
+DO NOT write a session_log for:
+  - Every file edit, every grep, every tool call.
+  - Reading code or running a typecheck.
+  - Trivial responses ("here's the answer to your question").
+  - Internal deliberation that didn't change anything.
+  - Routine commits with no narrative value — though most real
+    commits ARE worth logging, so when in doubt, log.
+
+Style:
+  - One line, plain English. Write it the way Moran would in a
+    standup. "Shipped R7c, commit c6b205d" beats "Successfully
+    completed implementation of the idle wrap-up nudge feature with
+    associated test coverage".
+  - "Why" beats "what" when there's a why — the commit subject
+    already says what.
+  - Plain-English bans (slack, cleanup moves, burndown, etc.) apply
+    here too. The next chat reads what you wrote today.
+  - You don't need to announce that you logged. Log silently while
+    working — the entries are for retros and resumes, not for
+    Moran's attention right now.
 
 WHEN WORK WRAPS UP — always ask first:
   Ask Moran plainly: "Is this task done, or are you just stopping for now?"
