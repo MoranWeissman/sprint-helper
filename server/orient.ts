@@ -107,8 +107,8 @@ export interface OrientPacket {
     tasksMissingEstimate: number;
   };
   /**
-   * Real desk time vs planned hours for the sprint (from Outlook). Null when
-   * the dashboard couldn't compute it.
+   * Hours-available-after-meetings vs planned hours for the sprint (from
+   * Outlook). Null when the dashboard couldn't compute it.
    */
   capacity: Capacity | null;
   /**
@@ -140,12 +140,12 @@ function plainCapacitySummary(c: Capacity | null): string | null {
   const desk = Math.round(c.realDeskHours);
   const diff = Math.round(c.difference);
   if (diff >= 8) {
-    return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${desk} hours of real desk time, so you're roughly ${diff} hours over what fits.`;
+    return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${desk} hours available after meetings, so you're roughly ${diff} hours over what fits.`;
   }
   if (diff <= -8) {
-    return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${desk} hours of real desk time, so there's about ${Math.abs(diff)} hours of room left if you want to pull something in.`;
+    return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${desk} hours available after meetings, so there's about ${Math.abs(diff)} hours of room left if you want to pull something in.`;
   }
-  return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${desk} hours of real desk time — close to balanced.`;
+  return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${desk} hours available after meetings — close to balanced.`;
 }
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;

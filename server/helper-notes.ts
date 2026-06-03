@@ -111,11 +111,11 @@ export function getHelperNotes(limit = 5): HelperNotes {
 }
 
 /**
- * Add a capacity nudge when planned hours diverge from real desk time by
- * `thresholdHours` (default 8h = a full Moran-day). Deduped via a settings
- * key — fires at most once per sprint per direction (over/under). If sprint
- * changes or direction flips, fires again. Returns the new note, or null if
- * the gap is below threshold or already nudged.
+ * Add a capacity nudge when planned hours diverge from the hours-available-
+ * after-meetings by `thresholdHours` (default 8h = a full Moran-day). Deduped
+ * via a settings key — fires at most once per sprint per direction
+ * (over/under). If sprint changes or direction flips, fires again. Returns
+ * the new note, or null if the gap is below threshold or already nudged.
  */
 export function ensureCapacityNudge(opts: {
   sprintName: string;
@@ -146,8 +146,8 @@ export function ensureCapacityNudge(opts: {
   const gap = Math.round(Math.abs(opts.difference));
   const body =
     direction === 'over'
-      ? `You're planned about ${gap}h over capacity this sprint (${planned}h planned vs ~${real}h real desk time). Want to trim or push something?`
-      : `You've got about ${gap}h of slack this sprint (${planned}h planned vs ~${real}h real desk time). Room to pull something in if you want.`;
+      ? `You're planned about ${gap}h over capacity this sprint (${planned}h planned vs ~${real}h available after meetings). Want to trim or push something?`
+      : `You've got about ${gap}h of room left this sprint (${planned}h planned vs ~${real}h available after meetings). Want to pull something in?`;
 
   const note = addNote(body);
 

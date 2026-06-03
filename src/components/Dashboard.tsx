@@ -748,7 +748,7 @@ function CapacityTile({ capacity }: { capacity: ApiOutlookCapacity | null }) {
           <span className="r21-capacity-meta">no calendar yet</span>
         </div>
         <p className="r21-capacity-empty">
-          Connect your Outlook calendar to see real desk time after meetings.
+          Connect your Outlook calendar to see how many hours you have available after meetings.
           See <code>docs/setup/outlook-calendar.md</code> for the publish-URL steps.
         </p>
       </section>
@@ -782,7 +782,7 @@ function CapacityTile({ capacity }: { capacity: ApiOutlookCapacity | null }) {
     phrase = `${absDiff}h over`;
   } else if (diff <= -8) {
     state = 'under';
-    phrase = `${absDiff}h of slack`;
+    phrase = `${absDiff}h of room left`;
   } else if (Math.abs(diff) >= 1) {
     phrase = diff > 0 ? `${absDiff}h over` : `${absDiff}h under`;
   }
@@ -795,11 +795,24 @@ function CapacityTile({ capacity }: { capacity: ApiOutlookCapacity | null }) {
       </div>
       <div className="r21-capacity-row">
         <div className="r21-capacity-num">
-          <span className="r21-capacity-num-label">working</span>
+          <span className="r21-capacity-num-label">total</span>
           <Mono className="r21-capacity-num-val">{working}h</Mono>
         </div>
         <div className="r21-capacity-num">
-          <span className="r21-capacity-num-label">real desk</span>
+          <span className="r21-capacity-num-label">
+            available
+            <span
+              className="r21-capacity-info"
+              title="Calculated time after meetings from Outlook."
+              aria-label="Calculated time after meetings from Outlook"
+            >
+              <svg viewBox="0 0 14 14" aria-hidden="true">
+                <circle cx="7" cy="7" r="6" stroke="currentColor" fill="none" strokeWidth="1.2" />
+                <circle cx="7" cy="4" r="0.9" fill="currentColor" />
+                <rect x="6.2" y="5.8" width="1.6" height="4.8" rx="0.3" fill="currentColor" />
+              </svg>
+            </span>
+          </span>
           <Mono className="r21-capacity-num-val">{real}h</Mono>
         </div>
         <div className="r21-capacity-num">

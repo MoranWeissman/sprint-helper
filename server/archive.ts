@@ -290,7 +290,7 @@ export async function mirrorSprintSummary(): Promise<{
       if (diff >= 8) verdict = `roughly ${diff}h over what fits`;
       else if (diff <= -8) verdict = `about ${Math.abs(diff)}h of room left`;
       else verdict = 'close to balanced';
-      lines.push(`**Capacity:** ${planned}h planned · ${desk}h real desk · ${verdict}  `);
+      lines.push(`**Capacity:** ${planned}h planned · ${desk}h available after meetings · ${verdict}  `);
     }
     const totals = payload.capacity;
     lines.push(
