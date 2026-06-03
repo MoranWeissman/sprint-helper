@@ -36,10 +36,14 @@ function adoApiPlugin() {
       // Pre-warm at startup: transform the backend module graph + warm the ADO
       // iteration cache + az token + the dashboard cache in the background, so
       // the FIRST page load after `npm run dev` hits the fast (warm) path.
+      // After the warm, kick off the auto-refresh timer so the Outlook-derived
+      // 'available' tile catches meeting changes even when the dashboard is
+      // idle in a browser tab.
       void (async () => {
         try {
-          const { buildDashboardCached } = await import('./server/dashboard-cache');
+          const { buildDashboardCached, startAutoRefresh } = await import('./server/dashboard-cache');
           await buildDashboardCached();
+          startAutoRefresh();
         } catch {
           // Ignore — a real request will surface any error (e.g. az login needed).
         }

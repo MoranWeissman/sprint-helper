@@ -67,3 +67,46 @@ export async function buildDashboardCached(opts: BuildOptions = {}): Promise<Cac
 export function invalidateDashboardCache(): void {
   cache.clear();
 }
+
+/**
+ * Background auto-refresh — re-reads the dashboard on a fixed interval so the
+ * Outlook-derived 'available hours' tile catches new or removed meetings even
+ * when nobody's looking at the dashboard. Every interval tick invalidates the
+ * cache and warms a fresh build; the next dashboard hit serves the warm copy.
+ *
+ * 2026-06-03: hard-coded to 5 minutes. Moran asked for this to be settings-
+ * configurable later — see [[feedback-capacity-preferences]] / future settings
+ * work. Today's interval is the simplest behavior that closes the obvious gap
+ * (open the dashboard at 9, meeting added at 11, glance back at 11:05 — see
+ * the new number).
+ */
+const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startAutoRefresh(intervalMs: number = AUTO_REFRESH_INTERVAL_MS): void {
+  if (autoRefreshTimer != null) return; // idempotent — fine to call repeatedly
+  autoRefreshTimer = setInterval(() => {
+    // Walk every key currently cached and re-build it. We don't pre-warm
+    // sprints that have never been looked at — only refresh what's already
+    // been requested at least once.
+    for (const key of Array.from(cache.keys())) {
+      const opts: BuildOptions = key === '__current__' ? {} : { sprintName: key };
+      buildDashboard(opts)
+        .then(fresh => {
+          cache.set(key, { payload: fresh, at: Date.now(), refreshing: null });
+        })
+        .catch(() => {
+          // Swallow — the next user-driven request will surface the error.
+        });
+    }
+  }, intervalMs);
+  // Don't keep the Node process alive just for the timer.
+  if (typeof autoRefreshTimer.unref === 'function') autoRefreshTimer.unref();
+}
+
+export function stopAutoRefresh(): void {
+  if (autoRefreshTimer != null) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+}
