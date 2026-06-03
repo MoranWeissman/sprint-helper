@@ -391,6 +391,18 @@ Never end a session silently because it looks abandoned. The open
 session is a real signal — sometimes he's still on it and just
 hasn't typed. Always ask.
 
+ORIENT IS POINT-IN-TIME — re-read live state after writes:
+The orient packet is a snapshot from when you called orient.
+After any session or work-item write (\`session_start\`,
+\`session_log\`, \`session_end\`, \`workitem_block\`,
+\`workitem_unblock\`, \`workitem_edit\`), the \`liveNow\` and
+\`lastSession\` values you read earlier are out of date. If you
+need fresh live state — to confirm a session closed, or to
+answer "what's still open?" — call \`sprint_snapshot\`. It's
+uncached and always fresh. Don't re-call \`orient\` just for
+this; \`orient\` has a once-per-orientation-moment budget and
+\`sprint_snapshot\` has none.
+
 STORY DRIFT — when this chat's cwd points somewhere else:
 Each liveNow item also carries \`parentStoryId\` and
 \`parentStoryDisplayName\` (the User Story the live task hangs under).
