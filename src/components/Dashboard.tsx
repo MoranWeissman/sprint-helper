@@ -562,7 +562,7 @@ function R21Sidebar({
 }
 
 /**
- * Standup card — shown only in the Daily view. Reads aloud well: yesterday's
+ * Recap card — shown only in the Daily view. Reads aloud well: yesterday's
  * tasks with a one-line summary, today's tasks with state. Empty side
  * collapses to a calm note instead of a stark gap. Lives at the top of Daily
  * so it's the first thing Moran sees when the delivery manager opens the
@@ -574,7 +574,6 @@ function StandupCard({ standup }: { standup: ApiPayload['standup'] }) {
     // First-time empty state: don't waste real estate.
     return (
       <div className="r21-standup is-empty">
-        <span className="r21-standup-cap">STANDUP</span>
         <span className="r21-standup-empty">
           No sessions logged yet — open one with Claude Code to start populating this card.
         </span>
@@ -586,11 +585,7 @@ function StandupCard({ standup }: { standup: ApiPayload['standup'] }) {
   const tDate = formatStandupDate(standup.todayDate);
 
   return (
-    <section className="r21-standup" aria-label="Daily standup notes">
-      <div className="r21-standup-head">
-        <span className="r21-standup-cap">STANDUP</span>
-        <span className="r21-standup-meta">{tDate}</span>
-      </div>
+    <section className="r21-standup" aria-label="Yesterday and today">
       <div className="r21-standup-cols">
         <div className="r21-standup-col">
           <h3 className="r21-standup-col-h">
