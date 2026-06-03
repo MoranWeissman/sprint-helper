@@ -52,6 +52,7 @@ import {
   ensureActive,
   isBlockedState,
   reparent,
+  setCompletedWork,
   setEffort,
   setEstimate,
   setIterationPath,
@@ -598,12 +599,23 @@ through the life of the task.
   - At session_end with done=true (or when Moran confirms a task is
     finished), STATE the proposed Completed number: "OriginalEstimate
     was 4h, Remaining is 1h → Completed = 3h. Sound right?". After
-    confirmation, the existing close-the-loop pipeline pushes that.
+    confirmation, PASS THE NUMBER as \`completedHoursAfter\` to
+    \`session_end\`. session_end is now EXPLICIT: it pushes
+    CompletedWork = completedHoursAfter, sets RemainingWork = 0, and
+    transitions to Done. The local stopwatch is NOT the source of
+    truth — Moran's confirmed burndown number is.
+  - \`completedHoursAfter\` is REQUIRED when done=true. The MCP
+    rejects done=true calls without it (with a clear error pointing
+    you back at the burndown formula).
   - If RemainingWork is far off from actual work done (e.g. you forgot
     to burn it down), surface that plainly: "Remaining still shows 4h
     but the work looks done — what does Completed actually feel like
-    in hours?" Then call workitem_edit({remainingWork: 0, ...}) and
-    let session_end compute Completed.
+    in hours?" Take his answer as the completedHoursAfter for
+    session_end.
+  - Overrun case: tasks that took longer than the estimate get a
+    Completed > Original. E.g. estimate 4h, took 6h → propose
+    "Completed = 6h (a couple over the 4h estimate). Sound right?".
+    Pass 6 as completedHoursAfter.
   - Session time (the silent timer) is a SECONDARY signal — useful for
     "you've spent 5h, estimate was 4h, want to bump Remaining or
     Estimate?" nudges. It does NOT auto-drive CompletedWork — the
@@ -766,21 +778,36 @@ BUNDLED VS SPLIT — concrete example:
     log 3: "devex-expert updated mock/README. Caught a missing
       fourth chart in the Layout listing on the way."
 
-WHEN WORK WRAPS UP — always ask first:
-  Ask Moran plainly: "Is this task done, or are you just stopping for now?"
-  - Just stopping: call \`session_end\` with a one-line summary. The tracked
-    time pauses and NOTHING is written to Azure DevOps — he can pick it back
-    up later. RemainingWork should already be honest from your burndown work
-    during the session (see EFFORT → AS WORK PROGRESSES). If you forgot to
-    update it during work and the current number is clearly off, fix it now
-    via \`workitem_edit({remainingWork: …})\`.
-  - Done: confirm with him, THEN propose the Completed number using the
-    burndown formula (CompletedWork = OriginalEstimate - new RemainingWork),
-    and ask "sound right?". After he confirms, call \`session_end\` with
-    done=true. The existing close-the-loop pipeline will push effort and
-    close the task. This is the only time you write CompletedWork
-    automatically, and only after his explicit confirmation. Never set
-    done=true without his nod.
+WHEN WORK WRAPS UP — two flavors, named explicitly:
+  Don't ask "done or just stopping?" mid-flow — Moran tells you via the
+  slash skill he invokes. If neither slash skill fired, default to asking
+  plainly before calling session_end.
+
+  PAUSE (just stopping for now — typically from \`/sprint-helper:pause-work\`):
+  - Confirm RemainingWork is honest. If you've been calling
+    \`session_log(remainingHoursAfter)\` along the way, it already is. If
+    it drifted, propose an update and confirm before patching via
+    \`workitem_edit({remainingWork: X})\`.
+  - Call \`session_end\` with a one-line summary and \`done\` omitted (or
+    false). The local timer pauses; NOTHING is written to Azure DevOps.
+    Moran picks it back up next session.
+
+  DONE (finished, close the task — typically from \`/sprint-helper:end-work\`):
+  - Confirm with Moran in chat that the task is finished.
+  - Propose the Completed number using the burndown formula:
+    \`CompletedWork = OriginalEstimate − new RemainingWork\` (adjusted for
+    overrun). State it: "OriginalEstimate was 4h, Remaining is 1h →
+    Completed = 3h. Sound right?". Or for overrun: "Estimate was 4h, work
+    actually took 6h → Completed = 6h. Sound right?".
+  - WAIT for his explicit yes. Never assume agreement.
+  - Call \`session_end\` with \`done: true\` AND \`completedHoursAfter: <the
+    confirmed number>\`. The MCP refuses done=true without
+    completedHoursAfter — that's deliberate, the local timer is NOT the
+    source of truth for what gets pushed.
+  - The tool patches CompletedWork = completedHoursAfter, RemainingWork = 0,
+    and state = Done on Azure DevOps. The local timer is also paused.
+    Confirm in one sentence: "Closed **<task displayName>** — pushed **Xh**
+    Completed, state now **Done**."
 
 CAPACITY (Moran's real desk time after meetings):
   Moran's Outlook calendar is wired in via a private published URL (stored
@@ -1629,27 +1656,55 @@ server.registerTool(
   {
     title: 'End a Claude Code session',
     description:
-      'Close a session with a one-line summary of what got done. Set done=true ONLY after Moran has confirmed the task is finished — that pushes the tracked time to Azure DevOps and closes the task. Omit done (or pass false) when he is just stopping for now: the silent timer pauses and NOTHING is written to Azure DevOps, so he can pick it back up later.',
+      'Close a session with a one-line summary of what got done. Set done=true ONLY after Moran has confirmed the task is finished AND has confirmed the Completed hours — that pushes CompletedWork + RemainingWork=0 to Azure DevOps and transitions the state to Done. The local stopwatch is NOT the source of truth: completedHoursAfter (required when done=true) is the burndown number Moran agreed to. Omit done (or pass false) when he is just stopping for now: the local timer pauses and NOTHING is written to Azure DevOps.',
     inputSchema: {
       sessionId: z.string(),
       summary: z.string().optional(),
       done: z
         .boolean()
         .optional()
-        .describe('True only when Moran has explicitly confirmed the task is complete. Pushes tracked time + closes the task in Azure DevOps.'),
+        .describe('True only when Moran has explicitly confirmed the task is complete. Pushes CompletedWork + RemainingWork=0 + state=Done to Azure DevOps.'),
+      completedHoursAfter: z
+        .number()
+        .gt(0)
+        .optional()
+        .describe('REQUIRED when done=true. The CompletedWork value to push to Azure DevOps, derived from the burndown formula (OriginalEstimate − new RemainingWork, adjusted if the task overran the estimate). Must match the number Moran confirmed in chat. Without this, CompletedWork would stay at its historical value (usually 0) — bad signal for the delivery manager.'),
     },
   },
-  async ({ sessionId, summary, done }) => {
+  async ({ sessionId, summary, done, completedHoursAfter }) => {
+    if (done && completedHoursAfter === undefined) {
+      return errorResult(
+        'completedHoursAfter is required when done=true. Propose the number using the burndown formula (CompletedWork = OriginalEstimate − new RemainingWork, adjusted for overrun), confirm with Moran in chat, then pass it as completedHoursAfter. Closing a task without an explicit Completed value leaves CompletedWork at its historical value on Azure DevOps — usually 0 — which is the wrong signal for the delivery manager.',
+      );
+    }
     const session = endSession({ sessionId, summary });
     if (!session) return errorResult(`Session not found: ${sessionId}`);
     void mirrorTaskFile(session.workItemId); // background — keep the archive file fresh
     void mirrorSprintSummary(); // and refresh the sprint overview
     void mirrorStandupForToday(); // and the standup notes for today
     try {
-      const timer = done
-        ? await timerService.markDone(session.workItemId)
-        : timerService.pause(session.workItemId);
-      return jsonResult({ session, timer });
+      if (done) {
+        // Stop the local stopwatch (informational only; does not push to ADO).
+        timerService.pause(session.workItemId);
+        // Explicit close-the-loop. Local timer ticks are NOT the source of
+        // truth for Completed — Moran burns down RemainingWork via session_log
+        // during work, and the burndown formula gives the Completed number at
+        // close. We patch CompletedWork + RemainingWork=0 + state=Done.
+        await setCompletedWork(session.workItemId, completedHoursAfter!);
+        await setRemaining(session.workItemId, 0);
+        const newState = await setStateBucket(session.workItemId, 'done');
+        invalidateDashboardCache();
+        return jsonResult({
+          session,
+          done: true,
+          completedHoursPushed: completedHoursAfter,
+          remainingHoursPushed: 0,
+          newState,
+        });
+      }
+      // Pause-only path. Stop the local timer, no ADO writes.
+      const timer = timerService.pause(session.workItemId);
+      return jsonResult({ session, done: false, timer });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }

@@ -287,6 +287,18 @@ export async function setRemaining(workItemId: number, hours: number): Promise<v
 }
 
 /**
+ * Explicit overwrite of CompletedWork on ADO. Separate from `pushCompletedWork`
+ * (delta-based via timer seconds) — this one sets the field to a specific
+ * total, derived from the burndown formula (OriginalEstimate − new Remaining,
+ * adjusted for overrun) at session_end(done=true).
+ */
+export async function setCompletedWork(workItemId: number, hours: number): Promise<void> {
+  await patchWorkItem(workItemId, [
+    { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.CompletedWork', value: round2(hours) },
+  ]);
+}
+
+/**
  * Story-level effort. Two separate ADO fields:
  *  - StoryPoints: Moran's team convention = days.
  *  - Effort:      total hours she thinks the work is.
