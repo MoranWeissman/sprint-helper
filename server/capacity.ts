@@ -14,10 +14,12 @@
  * surfaced — never silently swallowed.
  */
 import { listBusyInWindow, getCalendarUrl, type BusyInterval } from './calendar';
+import { getWorkdayHours } from './story-points';
 
-// Moran-specific defaults (2026-06-01): 9h workday, TENTATIVE meetings
-// ignored entirely (he doesn't count "maybes" against capacity), Mon-Fri.
-const DEFAULT_WORKDAY_HOURS = 9;
+// Moran-specific defaults (2026-06-01): TENTATIVE meetings ignored entirely
+// (he doesn't count "maybes" against capacity), Mon-Fri. The workday length
+// is read from settings via getWorkdayHours() so effort math and capacity
+// math share one source of truth.
 const DEFAULT_WORKDAY_START = 8;  // 08:00 local
 const DEFAULT_WORKDAY_END = 18;   // 18:00 local
 const DEFAULT_WORKING_DAYS = new Set([1, 2, 3, 4, 5]); // Mon-Fri
@@ -55,7 +57,7 @@ export interface ComputeCapacityOptions {
 
 export async function computeCapacity(opts: ComputeCapacityOptions): Promise<Capacity> {
   const workdaySet = opts.workingDays ?? DEFAULT_WORKING_DAYS;
-  const workdayHours = opts.workdayHours ?? DEFAULT_WORKDAY_HOURS;
+  const workdayHours = opts.workdayHours ?? getWorkdayHours();
   const workdayStart = opts.workdayStartHour ?? DEFAULT_WORKDAY_START;
   const workdayEnd = opts.workdayEndHour ?? DEFAULT_WORKDAY_END;
 
