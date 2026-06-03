@@ -2407,15 +2407,65 @@ html, body {
 .r21-capacity-num { display: flex; flex-direction: column; gap: 4px; }
 .r21-capacity-num-label { font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); display: inline-flex; align-items: center; gap: 6px; }
 .r21-capacity-info {
+  position: relative;
   display: inline-flex;
-  width: 14px;
-  height: 14px;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--ink-3);
-  cursor: help;
   transition: color 0.15s ease;
 }
 .r21-capacity-info:hover { color: var(--ink-1); }
-.r21-capacity-info svg { width: 100%; height: 100%; display: block; }
+.r21-capacity-info::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px oklch(0% 0 0 / 0.35);
+  color: var(--ink-1);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 400;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease, visibility 0.12s ease;
+  z-index: 50;
+}
+.r21-capacity-info::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 8px;
+  height: 8px;
+  background: var(--bg-2);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease, visibility 0.12s ease;
+  z-index: 50;
+}
+.r21-capacity-info:hover::after,
+.r21-capacity-info:hover::before,
+.r21-capacity-info:focus-visible::after,
+.r21-capacity-info:focus-visible::before {
+  opacity: 1;
+  visibility: visible;
+}
 .r21-capacity-num-val { font-size: 22px; color: var(--ink-1); font-weight: 500; }
 
 .r21-app[data-density="generous"] .r21-capacity { padding: 28px 34px; gap: 18px; }

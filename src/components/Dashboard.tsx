@@ -803,15 +803,10 @@ function CapacityTile({ capacity }: { capacity: ApiOutlookCapacity | null }) {
             available
             <span
               className="r21-capacity-info"
-              title="Calculated time after meetings from Outlook."
+              data-tip="Calculated time after meetings from Outlook."
               aria-label="Calculated time after meetings from Outlook"
-            >
-              <svg viewBox="0 0 14 14" aria-hidden="true">
-                <circle cx="7" cy="7" r="6" stroke="currentColor" fill="none" strokeWidth="1.2" />
-                <circle cx="7" cy="4" r="0.9" fill="currentColor" />
-                <rect x="6.2" y="5.8" width="1.6" height="4.8" rx="0.3" fill="currentColor" />
-              </svg>
-            </span>
+              role="tooltip"
+            >ⓘ</span>
           </span>
           <Mono className="r21-capacity-num-val">{available}h</Mono>
         </div>
