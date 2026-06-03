@@ -236,7 +236,7 @@ function DashboardLive({
 
         <div className="r21-bodywrap">
           {mode === 'plan' ? (
-            <PlanView />
+            <PlanView onOpenItem={openItem} />
           ) : mode !== 'day' ? (
             <ModePlaceholder mode={mode} />
           ) : isFocus ? (

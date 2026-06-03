@@ -24,6 +24,8 @@ type CockpitState =
   | { status: 'error'; error: string };
 
 interface PlanViewProps {
+  /** Open the work-item detail drawer for the given id (number coerced to string). */
+  onOpenItem?: (id: string) => void;
   /** Called when the gap list contains items SH itself created (for the retro hook later). */
   onScanComplete?: (gapCount: number) => void;
 }
@@ -68,10 +70,20 @@ function clearPersistedScan(): void {
  *   - Gaps (sanity check) — the existing gap scanner, collapsed by default,
  *     with a persistent prompt panel
  */
-export function PlanView({ onScanComplete }: PlanViewProps) {
+export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
   const [cockpit, setCockpit] = useState<CockpitState>({ status: 'loading' });
   const [actingOn, setActingOn] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Which open-story cards are currently expanded to show their open tasks.
+  // Default: all collapsed — scan the grid first, dive into the one you care about.
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const toggleExpanded = (id: number) =>
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const refreshCockpit = async () => {
     setCockpit({ status: 'loading' });
@@ -139,14 +151,18 @@ export function PlanView({ onScanComplete }: PlanViewProps) {
       <CockpitOpenStoriesSection
         cockpit={cockpit}
         actingOn={actingOn}
+        expanded={expanded}
+        onToggleExpanded={toggleExpanded}
         onMoveTask={onMoveTask}
         onCloseTask={onCloseTask}
+        onOpenItem={onOpenItem}
       />
 
       <CockpitBacklogSection
         cockpit={cockpit}
         actingOn={actingOn}
         onPullStory={onPullBacklog}
+        onOpenItem={onOpenItem}
       />
 
       <GapSection onScanComplete={onScanComplete} />
@@ -180,13 +196,19 @@ function CockpitHeader({ cockpit }: { cockpit: CockpitState }) {
 function CockpitOpenStoriesSection({
   cockpit,
   actingOn,
+  expanded,
+  onToggleExpanded,
   onMoveTask,
   onCloseTask,
+  onOpenItem,
 }: {
   cockpit: CockpitState;
   actingOn: number | null;
+  expanded: Set<number>;
+  onToggleExpanded: (id: number) => void;
   onMoveTask: (taskId: number, nextSprintPath: string) => Promise<void>;
   onCloseTask: (taskId: number) => Promise<void>;
+  onOpenItem?: (id: string) => void;
 }) {
   if (cockpit.status !== 'ok') return null;
   const { currentSprint, nextSprint, openStories } = cockpit.data;
@@ -200,69 +222,117 @@ function CockpitOpenStoriesSection({
   }
   return (
     <section className="r12-cockpit-section">
-      <h3 className="r12-cockpit-h">Open stories in {currentSprint?.name ?? 'current sprint'}</h3>
-      <ul className="r12-cockpit-stories">
+      <div className="r12-cockpit-sec-head">
+        <h3 className="r12-cockpit-h">Open stories in {currentSprint?.name ?? 'current sprint'}</h3>
+        <span className="r12-cockpit-sec-count">{openStories.length} {openStories.length === 1 ? 'story' : 'stories'}</span>
+      </div>
+      <div className="r12-cockpit-grid">
         {openStories.map(s => (
           <CockpitOpenStoryCard
             key={s.id}
             story={s}
+            isExpanded={expanded.has(s.id)}
+            onToggleExpanded={() => onToggleExpanded(s.id)}
             nextSprintPath={nextSprint?.path ?? null}
             nextSprintName={nextSprint?.name ?? null}
             actingOn={actingOn}
             onMoveTask={onMoveTask}
             onCloseTask={onCloseTask}
+            onOpenItem={onOpenItem}
           />
         ))}
-      </ul>
+      </div>
     </section>
   );
 }
 
 function CockpitOpenStoryCard({
   story,
+  isExpanded,
+  onToggleExpanded,
   nextSprintPath,
   nextSprintName,
   actingOn,
   onMoveTask,
   onCloseTask,
+  onOpenItem,
 }: {
   story: ApiCockpitOpenStory;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
   nextSprintPath: string | null;
   nextSprintName: string | null;
   actingOn: number | null;
   onMoveTask: (taskId: number, nextSprintPath: string) => Promise<void>;
   onCloseTask: (taskId: number) => Promise<void>;
+  onOpenItem?: (id: string) => void;
 }) {
+  const openCount = story.openTasks.length;
   return (
-    <li className="r12-cockpit-story">
-      <div className="r12-cockpit-story-head">
-        <span className="r12-cockpit-story-title" dangerouslySetInnerHTML={{ __html: linkifyDisplayName(story.displayName) }} />
-        <span className="r12-cockpit-story-meta">
-          {story.doneTaskCount}/{story.totalTaskCount} tasks done
-          {story.effort != null && story.effort > 0 ? ` · ${Math.round(story.effort)}h planned` : ''}
+    <article className={`r12-cockpit-card ${isExpanded ? 'is-expanded' : ''}`}>
+      <header
+        className="r12-cockpit-card-head"
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        onClick={onToggleExpanded}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggleExpanded();
+          }
+        }}
+      >
+        <span className="r12-cockpit-card-chevron" aria-hidden="true">{isExpanded ? '▾' : '▸'}</span>
+        <span className="r12-cockpit-card-title" dangerouslySetInnerHTML={{ __html: linkifyDisplayName(story.displayName) }} />
+        {onOpenItem && (
+          <button
+            type="button"
+            className="r12-cockpit-card-view"
+            onClick={e => {
+              e.stopPropagation();
+              onOpenItem(String(story.id));
+            }}
+            title="Open story details"
+          >
+            View ↗
+          </button>
+        )}
+      </header>
+      <div className="r12-cockpit-card-meta">
+        <span className="r12-cockpit-card-counts">
+          {story.doneTaskCount}/{story.totalTaskCount} tasks done · {openCount} open
         </span>
+        {story.effort != null && story.effort > 0 && (
+          <span className="r12-cockpit-card-effort">{Math.round(story.effort)}h planned</span>
+        )}
         {story.feature && (
-          <span className="r12-cockpit-story-feature" dangerouslySetInnerHTML={{ __html: linkifyDisplayName(story.feature.displayName) }} />
+          <span className="r12-cockpit-card-feature" dangerouslySetInnerHTML={{ __html: linkifyDisplayName(story.feature.displayName) }} />
         )}
       </div>
-      {story.openTasks.length === 0 ? (
-        <div className="r12-cockpit-no-open-tasks">No open tasks — story is waiting on something else.</div>
-      ) : (
-        <ul className="r12-cockpit-tasks">
-          {story.openTasks.map(t => (
-            <CockpitOpenTaskRow
-              key={t.id}
-              task={t}
-              nextSprintPath={nextSprintPath}
-              nextSprintName={nextSprintName}
-              busy={actingOn === t.id}
-              onMove={onMoveTask}
-              onClose={onCloseTask}
-            />
-          ))}
-        </ul>
+      {isExpanded && (
+        <div className="r12-cockpit-card-body">
+          {openCount === 0 ? (
+            <div className="r12-cockpit-no-open-tasks">No open tasks — story is waiting on something else.</div>
+          ) : (
+            <ul className="r12-cockpit-tasks">
+              {story.openTasks.map(t => (
+                <CockpitOpenTaskRow
+                  key={t.id}
+                  task={t}
+                  nextSprintPath={nextSprintPath}
+                  nextSprintName={nextSprintName}
+                  busy={actingOn === t.id}
+                  onMove={onMoveTask}
+                  onClose={onCloseTask}
+                  onOpenItem={onOpenItem}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       )}
-    </li>
+    </article>
   );
 }
 
@@ -273,6 +343,7 @@ function CockpitOpenTaskRow({
   busy,
   onMove,
   onClose,
+  onOpenItem,
 }: {
   task: ApiCockpitOpenTask;
   nextSprintPath: string | null;
@@ -280,12 +351,21 @@ function CockpitOpenTaskRow({
   busy: boolean;
   onMove: (taskId: number, nextSprintPath: string) => Promise<void>;
   onClose: (taskId: number) => Promise<void>;
+  onOpenItem?: (id: string) => void;
 }) {
   const stateClass = `is-${classifyState(task.state)}`;
   return (
     <li className={`r12-cockpit-task ${stateClass}`}>
       <span className="r12-cockpit-task-state">{task.state}</span>
-      <span className="r12-cockpit-task-title" dangerouslySetInnerHTML={{ __html: linkifyDisplayName(task.displayName) }} />
+      <button
+        type="button"
+        className="r12-cockpit-task-title r12-cockpit-task-title-btn"
+        onClick={() => onOpenItem?.(String(task.id))}
+        disabled={!onOpenItem}
+        title="Open task details"
+      >
+        <span dangerouslySetInnerHTML={{ __html: linkifyDisplayName(task.displayName) }} />
+      </button>
       <span className="r12-cockpit-task-hours">
         {task.remainingWork != null ? `${Math.round(task.remainingWork)}h left` : '—'}
       </span>
@@ -327,10 +407,12 @@ function CockpitBacklogSection({
   cockpit,
   actingOn,
   onPullStory,
+  onOpenItem,
 }: {
   cockpit: CockpitState;
   actingOn: number | null;
   onPullStory: (storyId: number, nextSprintPath: string) => Promise<void>;
+  onOpenItem?: (id: string) => void;
 }) {
   if (cockpit.status !== 'ok') return null;
   const { nextSprint, backlogStories } = cockpit.data;
@@ -350,22 +432,44 @@ function CockpitBacklogSection({
   ].filter(g => g.stories.length > 0);
   return (
     <section className="r12-cockpit-section">
-      <h3 className="r12-cockpit-h">Pull from backlog</h3>
+      <div className="r12-cockpit-sec-head">
+        <h3 className="r12-cockpit-h">Pull from backlog</h3>
+        <span className="r12-cockpit-sec-count">
+          {backlogStories.length} {backlogStories.length === 1 ? 'story' : 'stories'}
+        </span>
+      </div>
       {groups.map(group => (
         <div key={group.level} className="r12-cockpit-backlog-group">
-          <h4 className="r12-cockpit-backlog-level">{group.label} ({group.stories.length})</h4>
-          <ul className="r12-cockpit-backlog-list">
+          <h4 className="r12-cockpit-backlog-level">{group.label} <span className="r12-cockpit-backlog-level-count">({group.stories.length})</span></h4>
+          <div className="r12-cockpit-grid r12-cockpit-grid-tight">
             {group.stories.map(s => (
-              <li key={s.id} className="r12-cockpit-backlog-row">
-                <span className="r12-cockpit-backlog-title" dangerouslySetInnerHTML={{ __html: linkifyDisplayName(s.displayName) }} />
-                <span className="r12-cockpit-backlog-meta">
-                  {s.storyPoints != null && s.storyPoints > 0 ? `${s.storyPoints} SP · ` : ''}
-                  {s.effort != null && s.effort > 0 ? `${Math.round(s.effort)}h effort` : 'no effort yet'}
-                </span>
-                <span className="r12-cockpit-backlog-iter" title={s.iterationPath}>
-                  {lastIterSegment(s.iterationPath)}
-                </span>
-                <span className="r12-cockpit-task-actions">
+              <article key={s.id} className="r12-cockpit-card r12-cockpit-card-flat">
+                <header className="r12-cockpit-card-head r12-cockpit-card-head-flat">
+                  <span className="r12-cockpit-card-title" dangerouslySetInnerHTML={{ __html: linkifyDisplayName(s.displayName) }} />
+                  {onOpenItem && (
+                    <button
+                      type="button"
+                      className="r12-cockpit-card-view"
+                      onClick={() => onOpenItem(String(s.id))}
+                      title="Open story details"
+                    >
+                      View ↗
+                    </button>
+                  )}
+                </header>
+                <div className="r12-cockpit-card-meta">
+                  <span className="r12-cockpit-card-effort">
+                    {s.storyPoints != null && s.storyPoints > 0 ? `${s.storyPoints} SP · ` : ''}
+                    {s.effort != null && s.effort > 0 ? `${Math.round(s.effort)}h effort` : 'no effort yet'}
+                  </span>
+                  <span className="r12-cockpit-backlog-iter" title={s.iterationPath}>
+                    {lastIterSegment(s.iterationPath)}
+                  </span>
+                  {s.feature && (
+                    <span className="r12-cockpit-card-feature" dangerouslySetInnerHTML={{ __html: linkifyDisplayName(s.feature.displayName) }} />
+                  )}
+                </div>
+                <footer className="r12-cockpit-card-foot">
                   {nextSprint ? (
                     <button
                       type="button"
@@ -383,10 +487,10 @@ function CockpitBacklogSection({
                       → next (n/a)
                     </span>
                   )}
-                </span>
-              </li>
+                </footer>
+              </article>
             ))}
-          </ul>
+          </div>
         </div>
       ))}
     </section>

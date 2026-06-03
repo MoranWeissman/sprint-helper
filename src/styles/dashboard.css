@@ -3249,13 +3249,18 @@ html, body {
 /* Plan mode body. Calm, generous spacing — Moran scans this once during
    planning, doesn't live in it. */
 
+/* Plan view fills the same body region Daily uses — full width, scrolls
+   inside itself when content runs long. The narrow 920px column was a
+   leftover from when Plan was a single-list scan; the cockpit needs the
+   full canvas to lay out card grids properly. */
 .r12-plan {
-  padding: 2rem clamp(1rem, 3vw, 2.5rem);
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: 1.5rem clamp(1rem, 2vw, 2rem);
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  max-width: 920px;
-  margin: 0 auto;
+  gap: 1.25rem;
 }
 
 .r12-plan-h {
@@ -3511,33 +3516,112 @@ html, body {
   padding: 10px 0;
 }
 
-.r12-cockpit-stories {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+/* Section header — title + count chip in one row. */
+.r12-cockpit-sec-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.r12-cockpit-sec-head .r12-cockpit-h { margin: 0; }
+.r12-cockpit-sec-count {
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* Card grid — stories laid out side by side when there's room. Matches
+   the Daily view's auto-fill pattern so the eye doesn't have to relearn. */
+.r12-cockpit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 12px;
+}
+.r12-cockpit-grid-tight { gap: 8px; }
+
+/* Card — collapsed by default; click header to expand. Click 'View ↗'
+   to open the work-item drawer (same drawer Daily uses). */
+.r12-cockpit-card {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-.r12-cockpit-story {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--bg-2);
-  padding: 14px 16px;
+  padding: 12px 14px;
+  transition: border-color 0.12s ease, background 0.12s ease;
 }
-.r12-cockpit-story-head {
+.r12-cockpit-card:hover { border-color: var(--line-strong); }
+.r12-cockpit-card.is-expanded { background: color-mix(in oklch, var(--bg-2) 70%, var(--bg-1)); }
+
+.r12-cockpit-card-head {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  min-width: 0;
 }
-.r12-cockpit-story-title { font-size: 15px; color: var(--ink-1); }
-.r12-cockpit-story-meta { font-size: 13px; color: var(--ink-3); }
-.r12-cockpit-story-feature {
-  font-size: 12px;
+.r12-cockpit-card-head-flat { cursor: default; }
+.r12-cockpit-card-chevron {
+  display: inline-flex;
+  width: 14px;
   color: var(--ink-3);
-  letter-spacing: 0.04em;
+  font-size: 12px;
+  flex: 0 0 14px;
+}
+.r12-cockpit-card-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14.5px;
+  color: var(--ink-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 0;
+  font-family: inherit;
+}
+.r12-cockpit-card-view {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-2);
+  padding: 3px 9px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.r12-cockpit-card-view:hover {
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+  color: var(--ink-1);
+  border-color: color-mix(in oklch, var(--accent) 45%, var(--line));
+}
+.r12-cockpit-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.r12-cockpit-card-counts { color: var(--ink-2); }
+.r12-cockpit-card-effort { color: var(--ink-3); }
+.r12-cockpit-card-feature { color: var(--ink-3); }
+.r12-cockpit-card-body { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.r12-cockpit-card-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+.r12-cockpit-card-flat {
+  /* Backlog cards are always 'open' — they show meta + action without a fold. */
 }
 
 .r12-cockpit-no-open-tasks {
