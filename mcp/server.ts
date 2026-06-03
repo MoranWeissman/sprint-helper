@@ -1666,6 +1666,11 @@ server.registerTool(
     timerService.start(workItemId); // silent time tracking begins with the session
     void mirrorTaskFile(workItemId); // background — keep the archive file fresh
 
+    // Opening a session changes activeSession / timer state on the dashboard,
+    // even when no ADO state flip happens (item was already Active). Always
+    // drop the cache so the next dashboard hit reflects the live session.
+    invalidateDashboardCache();
+
     // Auto-flip waiting → going in ADO. If the flip throws, don't fail
     // the whole session_start; report the error in the payload.
     let stateFlip: {
@@ -1676,7 +1681,6 @@ server.registerTool(
     };
     try {
       stateFlip = await ensureActive(workItemId);
-      if (stateFlip.flipped) invalidateDashboardCache();
     } catch (e) {
       stateFlip = {
         flipped: false,
@@ -1727,6 +1731,10 @@ server.registerTool(
     if (!event) return errorResult(`Session not found: ${sessionId}`);
     void mirrorTaskFile(event.workItemId); // background — keep the archive file fresh
 
+    // Events surface in the dashboard's recentEvents map and shape the
+    // story-state / Day view. Drop the cache so the next read picks them up.
+    invalidateDashboardCache();
+
     // R10a: when active-work events (progress / decision / note / focus)
     // hit a still-blocked item, surface a nudge so the block doesn't
     // silently drift. `blocker` events are legitimately adding context to
@@ -1741,7 +1749,6 @@ server.registerTool(
     }
     try {
       await setRemaining(event.workItemId, remainingHoursAfter);
-      invalidateDashboardCache();
       return jsonResult({
         event,
         remainingWork: {
@@ -1793,6 +1800,11 @@ server.registerTool(
     }
     const session = endSession({ sessionId, summary });
     if (!session) return errorResult(`Session not found: ${sessionId}`);
+    // Ending a session is the single most cache-invalidating event we have —
+    // activeSession turns off, timer stops, the Day view re-shapes. Drop the
+    // cache here so BOTH the pause-only and done=true paths leave a clean
+    // slate, instead of relying on a downstream ADO write to do it.
+    invalidateDashboardCache();
     void mirrorTaskFile(session.workItemId); // background — keep the archive file fresh
     void mirrorSprintSummary(); // and refresh the sprint overview
     void mirrorStandupForToday(); // and the standup notes for today
@@ -1807,7 +1819,6 @@ server.registerTool(
         await setCompletedWork(session.workItemId, completedHoursAfter!);
         await setRemaining(session.workItemId, 0);
         const newState = await setStateBucket(session.workItemId, 'done');
-        invalidateDashboardCache();
         return jsonResult({
           session,
           done: true,
