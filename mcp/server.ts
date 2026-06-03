@@ -1197,12 +1197,13 @@ server.registerTool(
   {
     title: 'Edit work item fields',
     description:
-      "Update an existing work item in Azure DevOps. Covers state, effort fields, story planning fields, and tags. State uses Moran's plain English buckets: 'waiting' (New/To Do/Proposed), 'going' (Active/In Progress/Doing), 'done' (Closed/Done/Resolved). Effort fields are in hours. Story-level: storyPoints (his team treats 1 point = 1 day) and effort (total hours). Tags: addTags adds them (case-insensitive dedup), removeTags removes them, both can be passed together.",
+      "Update an existing work item in Azure DevOps. Covers state, effort fields, story planning fields, and tags. State uses Moran's plain English buckets: 'waiting' (New/To Do/Proposed), 'going' (Active/In Progress/Doing), 'done' (Closed/Done/Resolved). Effort fields are in hours: originalEstimate (the plan), remainingWork (burns down as work happens), and completedWork (climbs up — what the DM watches). Story-level: storyPoints (his team treats 1 point = 1 day) and effort (total hours). Tags: addTags adds them (case-insensitive dedup), removeTags removes them, both can be passed together.",
     inputSchema: {
       workItemId: workItemIdSchema,
       state: z.enum(['waiting', 'going', 'done']).optional(),
       originalEstimate: z.number().min(0).optional().describe('Task field, in hours.'),
       remainingWork: z.number().min(0).optional().describe('Task field, in hours. Burns down as work happens.'),
+      completedWork: z.number().min(0).optional().describe('Task field, in hours. Climbs up as work happens — overwrite (not additive). The DM tracks the sprint by this field.'),
       storyPoints: z.number().min(0).optional().describe('Story field. His team treats 1 point = 1 day.'),
       effort: z.number().min(0).optional().describe('Story field, in hours. Total hours he thinks the story is.'),
       addTags: z.array(z.string().min(1)).optional().describe('Tag names to add to this item (e.g. ["Blocked"]). Case-insensitive dedup against existing tags.'),
@@ -1210,20 +1211,21 @@ server.registerTool(
       iterationPath: z.string().min(1).optional().describe('Full ADO iteration path, backslash-separated (e.g. "IDP - DevOps\\\\2026" for the year-level, or "IDP - DevOps\\\\2026\\\\Q2\\\\26_11" for a specific sprint). Use this to move an item to a different sprint or to a parent iteration node.'),
     },
   },
-  async ({ workItemId, state, originalEstimate, remainingWork, storyPoints, effort, addTags, removeTags, iterationPath }) => {
+  async ({ workItemId, state, originalEstimate, remainingWork, completedWork, storyPoints, effort, addTags, removeTags, iterationPath }) => {
     if (
-      state == null && originalEstimate == null && remainingWork == null &&
+      state == null && originalEstimate == null && remainingWork == null && completedWork == null &&
       storyPoints == null && effort == null &&
       (addTags == null || addTags.length === 0) &&
       (removeTags == null || removeTags.length === 0) &&
       iterationPath == null
     ) {
-      return errorResult('At least one of state, originalEstimate, remainingWork, storyPoints, effort, addTags, removeTags, iterationPath is required.');
+      return errorResult('At least one of state, originalEstimate, remainingWork, completedWork, storyPoints, effort, addTags, removeTags, iterationPath is required.');
     }
     const applied: {
       state?: string;
       originalEstimate?: number;
       remainingWork?: number;
+      completedWork?: number;
       storyPoints?: number;
       effort?: number;
       tags?: string[];
@@ -1238,6 +1240,10 @@ server.registerTool(
       if (remainingWork != null) {
         await setRemaining(workItemId, remainingWork);
         applied.remainingWork = remainingWork;
+      }
+      if (completedWork != null) {
+        await setCompletedWork(workItemId, completedWork);
+        applied.completedWork = completedWork;
       }
       if (storyPoints != null) {
         await setStoryPoints(workItemId, storyPoints);
