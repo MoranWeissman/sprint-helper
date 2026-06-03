@@ -57,13 +57,12 @@ import {
   isBlockedState,
   reparent,
   setCompletedWork,
-  setEffort,
+  setEffortWithDerivedPoints,
   setEstimate,
   setIterationPath,
   setRemaining,
   setRemainingPriorToCloseMarker,
   setStateBucket,
-  setStoryPoints,
   transitionFromBlocked,
   transitionToBlocked,
   updateTags,
@@ -1212,29 +1211,28 @@ server.registerTool(
   {
     title: 'Edit work item fields',
     description:
-      "Update an existing work item in Azure DevOps. Covers state, effort fields, story planning fields, and tags. State uses Moran's plain English buckets: 'waiting' (New/To Do/Proposed), 'going' (Active/In Progress/Doing), 'done' (Closed/Done/Resolved). Effort fields are in hours: originalEstimate (the plan), remainingWork (burns down as work happens), and completedWork (climbs up — what the DM watches). Story-level: storyPoints (his team treats 1 point = 1 day) and effort (total hours). Tags: addTags adds them (case-insensitive dedup), removeTags removes them, both can be passed together.",
+      "Update an existing work item in Azure DevOps. Covers state, effort fields, story-level effort, and tags. State uses Moran's plain English buckets: 'waiting' (New/To Do/Proposed), 'going' (Active/In Progress/Doing), 'done' (Closed/Done/Resolved). Task effort fields are in hours: originalEstimate (the plan), remainingWork (burns down as work happens), and completedWork (climbs up — what the DM watches). Story-level: pass `effort` (total hours) and Story Points are derived in the same patch (1 point = 1 workday, half-point rounding); do not pass storyPoints separately. Tags: addTags adds them (case-insensitive dedup), removeTags removes them, both can be passed together.",
     inputSchema: {
       workItemId: workItemIdSchema,
       state: z.enum(['waiting', 'going', 'done']).optional(),
       originalEstimate: z.number().min(0).optional().describe('Task field, in hours.'),
       remainingWork: z.number().min(0).optional().describe('Task field, in hours. Burns down as work happens.'),
       completedWork: z.number().min(0).optional().describe('Task field, in hours. Climbs up as work happens — overwrite (not additive). The DM tracks the sprint by this field.'),
-      storyPoints: z.number().min(0).optional().describe('Story field. His team treats 1 point = 1 day.'),
-      effort: z.number().min(0).optional().describe('Story field, in hours. Total hours he thinks the story is.'),
+      effort: z.number().min(0).optional().describe('Story field, in hours. Total hours he thinks the story is. StoryPoints is derived from this automatically (1 point = 1 workday) and written in the same patch — do not try to set points separately.'),
       addTags: z.array(z.string().min(1)).optional().describe('Tag names to add to this item (e.g. ["Blocked"]). Case-insensitive dedup against existing tags.'),
       removeTags: z.array(z.string().min(1)).optional().describe('Tag names to remove from this item.'),
       iterationPath: z.string().min(1).optional().describe('Full ADO iteration path, backslash-separated (e.g. "IDP - DevOps\\\\2026" for the year-level, or "IDP - DevOps\\\\2026\\\\Q2\\\\26_11" for a specific sprint). Use this to move an item to a different sprint or to a parent iteration node.'),
     },
   },
-  async ({ workItemId, state, originalEstimate, remainingWork, completedWork, storyPoints, effort, addTags, removeTags, iterationPath }) => {
+  async ({ workItemId, state, originalEstimate, remainingWork, completedWork, effort, addTags, removeTags, iterationPath }) => {
     if (
       state == null && originalEstimate == null && remainingWork == null && completedWork == null &&
-      storyPoints == null && effort == null &&
+      effort == null &&
       (addTags == null || addTags.length === 0) &&
       (removeTags == null || removeTags.length === 0) &&
       iterationPath == null
     ) {
-      return errorResult('At least one of state, originalEstimate, remainingWork, completedWork, storyPoints, effort, addTags, removeTags, iterationPath is required.');
+      return errorResult('At least one of state, originalEstimate, remainingWork, completedWork, effort, addTags, removeTags, iterationPath is required.');
     }
     const applied: {
       state?: string;
@@ -1273,13 +1271,11 @@ server.registerTool(
         }
         applied.completedWork = completedWork;
       }
-      if (storyPoints != null) {
-        await setStoryPoints(workItemId, storyPoints);
-        applied.storyPoints = storyPoints;
-      }
       if (effort != null) {
-        await setEffort(workItemId, effort);
-        applied.effort = effort;
+        const { effort: appliedEffort, storyPoints: appliedPoints } =
+          await setEffortWithDerivedPoints(workItemId, effort);
+        applied.effort = appliedEffort;
+        applied.storyPoints = appliedPoints;
       }
       if ((addTags && addTags.length > 0) || (removeTags && removeTags.length > 0)) {
         applied.tags = await updateTags(workItemId, { add: addTags, remove: removeTags });
