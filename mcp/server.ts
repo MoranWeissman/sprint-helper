@@ -50,6 +50,7 @@ import {
   createStory,
   createTask,
   ensureActive,
+  isBlockedState,
   reparent,
   setEffort,
   setEstimate,
@@ -831,6 +832,30 @@ BLOCKING (when something can't move forward right now):
   a state Moran has already described — the menu is for PULL operations
   only (see EXPLICIT MENU below).
 
+BLOCK GUARD — \`blockNudge\` in session_start / session_log responses:
+\`session_start\` and \`session_log\` (for any type except \`blocker\`)
+now check whether the work item is still in a Blocked state. When it
+is, the response carries a \`blockNudge\` string — a heads-up that
+work is happening on a Blocked item, which is almost always a stale
+flag that drifted past its unblock condition.
+
+When you see \`blockNudge\` in a response, raise it IMMEDIATELY with
+Moran in your next reply, before continuing the work in your head:
+  - "you've still got <displayName> tagged Blocked but we're actively
+    working on it. <one-line summary of the apparent unblock signal,
+    e.g. the latest progress event>. Want me to clear the block?"
+  - On yes → call \`workitem_unblock\` with a short summary of what
+    cleared it. The tool restores the prior state and removes the tag.
+  - On "no, keep it blocked" → ask why. If he's deliberately working
+    on a blocked item (verbal-only unblock, partial unblock, state
+    restoration for testing), record that with one \`session_log\` of
+    type=note so the log doesn't look stale to a future reader.
+
+This guard exists because activity on a Blocked item is the single
+most common drift in Moran's flow. Caught by Moran 2026-06-03 after
+his other chat logged five progress events against #434966 while it
+stayed tagged Blocked. Never silently keep working past a blockNudge.
+
 PREFER SPRINT-HELPER OVER RAW \`az\` — STRICT. Sprint-helper exists so Moran
 has ONE coordinated layer in front of Azure DevOps. Every board read and
 write goes through it; nothing else. Caches stay coherent, the dashboard and
@@ -1395,6 +1420,42 @@ server.registerTool(
 /*  Session tools                                                */
 /* ============================================================ */
 
+/**
+ * Read current block state for a work item from the dashboard cache.
+ * Returns blocked=true when the item is either in a Blocked state or has
+ * the 'Blocked' tag set (legacy compat). Used by session_start /
+ * session_log to surface a nudge when activity hits a still-blocked
+ * item — see R10a, the gap Moran's other chat surfaced 2026-06-03
+ * (working on #434966 while it stayed tagged Blocked).
+ */
+async function readBlockState(workItemId: number): Promise<{
+  blocked: boolean;
+  state: string;
+  hasTag: boolean;
+}> {
+  const { payload } = await buildDashboardCached();
+  const all = [
+    ...payload.workItems.inProgress,
+    ...payload.workItems.upNext,
+    ...payload.workItems.done,
+  ];
+  const w = all.find(x => Number(x.id) === workItemId);
+  if (!w) return { blocked: false, state: 'unknown', hasTag: false };
+  const stateBlocked = isBlockedState(w.state);
+  const hasTag = (w.tags ?? []).includes('Blocked');
+  return { blocked: stateBlocked || hasTag, state: w.state, hasTag };
+}
+
+function buildBlockNudge(block: { blocked: boolean; state: string; hasTag: boolean }): string | null {
+  if (!block.blocked) return null;
+  const sig = isBlockedState(block.state)
+    ? `state \`${block.state}\``
+    : block.hasTag
+      ? `the 'Blocked' tag`
+      : 'a block signal';
+  return `Heads-up: this work item is currently blocked (${sig}${block.hasTag && isBlockedState(block.state) ? ' + tag' : ''}). If the block has cleared, call \`workitem_unblock\` now — don't let it drift. If work is genuinely continuing while blocked (state restored for testing, partial unblock, etc.), say so to Moran explicitly so the tag isn't misleading.`;
+}
+
 server.registerTool(
   'session_start',
   {
@@ -1434,7 +1495,12 @@ server.registerTool(
       };
     }
 
-    return jsonResult({ session, stateFlip });
+    // R10a: opening a session on a Blocked item is the moment to question
+    // whether the block still applies. Surface a nudge so the assistant
+    // raises it with Moran instead of silently building on a stale block.
+    const blockNudge = buildBlockNudge(await readBlockState(workItemId));
+
+    return jsonResult({ session, stateFlip, ...(blockNudge ? { blockNudge } : {}) });
   },
 );
 
@@ -1469,7 +1535,19 @@ server.registerTool(
     const event = logEvent({ sessionId, type, text });
     if (!event) return errorResult(`Session not found: ${sessionId}`);
     void mirrorTaskFile(event.workItemId); // background — keep the archive file fresh
-    if (remainingHoursAfter == null) return jsonResult({ event });
+
+    // R10a: when active-work events (progress / decision / note / focus)
+    // hit a still-blocked item, surface a nudge so the block doesn't
+    // silently drift. `blocker` events are legitimately adding context to
+    // the block itself — never nudge for those.
+    const blockNudge =
+      type === 'blocker'
+        ? null
+        : buildBlockNudge(await readBlockState(event.workItemId));
+
+    if (remainingHoursAfter == null) {
+      return jsonResult({ event, ...(blockNudge ? { blockNudge } : {}) });
+    }
     try {
       await setRemaining(event.workItemId, remainingHoursAfter);
       invalidateDashboardCache();
@@ -1479,6 +1557,7 @@ server.registerTool(
           applied: remainingHoursAfter,
           workItemId: event.workItemId,
         },
+        ...(blockNudge ? { blockNudge } : {}),
       });
     } catch (e) {
       // Event was already logged; surface the partial success + the write error.
@@ -1489,6 +1568,7 @@ server.registerTool(
           workItemId: event.workItemId,
           error: e instanceof Error ? e.message : String(e),
         },
+        ...(blockNudge ? { blockNudge } : {}),
       });
     }
   },

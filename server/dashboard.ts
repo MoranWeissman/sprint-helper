@@ -276,6 +276,38 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
 
   const userStories = groupByParent(items, [...inProgress, ...upNext, ...done]);
 
+  // R10b: when a non-Task item (User Story / Feature / Epic) is itself in
+  // one of the flat workItems lists — typically because Moran opened a
+  // session on the Story directly — its own effort fields are usually
+  // blank (Moran's process tracks hours on child tasks, not stories).
+  // Fill in a rollup from the matching userStories[] bucket so the Focus
+  // view shows meaningful Estimate / Logged / Remaining instead of blanks.
+  const rollupByParentId = new Map<
+    string,
+    { totalEstimateHours: number; completedHours: number; remainingHours: number }
+  >();
+  for (const g of userStories) {
+    rollupByParentId.set(g.id, {
+      totalEstimateHours: g.totalEstimateHours,
+      completedHours: g.completedHours,
+      remainingHours: g.remainingHours,
+    });
+  }
+  for (const slim of [...inProgress, ...upNext, ...done]) {
+    if (slim.type === 'Task') continue;
+    const rollup = rollupByParentId.get(slim.id);
+    if (!rollup) continue;
+    if (slim.originalEstimate == null && rollup.totalEstimateHours > 0) {
+      slim.originalEstimate = rollup.totalEstimateHours;
+    }
+    if (slim.completedWork == null && rollup.completedHours > 0) {
+      slim.completedWork = rollup.completedHours;
+    }
+    if (slim.remainingWork == null && rollup.remainingHours > 0) {
+      slim.remainingWork = rollup.remainingHours;
+    }
+  }
+
   // Outlook capacity is best-effort: never break the dashboard if the calendar
   // fetch hiccups. computeCapacity catches its own fetch errors and surfaces
   // them via `fetchError`; this outer try is belt-and-suspenders.
