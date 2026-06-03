@@ -770,7 +770,7 @@ function CapacityTile({ capacity }: { capacity: ApiOutlookCapacity | null }) {
   }
 
   const working = Math.round(capacity.workingHoursTotal);
-  const real = Math.round(capacity.realDeskHours);
+  const available = Math.round(capacity.availableHours);
   const planned = Math.round(capacity.plannedHours);
   const diff = capacity.difference;
   const absDiff = Math.round(Math.abs(diff));
@@ -813,7 +813,7 @@ function CapacityTile({ capacity }: { capacity: ApiOutlookCapacity | null }) {
               </svg>
             </span>
           </span>
-          <Mono className="r21-capacity-num-val">{real}h</Mono>
+          <Mono className="r21-capacity-num-val">{available}h</Mono>
         </div>
         <div className="r21-capacity-num">
           <span className="r21-capacity-num-label">planned</span>

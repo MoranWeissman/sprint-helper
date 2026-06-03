@@ -6,10 +6,10 @@
  *   meeting_hours        = BUSY + (TENTATIVE × 0.5) + OOF, clipped to the
  *                          working window (8:00–18:00 on working days),
  *                          so an all-day meeting doesn't steal 24 hours.
- *   real_desk_hours      = working_hours_total - meeting_hours
- *   difference           = planned_hours - real_desk_hours
+ *   available_hours      = working_hours_total - meeting_hours
+ *   difference           = planned_hours - available_hours
  *
- * Returns sensible defaults if no calendar URL is configured (real desk
+ * Returns sensible defaults if no calendar URL is configured (available
  * hours = working hours total, hasUrl=false). Errors during fetch are
  * surfaced — never silently swallowed.
  */
@@ -35,7 +35,7 @@ export interface Capacity {
     oof: number;
     weighted: number;
   };
-  realDeskHours: number;
+  availableHours: number;
   plannedHours: number;
   difference: number;
   hasUrl: boolean;
@@ -69,7 +69,7 @@ export async function computeCapacity(opts: ComputeCapacityOptions): Promise<Cap
     workdayHours,
     workingHoursTotal,
     meetingHours: { busy: 0, tentative: 0, oof: 0, weighted: 0 },
-    realDeskHours: workingHoursTotal,
+    availableHours: workingHoursTotal,
     plannedHours: opts.plannedHours,
     difference: opts.plannedHours - workingHoursTotal,
     hasUrl: getCalendarUrl() != null,
@@ -101,13 +101,13 @@ export async function computeCapacity(opts: ComputeCapacityOptions): Promise<Cap
   const tentative = tentativeMins / 60;
   const oof = oofMins / 60;
   const weighted = busy + tentative * TENTATIVE_WEIGHT + oof;
-  const realDeskHours = Math.max(0, workingHoursTotal - weighted);
+  const availableHours = Math.max(0, workingHoursTotal - weighted);
 
   return {
     ...baseResult,
     meetingHours: { busy, tentative, oof, weighted },
-    realDeskHours,
-    difference: opts.plannedHours - realDeskHours,
+    availableHours,
+    difference: opts.plannedHours - availableHours,
   };
 }
 

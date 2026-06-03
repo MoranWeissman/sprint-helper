@@ -120,7 +120,7 @@ export function getHelperNotes(limit = 5): HelperNotes {
 export function ensureCapacityNudge(opts: {
   sprintName: string;
   difference: number;
-  realDeskHours: number;
+  availableHours: number;
   plannedHours: number;
   thresholdHours?: number;
 }): HelperNote | null {
@@ -142,12 +142,12 @@ export function ensureCapacityNudge(opts: {
   }
 
   const planned = Math.round(opts.plannedHours);
-  const real = Math.round(opts.realDeskHours);
+  const available = Math.round(opts.availableHours);
   const gap = Math.round(Math.abs(opts.difference));
   const body =
     direction === 'over'
-      ? `You're planned about ${gap}h over capacity this sprint (${planned}h planned vs ~${real}h available after meetings). Want to trim or push something?`
-      : `You've got about ${gap}h of room left this sprint (${planned}h planned vs ~${real}h available after meetings). Want to pull something in?`;
+      ? `You're planned about ${gap}h over capacity this sprint (${planned}h planned vs ~${available}h available after meetings). Want to trim or push something?`
+      : `You've got about ${gap}h of room left this sprint (${planned}h planned vs ~${available}h available after meetings). Want to pull something in?`;
 
   const note = addNote(body);
 

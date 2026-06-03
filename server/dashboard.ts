@@ -165,9 +165,10 @@ export interface DashboardPayload {
     totalEstimateHours: number;
   };
   /**
-   * Outlook-derived "real desk time" for the sprint vs planned task hours.
-   * Null when there's no sprint yet. When no calendar URL is set, hasUrl=false
-   * and meeting subtractions are skipped (real desk = working hours total).
+   * Outlook-derived "hours available after meetings" for the sprint vs planned
+   * task hours. Null when there's no sprint yet. When no calendar URL is set,
+   * hasUrl=false and meeting subtractions are skipped (available = working
+   * hours total).
    */
   outlookCapacity: Capacity | null;
   /** Count of local edits that haven't reached ADO yet. */

@@ -284,13 +284,13 @@ export async function mirrorSprintSummary(): Promise<{
     if (payload.outlookCapacity && payload.outlookCapacity.hasUrl && !payload.outlookCapacity.fetchError) {
       const c = payload.outlookCapacity;
       const planned = Math.round(c.plannedHours);
-      const desk = Math.round(c.realDeskHours);
+      const available = Math.round(c.availableHours);
       const diff = Math.round(c.difference);
       let verdict: string;
       if (diff >= 8) verdict = `roughly ${diff}h over what fits`;
       else if (diff <= -8) verdict = `about ${Math.abs(diff)}h of room left`;
       else verdict = 'close to balanced';
-      lines.push(`**Capacity:** ${planned}h planned · ${desk}h available after meetings · ${verdict}  `);
+      lines.push(`**Capacity:** ${planned}h planned · ${available}h available after meetings · ${verdict}  `);
     }
     const totals = payload.capacity;
     lines.push(

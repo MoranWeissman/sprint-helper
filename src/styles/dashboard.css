@@ -2379,7 +2379,7 @@ html, body {
 
 .r21-app[data-density="generous"] .r21-notes { padding: 28px 34px; gap: 18px; }
 
-/* R5b — capacity tile: real desk time vs planned hours */
+/* R5b — capacity tile: hours available after meetings vs planned hours */
 .r21-capacity {
   border: 1px solid var(--line);
   border-left: 3px solid var(--line-strong);

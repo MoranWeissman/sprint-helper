@@ -46,9 +46,9 @@ export interface ApiOutlookCapacity {
   workdayHours: number;
   workingHoursTotal: number;
   meetingHours: { busy: number; tentative: number; oof: number; weighted: number };
-  realDeskHours: number;
+  availableHours: number;
   plannedHours: number;
-  /** plannedHours - realDeskHours. Positive = planned over capacity. */
+  /** plannedHours - availableHours. Positive = planned over capacity. */
   difference: number;
   /** False when no calendar URL is configured. */
   hasUrl: boolean;

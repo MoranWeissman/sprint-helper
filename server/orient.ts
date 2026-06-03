@@ -137,15 +137,15 @@ function plainCapacitySummary(c: Capacity | null): string | null {
   if (!c.hasUrl) return null;
   if (c.fetchError) return null;
   const planned = Math.round(c.plannedHours);
-  const desk = Math.round(c.realDeskHours);
+  const available = Math.round(c.availableHours);
   const diff = Math.round(c.difference);
   if (diff >= 8) {
-    return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${desk} hours available after meetings, so you're roughly ${diff} hours over what fits.`;
+    return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${available} hours available after meetings, so you're roughly ${diff} hours over what fits.`;
   }
   if (diff <= -8) {
-    return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${desk} hours available after meetings, so there's about ${Math.abs(diff)} hours of room left if you want to pull something in.`;
+    return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${available} hours available after meetings, so there's about ${Math.abs(diff)} hours of room left if you want to pull something in.`;
   }
-  return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${desk} hours available after meetings — close to balanced.`;
+  return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${available} hours available after meetings — close to balanced.`;
 }
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -268,7 +268,7 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
     ensureCapacityNudge({
       sprintName: sprint.name,
       difference: capacity.difference,
-      realDeskHours: capacity.realDeskHours,
+      availableHours: capacity.availableHours,
       plannedHours: capacity.plannedHours,
     });
   }
