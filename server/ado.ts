@@ -298,6 +298,28 @@ export async function getWorkItemComments(id: number): Promise<WorkItemComment[]
   }));
 }
 
+/**
+ * Post a comment to a work item's Discussion. ADO writes this to the same
+ * Discussion stream the delivery manager sees on the board, and bumps
+ * CommentCount by one.
+ */
+export async function addWorkItemComment(id: number, text: string): Promise<void> {
+  const cfg = await loadAdoConfig();
+  const ADO_RESOURCE = '499b84ac-1321-427f-aa17-267ca6975798';
+  const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workItems/${id}/comments?api-version=7.1-preview.4`;
+  await execStdin(
+    'az',
+    [
+      'rest', '--method', 'POST',
+      '--uri', uri,
+      '--resource', ADO_RESOURCE,
+      '--headers', 'Content-Type=application/json',
+      '--body', '@-',
+    ],
+    JSON.stringify({ text }),
+  );
+}
+
 function mapRef(w: WorkItem) {
   return {
     id: w.id,

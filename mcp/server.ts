@@ -47,7 +47,7 @@ import {
   startSession,
 } from '../server/sessions.js';
 import * as timerService from '../server/timer-service.js';
-import { getWorkItem } from '../server/ado.js';
+import { getWorkItem, addWorkItemComment } from '../server/ado.js';
 import { markSHCreated } from '../server/sh-created.js';
 import {
   createStory,
@@ -1372,10 +1372,22 @@ server.registerTool(
       if (owner) parts.push(`Owner: ${owner}`);
       if (unblockCondition) parts.push(`Unblock when: ${unblockCondition}`);
       parts.push(`(was ${stateChange.fromState})`);
-      const event = logEvent({ sessionId: session.id, type: 'blocker', text: parts.join(' · ') });
+      const text = parts.join(' · ');
+      const event = logEvent({ sessionId: session.id, type: 'blocker', text });
+
+      // Mirror the reason into ADO's Discussion so the delivery manager sees
+      // it on the board (CommentCount bumps by one). Don't fail the whole
+      // block action if the comment write fails — surface it in the payload.
+      let adoComment: { posted: boolean; error?: string };
+      try {
+        await addWorkItemComment(workItemId, text);
+        adoComment = { posted: true };
+      } catch (err) {
+        adoComment = { posted: false, error: err instanceof Error ? err.message : String(err) };
+      }
 
       invalidateDashboardCache();
-      return jsonResult({ workItemId, stateChange, tags, session, event });
+      return jsonResult({ workItemId, stateChange, tags, session, event, adoComment });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
@@ -1404,14 +1416,19 @@ server.registerTool(
       timerService.start(workItemId);
 
       const restoredNote = stateChange.restored ? '' : ', prior state not captured';
-      const event = logEvent({
-        sessionId: session.id,
-        type: 'decision',
-        text: `UNBLOCKED: ${summary} · (now ${stateChange.toState}${restoredNote})`,
-      });
+      const text = `UNBLOCKED: ${summary} · (now ${stateChange.toState}${restoredNote})`;
+      const event = logEvent({ sessionId: session.id, type: 'decision', text });
+
+      let adoComment: { posted: boolean; error?: string };
+      try {
+        await addWorkItemComment(workItemId, text);
+        adoComment = { posted: true };
+      } catch (err) {
+        adoComment = { posted: false, error: err instanceof Error ? err.message : String(err) };
+      }
 
       invalidateDashboardCache();
-      return jsonResult({ workItemId, stateChange, tags, session, event });
+      return jsonResult({ workItemId, stateChange, tags, session, event, adoComment });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
