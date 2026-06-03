@@ -117,7 +117,13 @@ function DashboardLive({
   const liveItems = useMemo(
     () =>
       allItems
-        .filter(w => !!w.activeSession)
+        // Skip tasks that are Done in ADO even if the local session is still
+        // open. Done has to beat the live-session signal — when another chat
+        // (or ADO directly) flips a task to closed without calling
+        // session_end, the ghost session shouldn't keep pinning Focus to a
+        // closed task. The leftover session gets cleaned up via the
+        // STALE LIVE SESSION prompt or a future auto-end nudge.
+        .filter(w => !!w.activeSession && classifyAdoState(w.state) !== 'done')
         .sort((a, b) => (a.activeSession!.startedAt < b.activeSession!.startedAt ? 1 : -1)),
     [allItems],
   );
