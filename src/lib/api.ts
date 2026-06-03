@@ -82,6 +82,8 @@ export interface ApiWorkItem {
   tags?: string[];
   /** Parent story's tags — surfaced so a task can show its parent story is blocked. */
   parentTags?: string[];
+  /** True when sprint-helper itself created this item via MCP. Local-only. */
+  wasSHCreated?: boolean;
   url: string;
 }
 
@@ -129,6 +131,8 @@ export interface ApiUserStoryGroup {
   hasActiveSession: boolean;
   /** Parsed System.Tags on the story. Contains "Blocked" when tagged blocked. */
   tags?: string[];
+  /** True when sprint-helper itself created this story via MCP. Local-only. */
+  wasSHCreated?: boolean;
 }
 
 export type CeremonyId = 'daily' | 'preplan' | 'plan' | 'demo' | 'retro';
