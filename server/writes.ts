@@ -557,9 +557,11 @@ export async function createTask(input: CreateTaskInput): Promise<CreatedTask> {
 export interface CreateStoryInput {
   title: string;
   description?: string;
-  /** Moran's team convention: 1 story point = 1 day. */
-  storyPoints: number;
-  /** Total hours she thinks this story is. */
+  /**
+   * Total hours Moran thinks this story is. Story Points are derived from
+   * this via `deriveStoryPoints` and written in the same PATCH — callers
+   * don't (and can't) pass points independently.
+   */
   effortHours: number;
   /** Optional Feature/Epic id to link the story under. */
   parentFeatureId?: number;
@@ -587,12 +589,14 @@ export async function createStory(input: CreateStoryInput): Promise<CreatedStory
   const iteration = await getCurrentIterationPath();
   if (!iteration) throw new Error('No active sprint found — cannot place new story.');
 
+  const workday = getWorkdayHours();
+  const derivedPoints = deriveStoryPoints(input.effortHours, workday);
   const patch: Array<Record<string, unknown>> = [
     { op: 'add', path: '/fields/System.Title', value: input.title },
     { op: 'add', path: '/fields/System.AssignedTo', value: cfg.user },
     { op: 'add', path: '/fields/System.IterationPath', value: iteration },
-    { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.StoryPoints', value: round2(input.storyPoints) },
     { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.Effort', value: round2(input.effortHours) },
+    { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.StoryPoints', value: round2(derivedPoints) },
   ];
   if (input.description) {
     patch.push({

@@ -1535,18 +1535,14 @@ server.registerTool(
   {
     title: 'Create an ADO user story in the current sprint',
     description:
-      "Create a new User Story in Azure DevOps, placed in Moran's current sprint and assigned to him. ALWAYS ask Moran for storyPoints AND effortHours before calling — never guess, never skip. These are the planning fields the POM delivery manager looks at to gauge sprint progress, so they must be set on every story you create. storyPoints uses his team's convention: 1 point = 1 day. effortHours is the total hours he thinks the story is. Pass `parentFeatureId` to nest under an existing Feature/Epic if he has one. Returns the new story's id and URL.",
+      "Create a new User Story in Azure DevOps, placed in Moran's current sprint and assigned to him. ALWAYS ask Moran for effortHours before calling — never guess, never skip. Effort is the single planning field the POM delivery manager reads; Story Points are derived from it automatically (1 point = 1 workday, rounded to the nearest half) and written in the same patch. Pass `parentFeatureId` to nest under an existing Feature/Epic if he has one. Returns the new story's id and URL.",
     inputSchema: {
       title: z.string().min(1).describe('Story title — short and specific.'),
       description: z.string().optional().describe('Optional details. Plain text or simple HTML.'),
-      storyPoints: z
-        .number()
-        .min(0)
-        .describe("REQUIRED. Moran's team convention: 1 point = 1 day. Ask him for it before calling."),
       effortHours: z
         .number()
         .min(0)
-        .describe('REQUIRED. Total hours Moran thinks this story is. Ask him for it before calling.'),
+        .describe('REQUIRED. Total hours Moran thinks this story is. Ask him for it before calling. StoryPoints is derived from this automatically (1 point = 1 workday) — do not pass points separately.'),
       parentFeatureId: z
         .number()
         .int()
@@ -1555,12 +1551,11 @@ server.registerTool(
         .describe('Optional Feature/Epic id to link this story under.'),
     },
   },
-  async ({ title, description, storyPoints, effortHours, parentFeatureId }) => {
+  async ({ title, description, effortHours, parentFeatureId }) => {
     try {
       const created = await createStory({
         title,
         description,
-        storyPoints,
         effortHours,
         parentFeatureId,
       });
