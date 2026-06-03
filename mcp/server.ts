@@ -33,6 +33,7 @@ import { addNote, getHelperNotes, setSummary } from '../server/helper-notes.js';
 import { buildEstimateAnchor } from '../server/estimate-anchor.js';
 import { buildOrientPacket } from '../server/orient.js';
 import { getPlanningHome, isPlanningHomeCwd, setPlanningHome } from '../server/planning-home.js';
+import { findGaps } from '../server/planning.js';
 import {
   resolveStoryMatch,
   setLearnedStoryId,
@@ -1524,6 +1525,24 @@ server.registerTool(
     try {
       const anchor = await buildEstimateAnchor({ parentId });
       return jsonResult(anchor);
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'planning_gaps',
+  {
+    title: 'List sprint items missing effort fields',
+    description:
+      "Return every Task in the current sprint missing OriginalEstimate or RemainingWork, plus every open Story missing StoryPoints or Effort. Each gap is paired with a deterministic anchor proposal (median sibling actual from estimate_anchor, or a cold-start flag). Use this in a PLANNING HOME chat to walk Moran through the decompose-anchor-propose ritual one item at a time. Don't use this in a story-anchored work chat — it's a sprint-wide read.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const result = await findGaps();
+      return jsonResult(result);
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
