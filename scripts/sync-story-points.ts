@@ -143,10 +143,9 @@ async function main() {
 
   if (drift.length > 0) {
     console.log(`\nStories with drift (${drift.length}):`);
-    console.log(`  id          effort   current pts   derived pts   title`);
     for (const d of drift) {
       console.log(
-        `  #${String(d.id).padEnd(8)}  ${String(d.effort).padStart(5)}h   ${String(d.storyPoints ?? '∅').padStart(11)}   ${String(d.expected).padStart(11)}   ${d.title}`,
+        `  **${d.title}** (#${d.id}) — ${d.effort}h effort, current ${d.storyPoints ?? '∅'} pts → derived ${d.expected} pts`,
       );
     }
   }
