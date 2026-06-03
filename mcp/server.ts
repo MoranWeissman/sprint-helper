@@ -50,6 +50,7 @@ import * as timerService from '../server/timer-service.js';
 import { getWorkItem, addWorkItemComment } from '../server/ado.js';
 import { markSHCreated } from '../server/sh-created.js';
 import {
+  clearCompletedAutoFillMarker,
   createStory,
   createTask,
   ensureActive,
@@ -60,6 +61,7 @@ import {
   setEstimate,
   setIterationPath,
   setRemaining,
+  setRemainingPriorToCloseMarker,
   setStateBucket,
   setStoryPoints,
   transitionFromBlocked,
@@ -1232,6 +1234,7 @@ server.registerTool(
       iterationPath?: string;
     } = {};
     try {
+      const isDoneTransition = state === 'done';
       if (state) applied.state = await setStateBucket(workItemId, state as StateBucket);
       if (originalEstimate != null) {
         await setEstimate(workItemId, originalEstimate);
@@ -1239,10 +1242,22 @@ server.registerTool(
       }
       if (remainingWork != null) {
         await setRemaining(workItemId, remainingWork);
+        // If this same call also moved the item to done, the auto-capture in
+        // setStateBucket recorded the pre-close Remaining. Moran's explicit
+        // value should win — overwrite the capture so a future reopen
+        // restores the number he asked for.
+        if (isDoneTransition && applied.state) {
+          setRemainingPriorToCloseMarker(workItemId, remainingWork);
+        }
         applied.remainingWork = remainingWork;
       }
       if (completedWork != null) {
         await setCompletedWork(workItemId, completedWork);
+        // Explicit Completed wins; cancel any auto-fill rollback that would
+        // unwind it on the next reopen.
+        if (isDoneTransition && applied.state) {
+          clearCompletedAutoFillMarker(workItemId);
+        }
         applied.completedWork = completedWork;
       }
       if (storyPoints != null) {

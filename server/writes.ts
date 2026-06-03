@@ -161,21 +161,75 @@ export async function pushCompletedWork(
   return { newCompletedHours: newCompleted, newRemainingHours: newRemaining };
 }
 
+const DONE_STATES_LOWER = new Set(STATE_BUCKET_CHAIN.done.map(s => s.toLowerCase()));
+function isDoneStateName(state: string): boolean {
+  return DONE_STATES_LOWER.has(state.toLowerCase());
+}
+
+/**
+ * Cancel the auto-fill rollback marker for a work item. Called when Moran
+ * explicitly sets CompletedWork after a close — his number is the truth,
+ * the auto-fill shouldn't unwind on a later reopen.
+ */
+export function clearCompletedAutoFillMarker(workItemId: number): void {
+  setSetting(`completed_auto_filled_${workItemId}`, '');
+}
+
+/**
+ * Overwrite the captured "Remaining before close" so a future reopen
+ * restores the explicit number, not the value ADO had pre-close.
+ */
+export function setRemainingPriorToCloseMarker(workItemId: number, hours: number): void {
+  if (hours > 0) {
+    setSetting(`remaining_prior_to_close_${workItemId}`, String(hours));
+  } else {
+    setSetting(`remaining_prior_to_close_${workItemId}`, '');
+  }
+}
+
 /**
  * Transition an item to a target bucket (waiting / going / done). Tries the
  * previously-successful state name first, then walks the chain. Persists what
  * worked.
+ *
+ * Side effect — crossing the done boundary preserves effort fields:
+ *   - going → done: capture current RemainingWork into a setting so a future
+ *     reopen can restore it. If CompletedWork is empty, default it to that
+ *     same RemainingWork ("you used what was left") and remember the auto-fill
+ *     amount so the reopen path can roll it back.
+ *   - done → going/waiting/blocked: restore the captured RemainingWork and
+ *     subtract the auto-fill from CompletedWork.
+ *
+ * Explicit writes via workitem_edit's remainingWork / completedWork still win
+ * because they happen in a separate call — the auto-fill only fires when
+ * CompletedWork was 0 at the moment of close.
  */
 export async function setStateBucket(
   workItemId: number,
   bucket: StateBucket,
 ): Promise<string> {
+  // Read prior state + effort BEFORE the transition so we can decide whether
+  // to preserve. One ADO GET per state change is acceptable.
+  let beforeRemaining = 0;
+  let beforeCompleted = 0;
+  let wasDone = false;
+  try {
+    const before = await fetchEffortFields(workItemId);
+    beforeRemaining = before.fields['Microsoft.VSTS.Scheduling.RemainingWork'] ?? 0;
+    beforeCompleted = before.fields['Microsoft.VSTS.Scheduling.CompletedWork'] ?? 0;
+    wasDone = isDoneStateName(before.fields['System.State'] ?? '');
+  } catch {
+    // If the read fails, fall through — state transition is more important
+    // than effort preservation. The auto-fill / restore just won't fire.
+  }
+
   const settingKey = `state_${bucket}`;
   const preferred = getSetting(settingKey);
   const chain: string[] = preferred
     ? [preferred, ...STATE_BUCKET_CHAIN[bucket].filter(s => s !== preferred)]
     : [...STATE_BUCKET_CHAIN[bucket]];
 
+  let resolvedState: string | null = null;
   let lastErr: Error | null = null;
   for (const state of chain) {
     try {
@@ -183,7 +237,8 @@ export async function setStateBucket(
         { op: 'add', path: '/fields/System.State', value: state },
       ]);
       if (state !== preferred) setSetting(settingKey, state);
-      return state;
+      resolvedState = state;
+      break;
     } catch (err) {
       lastErr = err instanceof Error ? err : new Error(String(err));
       const msg = lastErr.message.toLowerCase();
@@ -197,7 +252,54 @@ export async function setStateBucket(
       }
     }
   }
-  throw lastErr ?? new Error(`Could not transition to any ${bucket} state.`);
+  if (resolvedState == null) {
+    throw lastErr ?? new Error(`Could not transition to any ${bucket} state.`);
+  }
+
+  const goingToDone = bucket === 'done' && !wasDone;
+  const leavingDone = wasDone && bucket !== 'done';
+
+  if (goingToDone) {
+    if (beforeRemaining > 0) {
+      setSetting(`remaining_prior_to_close_${workItemId}`, String(beforeRemaining));
+    }
+    if (beforeCompleted === 0 && beforeRemaining > 0) {
+      try {
+        await setCompletedWork(workItemId, beforeRemaining);
+        setSetting(`completed_auto_filled_${workItemId}`, String(beforeRemaining));
+      } catch {
+        setSetting(`completed_auto_filled_${workItemId}`, '');
+      }
+    } else {
+      setSetting(`completed_auto_filled_${workItemId}`, '');
+    }
+  }
+
+  if (leavingDone) {
+    const restoreR = Number(getSetting(`remaining_prior_to_close_${workItemId}`) ?? '0');
+    if (restoreR > 0) {
+      try {
+        await setRemaining(workItemId, restoreR);
+      } catch {
+        // Best-effort; leave the setting alone so a retry can restore later.
+      }
+    }
+    setSetting(`remaining_prior_to_close_${workItemId}`, '');
+    const filledC = Number(getSetting(`completed_auto_filled_${workItemId}`) ?? '0');
+    if (filledC > 0) {
+      try {
+        const afterFields = await fetchEffortFields(workItemId);
+        const currentC = afterFields.fields['Microsoft.VSTS.Scheduling.CompletedWork'] ?? 0;
+        const adjusted = Math.max(0, currentC - filledC);
+        await setCompletedWork(workItemId, adjusted);
+      } catch {
+        // Best-effort.
+      }
+    }
+    setSetting(`completed_auto_filled_${workItemId}`, '');
+  }
+
+  return resolvedState;
 }
 
 /** Back-compat for slice 2 timer-service: stop+done flow. */
