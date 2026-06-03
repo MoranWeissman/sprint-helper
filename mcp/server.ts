@@ -351,11 +351,18 @@ by calling \`story_match\` with the chat's cwd:
   \`title (#id)\` yourself.
 
 STALE LIVE SESSION — gently ask, never auto-close:
-Each item in \`orient.liveNow\` carries \`idleMinutes\` (minutes since
-the last \`session_log\` event, or since session start if nothing's
-been logged yet) and a \`mayBeStale\` flag set when idle crosses two
-hours. Stale almost always means Moran opened a session, got pulled
-into a meeting or a different problem, and never closed it.
+Each item in \`orient.liveNow\` carries \`sessionId\` (the handle you
+pass to \`session_end\` / \`session_log\`), \`idleMinutes\` (minutes
+since the last \`session_log\` event, or since session start if
+nothing's been logged yet) and a \`mayBeStale\` flag set when idle
+crosses two hours. Stale almost always means Moran opened a session,
+got pulled into a meeting or a different problem, and never closed it.
+
+If Moran asks you to close a session that came back into view after an
+MCP reconnect (you didn't open it in this chat), use the \`sessionId\`
+from \`orient.liveNow[i]\` or \`sprint_snapshot.activeSessionDetails[i]\`
+— both surface it now. Don't guess the id from the work item or refuse
+because you "don't have it"; the id is in the orient packet.
 
 If ANY liveNow item has \`mayBeStale: true\`, raise it ONCE — before
 the status read, before suggesting next steps:
