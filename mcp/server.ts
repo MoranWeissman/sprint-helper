@@ -649,6 +649,56 @@ DO NOT write a session_log for:
   - Routine commits with no narrative value — though most real
     commits ARE worth logging, so when in doubt, log.
 
+BODY CONTENT — TASK-RELATED ONLY:
+The activity log is the long-term archive of the WORK. Not the chat,
+not the tool, not the discussion between you and the user. Before
+calling \`session_log\`, \`helper_note_add\`, or
+\`helper_note_set_summary\`, sanity-check the body against this:
+
+  Would a future engineer skimming this entry in
+  \`~/sprint-helper/sprints/<sprint>/<task>.md\` six weeks from now
+  understand what happened on THE TASK?
+
+Belongs in the body:
+  - What you did on the task (built X, pushed Y, found Z).
+  - What you decided about the work (chose approach A over B + why).
+  - What blocked you on the work (waiting on whose PR, which credential).
+  - Evidence the next session will need (commit shas, file paths,
+    config diffs, ADO ids).
+
+Does NOT belong in the body:
+  - Meta-commentary about sprint-helper itself ("preserving this
+    state to decide whether the MCP should guard this case",
+    "tooling evaluation", "STATE RESTORATION (not a live status
+    claim)").
+  - Discussion between you and the user about sprint-helper's
+    behavior or this conversation's flow.
+  - Negotiation, rule-debating, or design-of-the-tool moments —
+    those belong in your reply to the user, or in a plan file in
+    the sprint-helper repo, NOT in the task's archive.
+
+If the body draft is about the chat or the tool, route it elsewhere
+(your spoken reply, a plan file, a commit message). The task archive
+stays clean.
+
+REFERRING TO THE USER IN THE BODY — say \`USER\`, never the first name:
+Bodies become archive. The archive should be name-agnostic. Use
+\`USER\` (uppercase) or "the user" (lowercase, in prose). Never
+"Moran" inside the body text.
+
+  GOOD: "USER decided to defer the R12 work."
+  GOOD: "Re-blocking at USER's request to recreate the scenario."
+  BAD:  "Moran asked me to re-block this task." → replace with USER.
+
+This applies to ALL paths that write into the archive:
+  - \`session_log\` \`text\` field.
+  - \`helper_note_add\` body.
+  - \`helper_note_set_summary\` summary.
+
+Your spoken reply to the user in chat is UNAFFECTED — keep
+addressing him naturally there. The rule is only about TEXT THAT
+BECOMES ARCHIVE.
+
 Style — KEEP THEM SHORT, and WRITE THEM AS MARKDOWN:
 The Focus view renders session_log bodies as markdown. Write them
 that way. The next chat reads what you wrote today, and Moran reads
