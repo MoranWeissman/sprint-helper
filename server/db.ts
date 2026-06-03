@@ -8,6 +8,8 @@
  *  - sessions / session_events: Claude Code sessions reported via MCP — what
  *    Moran is working on right now, plus summaries, blockers, decisions.
  *  - helper_notes: the assistant's plain-English nudges (R3); soft-dismissed.
+ *  - sh_created_items: items the MCP itself created (Task / Story); local
+ *    marker only, never reaches Azure DevOps.
  *
  * Connection is opened lazily and cached for the life of the process.
  */
@@ -100,6 +102,15 @@ function migrate(db: DB) {
 
     CREATE INDEX IF NOT EXISTS idx_helper_notes_open
       ON helper_notes(created_at DESC) WHERE dismissed_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS sh_created_items (
+      work_item_id INTEGER PRIMARY KEY,
+      kind         TEXT NOT NULL,
+      created_at   TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sh_created_kind
+      ON sh_created_items(kind);
   `);
 }
 
