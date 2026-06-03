@@ -3070,3 +3070,201 @@ html, body {
   vertical-align: 0.1em;
   user-select: none;
 }
+
+/* Plan mode body. Calm, generous spacing — Moran scans this once during
+   planning, doesn't live in it. */
+
+.r12-plan {
+  padding: 2rem clamp(1rem, 3vw, 2.5rem);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.r12-plan-h {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 0.4rem;
+  letter-spacing: -0.01em;
+}
+
+.r12-plan-intro p {
+  margin: 0 0 0.9rem;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.r12-plan-scan,
+.r12-plan-copy {
+  appearance: none;
+  border: 1px solid color-mix(in oklch, var(--accent) 60%, transparent);
+  background: color-mix(in oklch, var(--accent) 18%, transparent);
+  color: var(--ink-1);
+  padding: 0.55rem 1rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.r12-plan-scan:hover:not(:disabled),
+.r12-plan-copy:hover {
+  background: color-mix(in oklch, var(--accent) 28%, transparent);
+}
+
+.r12-plan-scan:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.r12-plan-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0.9rem;
+  background: color-mix(in oklch, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in oklch, var(--accent) 22%, transparent);
+  border-radius: 8px;
+  position: sticky;
+  top: 0.5rem;
+  z-index: 2;
+  backdrop-filter: blur(8px);
+}
+
+.r12-plan-count {
+  color: var(--ink-2);
+  font-size: 0.95rem;
+}
+
+.r12-plan-empty,
+.r12-plan-error {
+  padding: 1.2rem;
+  background: color-mix(in oklch, var(--surface-2) 90%, transparent);
+  border: 1px solid color-mix(in oklch, var(--ink-3) 22%, transparent);
+  border-radius: 8px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.r12-plan-error button {
+  margin-left: 0.4rem;
+}
+
+.r12-plan-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+}
+
+.r12-plan-group-h {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--ink-2);
+  margin: 0 0 0.6rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--ink-3) 22%, transparent);
+}
+
+.r12-plan-gaps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.r12-plan-gap {
+  padding: 0.7rem 0.9rem;
+  background: color-mix(in oklch, var(--surface-2) 80%, transparent);
+  border: 1px solid color-mix(in oklch, var(--ink-3) 16%, transparent);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.r12-plan-gap-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.r12-plan-kind {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.05em 0.45em;
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--ink-3) 16%, transparent);
+  color: var(--ink-2);
+}
+
+.r12-plan-kind-story {
+  background: color-mix(in oklch, var(--st-going) 22%, transparent);
+  color: var(--st-going);
+}
+
+.r12-plan-kind-task {
+  background: color-mix(in oklch, var(--feature) 22%, transparent);
+  color: var(--feature);
+}
+
+.r12-plan-gap-name {
+  font-size: 1rem;
+  color: var(--ink-1);
+  line-height: 1.35;
+}
+
+.r12-plan-gap-missing {
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+
+.r12-plan-anchor {
+  font-size: 0.85rem;
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+.r12-plan-anchor.is-cold {
+  color: color-mix(in oklch, var(--st-waiting) 70%, var(--ink-2));
+  font-style: normal;
+}
+
+.r12-id {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  color: var(--ink-3);
+  margin-left: 0.35em;
+}
+
+.r12-plan-prompt-wrap {
+  margin-top: 0.8rem;
+}
+
+.r12-plan-prompt-wrap summary {
+  cursor: pointer;
+  color: var(--ink-2);
+  font-size: 0.9rem;
+  padding: 0.3rem 0;
+}
+
+.r12-plan-prompt {
+  margin-top: 0.5rem;
+  padding: 0.9rem;
+  background: color-mix(in oklch, var(--surface-2) 70%, #000);
+  border: 1px solid color-mix(in oklch, var(--ink-3) 16%, transparent);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--ink-1);
+  white-space: pre-wrap;
+  line-height: 1.5;
+  max-height: 360px;
+  overflow: auto;
+}
