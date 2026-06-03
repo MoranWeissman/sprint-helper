@@ -1363,7 +1363,10 @@ server.registerTool(
       const stateChange = await transitionToBlocked(workItemId);
       const tags = await updateTags(workItemId, { add: ['Blocked'] });
       const session = startSession({ workItemId });
-      timerService.start(workItemId);
+      // Blocked ≠ working. If a stopwatch was running on this item, stop it;
+      // never start a new one from the block action. The session row is kept
+      // so the structured 'blocker' event has a container to live in.
+      timerService.pause(workItemId);
 
       const parts = [`BLOCKED: ${reason}`];
       if (owner) parts.push(`Owner: ${owner}`);
