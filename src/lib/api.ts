@@ -413,6 +413,50 @@ export async function updateWorkItem(
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Planning gaps                                                             */
+/* -------------------------------------------------------------------------- */
+
+export interface ApiPlanningGapAnchor {
+  isColdStart: boolean;
+  siblingMedianActual: number | null;
+  siblingSampleCount: number;
+  calibrationOverallRatio: number | null;
+  summary: string;
+}
+
+export interface ApiPlanningGapRef {
+  workItemId: number;
+  title: string;
+  displayName: string;
+  type: string;
+}
+
+export interface ApiPlanningGap {
+  kind: 'task' | 'story';
+  workItemId: number;
+  title: string;
+  displayName: string;
+  missing: string[];
+  parent: ApiPlanningGapRef | null;
+  feature: ApiPlanningGapRef | null;
+  anchor: ApiPlanningGapAnchor;
+}
+
+export interface ApiPlanningGapsResponse {
+  fetchedAt: string;
+  totalGaps: number;
+  gaps: ApiPlanningGap[];
+  prompt: string;
+}
+
+export async function fetchPlanningGaps(): Promise<ApiPlanningGapsResponse> {
+  const r = await fetch('/api/planning/gaps', { cache: 'no-store' });
+  const body = await r.json();
+  if (!r.ok || 'error' in body) throw new Error(body.error ?? 'Could not load planning gaps');
+  return body as ApiPlanningGapsResponse;
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Helper's notes                                                            */
 /* -------------------------------------------------------------------------- */
 
