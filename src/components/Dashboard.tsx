@@ -1254,12 +1254,18 @@ function storyDominantState(s: ApiUserStoryGroup): StoryState {
   // State first — Blocked beats live session because we want to surface the block.
   const ownState = classifyAdoState(s.state);
   if (ownState === 'blocked') return 'blocked';
-  // Legacy fallback: tag without state still counts as blocked while migrating.
+  // Story itself closed → whole card is done regardless of leftover tags.
+  // Done has to beat the legacy Blocked-tag fallback below, because stories
+  // unblocked + closed before the workitem_unblock tag-verify fix
+  // (60b9f21) still carry a stale `Blocked` tag and shouldn't read as
+  // blocked when the work is over.
+  if (ownState === 'done') return 'done';
+  // Legacy fallback: tag without state still counts as blocked for
+  // in-flight items (only reachable when state isn't Blocked AND isn't
+  // Done — i.e. waiting/going/empty).
   if (isBlocked(s.tags)) return 'blocked';
   // Live session — you're literally working on it now.
   if (s.hasActiveSession) return 'going';
-  // Story itself closed → whole card is done regardless of leftover tasks.
-  if (ownState === 'done') return 'done';
   // Story itself active → show going even if child tasks haven't been flipped yet.
   if (ownState === 'going') return 'going';
   // Otherwise fall back to child task counts.
@@ -1278,10 +1284,13 @@ function storyStateLabel(d: StoryState): string {
 }
 
 function dailyStateClass(state: string, tags?: string[]): string {
-  if (isBlockedState(state) || isBlocked(tags)) return 'is-blocked';
+  if (isBlockedState(state)) return 'is-blocked';
   const s = state.toLowerCase();
-  if (s === 'active' || s === 'in progress' || s === 'doing' || s === 'committed') return 'is-going';
+  // Done has to beat the legacy Blocked-tag fallback — items closed before
+  // the 60b9f21 tag-verify fix can carry a stale `Blocked` tag.
   if (s === 'done' || s === 'closed' || s === 'resolved' || s === 'completed' || s === 'removed') return 'is-done';
+  if (isBlocked(tags)) return 'is-blocked';
+  if (s === 'active' || s === 'in progress' || s === 'doing' || s === 'committed') return 'is-going';
   return 'is-waiting';
 }
 
