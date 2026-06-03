@@ -1,8 +1,10 @@
 # R11 — /sprint-helper named skill set
 
+**Status: DONE 2026-06-03.** All four skills shipped at `~/.claude/skills/sprint-helper-plus/` (skills-directory plugin pattern). See "Approach actually taken" below.
+
 **Goal:** Add four named slash-command skills so Moran can re-anchor the assistant on key sprint-helper operations when it drifts past the in-context rules. Recovery tool, not primary UX — automatic triggers (orient, blockNudge, story_match) still fire on their own.
 
-**Approach:** Each skill is a self-contained, one-shot prompt that walks the model through the right MCP tools + rules for that operation. Mirrors the existing `/sprint-helper` shape (frontmatter with `disable-model-invocation: true`, body tells the model exactly what to do).
+**Approach actually taken** (deviation from the original plan): Task 1's investigation revealed a third option not in the original plan — Claude Code's **skills-directory plugin** pattern. The `:` separator is plugin-only (user-level skills under `~/.claude/skills/<name>/` are flat). Instead of either the original "subdirectory" guess (which doesn't work for user skills) or the "sibling skills with hyphen" fallback, we dropped a `.claude-plugin/plugin.json` into a sibling directory (`~/.claude/skills/sprint-helper-plus/`) with `"name": "sprint-helper"` — that turns it into a plugin, so its skills invoke as `/sprint-helper:<sub>` natively. The bare standalone `/sprint-helper` keeps working because the `:` distinguishes plugin invocation from standalone.
 
 **The set (decided with Moran 2026-06-03):**
 
@@ -20,7 +22,7 @@
 
 **Files:** investigation only — read `~/.claude/skills/sprint-helper/SKILL.md` and check Claude Code's docs/source.
 
-- [ ] **Step 1: Inspect how subcommands work in Claude Code skills.**
+- [x] **Step 1: Inspect how subcommands work in Claude Code skills.**
 
   Two possibilities to verify:
   - Subdirectory: `~/.claude/skills/sprint-helper/<subname>/SKILL.md` invoked as `/sprint-helper:<subname>`.
@@ -28,7 +30,7 @@
 
   Try the subdirectory pattern first — it keeps related skills grouped and matches the `:` separator Moran asked for. If Claude Code doesn't pick it up on first try, fall back to sibling.
 
-- [ ] **Step 2: Confirm by creating a test skill.**
+- [x] **Step 2: Confirm by creating a test skill.**
 
   Create a throwaway `/sprint-helper:test` skill, restart, see if Claude Code surfaces it. Delete it once confirmed.
 
@@ -38,7 +40,7 @@
 
 **File:** Create `~/.claude/skills/sprint-helper/resume-work/SKILL.md` (or sibling per Task 1's result).
 
-- [ ] **Step 1: Write the skill body.**
+- [x] **Step 1: Write the skill body.**
 
   Frontmatter:
 
@@ -61,7 +63,7 @@
 
   Style: plain English, paragraph form, names-before-numbers, no banned words. The skill body should re-state the rules concretely so even a freshly-resumed model has them in context.
 
-- [ ] **Step 2: Manual smoke.**
+- [x] **Step 2: Manual smoke.**
 
   Save Moran's existing `~/sprint-helper/` archive output as a reference. Don't run the skill from inside the dev chat (the MCP subprocess is stale). The smoke is: Moran runs it in a fresh chat and confirms it walks the right ritual.
 
@@ -71,7 +73,7 @@
 
 **File:** `~/.claude/skills/sprint-helper/end-work/SKILL.md`
 
-- [ ] **Step 1: Write the skill body.**
+- [x] **Step 1: Write the skill body.**
 
   Frontmatter:
 
@@ -93,7 +95,7 @@
 
   Cross-references: [[feedback-effort-propose-burndown]], [[feedback-session-log-cadence]] (already documented in MEMORY.md).
 
-- [ ] **Step 2: Smoke (Moran-side).** Open a session in his work chat, run the skill, confirm it walks the right branch for each case.
+- [x] **Step 2: Smoke (Moran-side).** Open a session in his work chat, run the skill, confirm it walks the right branch for each case.
 
 ---
 
@@ -101,7 +103,7 @@
 
 **File:** `~/.claude/skills/sprint-helper/status/SKILL.md`
 
-- [ ] **Step 1: Write the skill body.**
+- [x] **Step 1: Write the skill body.**
 
   Frontmatter:
 
@@ -125,7 +127,7 @@
 
   Cross-references: the [[Plain English output]] feedback rule. The standup data is what powers the Daily view's standup card (R9).
 
-- [ ] **Step 2: Smoke.** Moran runs it in any chat (not specifically a work chat — `status` should work in any context), verify it reads aloud well.
+- [x] **Step 2: Smoke.** Moran runs it in any chat (not specifically a work chat — `status` should work in any context), verify it reads aloud well.
 
 ---
 
@@ -133,7 +135,7 @@
 
 **File:** `~/.claude/skills/sprint-helper/new-work/SKILL.md`
 
-- [ ] **Step 1: Write the skill body.**
+- [x] **Step 1: Write the skill body.**
 
   Frontmatter:
 
@@ -161,7 +163,7 @@
 
   Cross-references: [[feedback-effort-propose-burndown]], [[feedback-use-sprint-helper-strictly]] (never shell to az), [[feedback-self-identify-story]].
 
-- [ ] **Step 2: Smoke.** Moran picks a fresh-feeling cwd, runs the skill, walks through both branches over a couple of chats.
+- [x] **Step 2: Smoke.** Moran picks a fresh-feeling cwd, runs the skill, walks through both branches over a couple of chats.
 
 ---
 
@@ -172,13 +174,13 @@
 - `~/.claude/projects/-Users-weissmmo-projects-github-moran-sprint-helper/memory/project_slice_backlog.md` (mark R11 ✅ with commit sha)
 - `~/.claude/projects/-Users-weissmmo-projects-github-moran-sprint-helper/memory/project_build_state.md` (update latest-commit pointer)
 
-- [ ] **Step 1: Update `reference_sprint_helper_skill.md`** to list all five skills (the existing one-shot `/sprint-helper` plus the four new sub-skills). Note the recovery-tool framing — these are belt-and-suspenders for when auto-triggers miss.
+- [x] **Step 1: Update `reference_sprint_helper_skill.md`** to list all five skills (the existing one-shot `/sprint-helper` plus the four new sub-skills). Note the recovery-tool framing — these are belt-and-suspenders for when auto-triggers miss.
 
-- [ ] **Step 2: Update slice backlog.** Add R11 ✅ entry below R10 with commit sha + the four skill names.
+- [x] **Step 2: Update slice backlog.** Add R11 ✅ entry below R10 with commit sha + the four skill names.
 
-- [ ] **Step 3: Update build state's "Latest commit" line.**
+- [x] **Step 3: Update build state's "Latest commit" line.**
 
-- [ ] **Step 4: Commit.**
+- [x] **Step 4: Commit.**
 
   Skills live in `~/.claude/skills/`, NOT in the sprint-helper repo. The commit in this repo is only for the plan file:
 
