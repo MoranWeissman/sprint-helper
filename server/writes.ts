@@ -9,6 +9,7 @@
 import { execFile } from 'node:child_process';
 import { loadAdoConfig } from './config';
 import { getSetting, setSetting } from './timers';
+import { deriveStoryPoints, getWorkdayHours } from './story-points';
 
 const ADO_RESOURCE = '499b84ac-1321-427f-aa17-267ca6975798';
 
@@ -401,10 +402,12 @@ export async function setCompletedWork(workItemId: number, hours: number): Promi
 }
 
 /**
- * Story-level effort. Two separate ADO fields:
- *  - StoryPoints: Moran's team convention = days.
- *  - Effort:      total hours she thinks the work is.
- * Both are needed so the POM delivery manager sees real planning.
+ * Story-level effort. Effort (hours) is the source of truth on Moran's team —
+ * StoryPoints is always derived from it via `deriveStoryPoints`, so the two
+ * fields cannot drift. Direct setters are kept exported for the rare case a
+ * caller needs to write only one (e.g. the sync sweep that fixes legacy
+ * drift), but normal write paths must use `setEffortWithDerivedPoints` so
+ * both fields land in the same PATCH.
  */
 export async function setStoryPoints(workItemId: number, points: number): Promise<void> {
   await patchWorkItem(workItemId, [
@@ -416,6 +419,24 @@ export async function setEffort(workItemId: number, hours: number): Promise<void
   await patchWorkItem(workItemId, [
     { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.Effort', value: round2(hours) },
   ]);
+}
+
+/**
+ * Write Effort and the derived StoryPoints in a single PATCH so the two
+ * fields can never be observed out of sync between writes. Returns the
+ * numbers that were written so callers can echo them back to Moran.
+ */
+export async function setEffortWithDerivedPoints(
+  workItemId: number,
+  effortHours: number,
+): Promise<{ effort: number; storyPoints: number }> {
+  const workday = getWorkdayHours();
+  const points = deriveStoryPoints(effortHours, workday);
+  await patchWorkItem(workItemId, [
+    { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.Effort', value: round2(effortHours) },
+    { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.StoryPoints', value: round2(points) },
+  ]);
+  return { effort: round2(effortHours), storyPoints: round2(points) };
 }
 
 /* ============================================================ */
