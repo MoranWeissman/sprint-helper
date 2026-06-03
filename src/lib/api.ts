@@ -432,7 +432,7 @@ export interface ApiPlanningGapRef {
 }
 
 export interface ApiPlanningGap {
-  kind: 'task' | 'story';
+  kind: 'task' | 'story' | 'feature' | 'epic';
   workItemId: number;
   title: string;
   displayName: string;

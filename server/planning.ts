@@ -16,7 +16,7 @@ import type {
   DashboardWorkItem,
 } from './dashboard';
 
-export type GapKind = 'task' | 'story';
+export type GapKind = 'task' | 'story' | 'feature' | 'epic';
 
 export interface PlanningGap {
   kind: GapKind;
@@ -33,7 +33,7 @@ export interface PlanningGap {
     displayName: string;
     type: string;
   } | null;
-  /** Feature/Epic above the parent (only meaningful for stories). */
+  /** Feature/Epic above the story-level item, if any (skipped when self-ref). */
   feature: {
     workItemId: number;
     title: string;
@@ -69,6 +69,28 @@ function makeDisplayName(workItemId: number, title: string): string {
   return `**${title}** (#${workItemId})`;
 }
 
+/** Classify a raw ADO work item type into the kinds Plan mode cares about. */
+function kindFor(adoType: string): GapKind {
+  const t = adoType.toLowerCase();
+  if (t === 'task') return 'task';
+  if (t === 'feature') return 'feature';
+  if (t === 'epic') return 'epic';
+  return 'story';
+}
+
+/**
+ * Human-friendly label for a kind — what the prompt should say. Capitalized
+ * because it leads each gap line, and we read the prompt out loud sometimes.
+ */
+function kindLabel(kind: GapKind): string {
+  switch (kind) {
+    case 'task': return 'Task';
+    case 'feature': return 'Feature';
+    case 'epic': return 'Epic';
+    case 'story': return 'Story';
+  }
+}
+
 function taskMissing(task: DashboardWorkItem): string[] {
   const missing: string[] = [];
   if (task.originalEstimate == null) missing.push('OriginalEstimate');
@@ -76,10 +98,18 @@ function taskMissing(task: DashboardWorkItem): string[] {
   return missing;
 }
 
-function storyMissing(story: UserStoryGroup): string[] {
+/**
+ * Per-type planning fields. Only User Stories are flagged in Plan mode —
+ * StoryPoints + Effort are the fields the POM delivery manager reads at
+ * the Story level. Features and Epics are top-level rollups; planning
+ * fields on them are optional in Moran's tenant (decision 2026-06-03).
+ * Tasks are handled separately by taskMissing().
+ */
+function storyMissing(g: UserStoryGroup): string[] {
+  if (kindFor(g.type) !== 'story') return [];
   const missing: string[] = [];
-  if (story.storyPoints == null) missing.push('StoryPoints');
-  if (story.effort == null) missing.push('Effort');
+  if (g.storyPoints == null) missing.push('StoryPoints');
+  if (g.effort == null) missing.push('Effort');
   return missing;
 }
 
@@ -139,8 +169,8 @@ function round2(n: number): number {
 
 /**
  * Find planning gaps across the current sprint. Tasks count as a gap when
- * OriginalEstimate OR RemainingWork is missing; stories count when
- * StoryPoints OR Effort is missing.
+ * OriginalEstimate OR RemainingWork is missing; stories/features/epics
+ * count when StoryPoints (stories only) OR Effort is missing.
  */
 export async function findGaps(): Promise<PlanningGapsResult> {
   const { payload } = await buildDashboardCached();
@@ -166,7 +196,8 @@ export async function findGaps(): Promise<PlanningGapsResult> {
     }
   }
 
-  // 2. Story gaps — skip done stories, Moran won't go back to fill closed work.
+  // 2. Story / Feature / Epic gaps — skip done items; Moran won't go back
+  //    to fill closed work.
   const storyGapInputs: Array<{ story: UserStoryGroup }> = [];
   for (const g of payload.userStories) {
     const isDone = ['Done', 'Closed', 'Resolved', 'Completed', 'Removed'].includes(g.state);
@@ -179,10 +210,16 @@ export async function findGaps(): Promise<PlanningGapsResult> {
   const taskAnchors = await Promise.all(
     taskGapInputs.map(({ parentId }) => buildAnchor(parentId)),
   );
+  // For story-level items, the anchor parent is the entry's own feature.
+  // When the entry IS a Feature/Epic (top of the tree), there's no meaningful
+  // sibling history — pass null and let buildAnchor return cold-start.
   const storyAnchors = await Promise.all(
-    storyGapInputs.map(({ story }) =>
-      buildAnchor(story.feature ? Number(story.feature.id) : null),
-    ),
+    storyGapInputs.map(({ story }) => {
+      const featId = story.feature && Number(story.feature.id) !== Number(story.id)
+        ? Number(story.feature.id)
+        : null;
+      return buildAnchor(featId);
+    }),
   );
 
   taskGapInputs.forEach(({ task }, idx) => {
@@ -201,13 +238,15 @@ export async function findGaps(): Promise<PlanningGapsResult> {
       displayName: makeDisplayName(Number(task.id), task.title),
       missing: taskMissing(task),
       parent,
-      feature: null, // tasks: feature isn't surfaced individually — group by parent story.
+      feature: null,
       anchor: taskAnchors[idx],
     });
   });
 
   storyGapInputs.forEach(({ story }, idx) => {
-    const feature = story.feature
+    // Drop the self-reference the dashboard sets on top-level Features —
+    // a "Story under itself" line reads dumb and isn't actionable.
+    const feature = story.feature && Number(story.feature.id) !== Number(story.id)
       ? {
           workItemId: Number(story.feature.id),
           title: story.feature.title,
@@ -216,12 +255,12 @@ export async function findGaps(): Promise<PlanningGapsResult> {
         }
       : null;
     gaps.push({
-      kind: 'story',
+      kind: kindFor(story.type),
       workItemId: Number(story.id),
       title: story.title,
       displayName: makeDisplayName(Number(story.id), story.title),
       missing: storyMissing(story),
-      parent: null, // stories: parent IS the feature; populate `feature` not `parent`.
+      parent: null,
       feature,
       anchor: storyAnchors[idx],
     });
@@ -266,17 +305,19 @@ export function assemblePlanningPrompt(gaps: PlanningGap[]): string {
 
   const lines: string[] = [];
   for (const g of gaps) {
+    const label = kindLabel(g.kind);
+    let under: string;
     if (g.kind === 'task') {
-      const under = g.parent ? `Task under ${g.parent.displayName}` : 'Task (no parent story)';
-      lines.push(`- ${g.displayName} — ${under}.`);
-      lines.push(`  Missing: ${g.missing.join(', ')}.`);
+      under = g.parent ? `${label} under ${g.parent.displayName}` : `${label} (no parent story)`;
+    } else if (g.feature) {
+      under = `${label} under ${g.feature.displayName}`;
     } else {
-      const under = g.feature
-        ? `Story under ${g.feature.displayName}`
-        : 'Story (no parent feature)';
-      lines.push(`- ${g.displayName} — ${under}.`);
-      lines.push(`  Missing: ${g.missing.join(', ')}.`);
+      // Top-level Feature or Epic, OR a Story without a parent Feature.
+      // Either way, no "under X" suffix — just announce the kind.
+      under = `${label} (top-level)`;
     }
+    lines.push(`- ${g.displayName} — ${under}.`);
+    lines.push(`  Missing: ${g.missing.join(', ')}.`);
   }
 
   return [...header, ...lines].join('\n');
