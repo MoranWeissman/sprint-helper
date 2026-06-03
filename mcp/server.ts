@@ -32,6 +32,7 @@ import { sprintCheckIn } from '../server/guardrail.js';
 import { addNote, getHelperNotes, setSummary } from '../server/helper-notes.js';
 import { buildEstimateAnchor } from '../server/estimate-anchor.js';
 import { buildOrientPacket } from '../server/orient.js';
+import { getPlanningHome, isPlanningHomeCwd, setPlanningHome } from '../server/planning-home.js';
 import {
   resolveStoryMatch,
   setLearnedStoryId,
@@ -1804,6 +1805,53 @@ server.registerTool(
       return jsonResult({ configured: true, host: new URL(url).host });
     } catch {
       return jsonResult({ configured: true, host: '(unparsable)' });
+    }
+  },
+);
+
+server.registerTool(
+  'planning_home_set',
+  {
+    title: "Set Moran's sprint-helper planning home folder",
+    description:
+      "Configure the absolute path Moran wants to use as his sprint-helper PLANNING HOME — the cwd where he runs sprint-wide planning chats (not story-anchored work chats). Creates the folder if needed and drops a `.sprint-helper-home` marker file inside so the assistant can detect the planning-home mode in any future chat opened there. Default location if Moran doesn't override: `~/.sprint-helper-home/`.",
+    inputSchema: {
+      path: z
+        .string()
+        .min(1)
+        .describe('Absolute path for the planning home folder. `~` is expanded to the home directory.'),
+    },
+  },
+  async ({ path }) => {
+    try {
+      const abs = setPlanningHome(path);
+      return jsonResult({ configuredPath: abs, markerFile: `${abs}/.sprint-helper-home` });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'planning_home_status',
+  {
+    title: 'Read the configured sprint-helper planning home',
+    description:
+      "Return the planning-home path Moran has configured (or the default if he never set one) and optionally check whether a given cwd qualifies as a planning home (marker file present OR configured path matches). Use this when the model needs to decide whether to skip the story-anchor in the current chat.",
+    inputSchema: {
+      cwd: z
+        .string()
+        .optional()
+        .describe('Optional cwd to test. When set, the response includes a `match` block describing how (marker / configured / no match).'),
+    },
+  },
+  async ({ cwd }) => {
+    try {
+      const status = getPlanningHome();
+      const match = cwd ? isPlanningHomeCwd(cwd) : null;
+      return jsonResult({ ...status, match });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
     }
   },
 );
