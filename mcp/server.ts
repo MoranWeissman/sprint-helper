@@ -107,8 +107,8 @@ WHAT ORIENT RETURNS: a small read of where he is — a time-of-day greeting,
 what day of the sprint we're on (e.g. day 4 of 10), any work sessions still
 open from before, the last task he worked on (with the summary he left),
 the current helper's notes plus how many nudges are still open, and a quick
-count of stories/tasks missing planning fields (story points / effort /
-estimate).
+count of stories/tasks missing planning fields (story effort / task
+estimate). Story Points are derived from Effort, not checked separately.
 
 HOW TO USE IT: write a friendly 2-4 sentence greeting in PARAGRAPH form (not
 bullets, not sub-headers), and:
@@ -1598,7 +1598,7 @@ server.registerTool(
   {
     title: 'List sprint items missing effort fields',
     description:
-      "Return every Task in the current sprint missing OriginalEstimate or RemainingWork, plus every open Story missing StoryPoints or Effort. Each gap is paired with a deterministic anchor proposal (median sibling actual from estimate_anchor, or a cold-start flag). Use this in a PLANNING HOME chat to walk Moran through the decompose-anchor-propose ritual one item at a time. Don't use this in a story-anchored work chat — it's a sprint-wide read.",
+      "Return every Task in the current sprint missing OriginalEstimate or RemainingWork, plus every open Story missing Effort. Each gap is paired with a deterministic anchor proposal (median sibling actual from estimate_anchor, or a cold-start flag). Use this in a PLANNING HOME chat to walk Moran through the decompose-anchor-propose ritual one item at a time. Don't use this in a story-anchored work chat — it's a sprint-wide read.",
     inputSchema: {},
   },
   async () => {

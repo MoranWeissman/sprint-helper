@@ -99,18 +99,19 @@ function taskMissing(task: DashboardWorkItem): string[] {
 }
 
 /**
- * Per-type planning fields. Only User Stories are flagged in Plan mode —
- * StoryPoints + Effort are the fields the POM delivery manager reads at
- * the Story level. Features and Epics are top-level rollups; planning
- * fields on them are optional in Moran's tenant (decision 2026-06-03).
- * Tasks are handled separately by taskMissing().
+ * Per-type planning fields. Only User Stories are flagged in Plan mode.
+ * Effort (hours) is the single field the POM delivery manager reads at
+ * the Story level — Story Points are derived from Effort whenever Effort
+ * is written, so an item with Effort set is never a planning gap even if
+ * points are absent or drifted. The sync sweep heals drift; on-edit
+ * derivation prevents new drift. Features and Epics: planning fields
+ * optional in Moran's tenant (decision 2026-06-03). Tasks: handled
+ * separately by taskMissing().
  */
-function storyMissing(g: UserStoryGroup): string[] {
+export function storyMissing(g: UserStoryGroup): string[] {
   if (kindFor(g.type) !== 'story') return [];
-  const missing: string[] = [];
-  if (g.storyPoints == null) missing.push('StoryPoints');
-  if (g.effort == null) missing.push('Effort');
-  return missing;
+  if (g.effort == null) return ['Effort'];
+  return [];
 }
 
 /**
