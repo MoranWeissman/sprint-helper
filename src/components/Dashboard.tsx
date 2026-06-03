@@ -811,6 +811,11 @@ function R21Focus({
   const startedAt = task.activeSession ? fmtClockISO(task.activeSession.startedAt) : '';
   const remaining = task.remainingWork != null ? `${Math.round(task.remainingWork)}h` : '—';
   const events = task.recentActivity;
+  // State is truth; tag is fallback only when the type has no Blocked state.
+  const taskBlocked = isBlockedState(task.state) || (task.type === 'Bug' && isBlocked(task.tags));
+  const parentBlocked = parent
+    ? isBlockedState(parent.state) || (parent.type === 'Bug' && isBlocked(task.parentTags))
+    : false;
 
   return (
     <div className="r21-focal">
@@ -830,11 +835,11 @@ function R21Focus({
 
       <div className="r21-focal-id"><Mono>#{task.id}</Mono></div>
       <h1 className="r21-focal-title">{task.title}</h1>
-      {(isBlocked(task.tags) || isBlocked(task.parentTags)) && (
+      {(taskBlocked || parentBlocked) && (
         <div className="r21-focal-blocked">
           <span className="r21-blocked-pill">blocked</span>
           <span className="r21-focal-blocked-meta">
-            {isBlocked(task.tags) ? 'this task is blocked' : 'parent story is blocked'}
+            {taskBlocked ? 'this task is blocked' : 'parent story is blocked'}
           </span>
         </div>
       )}

@@ -91,11 +91,48 @@ export async function updateTags(
   }
 
   const final = Array.from(lowerToCanonical.values()).sort((a, b) => a.localeCompare(b));
-  const newValue = final.join('; ');
-  await patchWorkItem(workItemId, [
-    { op: 'add', path: '/fields/System.Tags', value: newValue },
-  ]);
-  return final;
+  await applyTagsPatch(workItemId, final);
+
+  // Read-back verify. ADO silently drops `{op:'add', value:''}` against
+  // System.Tags on some instances, leaving the previous tag set in place.
+  // Without this check we'd return `final` as if the patch landed, and the
+  // caller (e.g. workitem_unblock) would report success while the live board
+  // still carries the old tag.
+  const after = await fetchEffortFields(workItemId);
+  const actual = Array.from(parseTags(after.fields['System.Tags'])).sort((a, b) =>
+    a.localeCompare(b),
+  );
+  if (!tagListsEqual(final, actual)) {
+    throw new Error(
+      `Tag patch did not land on Azure DevOps. Intended: [${final.join(', ') || '(none)'}]. ` +
+        `Actual after patch: [${actual.join(', ') || '(none)'}]. ` +
+        `The PATCH returned 200 but the field was not updated — known ADO quirk on tag ` +
+        `clears. Any state change in the same flow already landed; the tag is stale. ` +
+        `Retry, or clear the tag manually on the work item.`,
+    );
+  }
+  return actual;
+}
+
+async function applyTagsPatch(workItemId: number, finalTags: string[]): Promise<void> {
+  if (finalTags.length === 0) {
+    // ADO drops `{op:'add', value:''}` on System.Tags. `op:'remove'` clears
+    // the field reliably across process templates.
+    await patchWorkItem(workItemId, [
+      { op: 'remove', path: '/fields/System.Tags' },
+    ]);
+  } else {
+    await patchWorkItem(workItemId, [
+      { op: 'add', path: '/fields/System.Tags', value: finalTags.join('; ') },
+    ]);
+  }
+}
+
+function tagListsEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const aLower = a.map(t => t.toLowerCase()).sort();
+  const bLower = b.map(t => t.toLowerCase()).sort();
+  return aLower.every((t, i) => t === bLower[i]);
 }
 
 /**
