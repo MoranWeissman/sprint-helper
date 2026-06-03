@@ -1106,7 +1106,17 @@ server.registerTool(
       activeSessions: d.activeSessions,
       pendingChanges: d.pendingChanges,
       inProgressItems: d.workItems.inProgress.map(slim),
-      activeSessionDetails: d.workItems.inProgress
+      // Walk ALL three buckets, not just inProgress — a session can outlive
+      // its task's state. Example: another chat closes the task to Done
+      // without calling session_end, leaving the timer ticking on a row
+      // that's now in `payload.workItems.done`. Filtering only on inProgress
+      // made those sessions look invisible to sprint_snapshot, so the
+      // assistant couldn't find the sessionId to stop them.
+      activeSessionDetails: [
+        ...d.workItems.inProgress,
+        ...d.workItems.upNext,
+        ...d.workItems.done,
+      ]
         .filter(w => w.activeSession)
         .map(w => ({
           workItemId: w.id,
