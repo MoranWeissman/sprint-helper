@@ -1105,18 +1105,16 @@ function DailyView({
                       <span className="caret" aria-hidden="true">{isCollapsed ? '▸' : '▾'}</span>
                     </button>
                   )}
-                  <div className="r21-daily-feature-left">
-                    <span className="r21-daily-feature-kind">{g.feature?.type ?? 'No feature'}</span>
-                    {g.feature && <Mono className="r21-daily-feature-id">#{g.feature.id}</Mono>}
-                    <h3 className="r21-daily-feature-title">
-                      {g.feature?.title ?? 'Stories without a parent feature'}
-                    </h3>
-                    {g.feature && childStories.length > 0 && (
-                      <span className={`r21-daily-feature-state state-${featureState}`}>
-                        {featureStateLabel(featureState)}
-                      </span>
-                    )}
-                  </div>
+                  <span className="r21-daily-feature-kind">{g.feature?.type ?? 'No feature'}</span>
+                  {g.feature && <Mono className="r21-daily-feature-id">#{g.feature.id}</Mono>}
+                  {g.feature && childStories.length > 0 && (
+                    <span className={`r21-daily-feature-state state-${featureState}`}>
+                      {featureStateLabel(featureState)}
+                    </span>
+                  )}
+                  <h3 className="r21-daily-feature-title">
+                    {g.feature?.title ?? 'Stories without a parent feature'}
+                  </h3>
                   <span className="r21-daily-feature-meta">
                     {childStories.length} {childStories.length === 1 ? 'story' : 'stories'}
                     {g.feature && <span className="r21-daily-feature-open" aria-hidden="true">↗</span>}
