@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import MarkdownIt from 'markdown-it';
 import {
   dismissHelperNote,
@@ -265,7 +265,6 @@ function DashboardLive({
               waitingCount={upNext.length}
               live={liveItems.length > 0}
               focalTitle={focalTask?.title}
-              onShowFocus={() => setShowBoard(false)}
               onRefresh={onRefresh}
             />
           )}
@@ -623,7 +622,7 @@ function StandupEntries({
           <div className="r21-standup-item-head">
             <span className="r21-standup-item-title">
               {e.parentStoryTitle && (
-                <span className="r21-standup-item-parent">{e.parentStoryTitle} · </span>
+                <span className="r21-standup-item-parent">{e.parentStoryTitle}</span>
               )}
               {extractTitleFromDisplayName(e.displayName)}
             </span>
@@ -669,160 +668,6 @@ function formatStandupDate(iso: string): string {
   });
 }
 
-function HelperNotesPanel({
-  notes,
-  onRefresh,
-}: {
-  notes: ApiHelperNotes;
-  onRefresh: () => void;
-}) {
-  // Ids ticked off this render — removed optimistically until the refresh lands.
-  const [pending, setPending] = useState<Set<number>>(new Set());
-  const [error, setError] = useState<string | null>(null);
-
-  const visible = notes.notes.filter(n => !pending.has(n.id));
-  const empty = !notes.summary && visible.length === 0;
-
-  async function clear(note: ApiHelperNote) {
-    setError(null);
-    setPending(prev => new Set(prev).add(note.id));
-    try {
-      await dismissHelperNote(note.id);
-      onRefresh();
-    } catch (e) {
-      setPending(prev => {
-        const next = new Set(prev);
-        next.delete(note.id);
-        return next;
-      });
-      setError(e instanceof Error ? e.message : 'Could not clear that note');
-    }
-  }
-
-  return (
-    <section className="r21-notes" aria-label="Notes from your helper">
-      <div className="r21-notes-head">
-        <span className="r21-notes-title">Notes from your helper</span>
-        {notes.summaryAt && <span className="r21-notes-meta">{relAgo(notes.summaryAt)}</span>}
-      </div>
-      {empty ? (
-        <p className="r21-notes-empty">All quiet here — I'll jot notes as I notice things.</p>
-      ) : (
-        <>
-          {notes.summary && <p className="r21-notes-summary">{notes.summary}</p>}
-          {visible.length > 0 && (
-            <ul className="r21-notes-list">
-              {visible.map(n => (
-                <li key={n.id} className="r21-note">
-                  <span className="r21-note-body">{n.body}</span>
-                  <button
-                    type="button"
-                    className="r21-note-clear"
-                    onClick={() => clear(n)}
-                    title="Tick off — I've handled this"
-                    aria-label="Tick off this note"
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <path d="M3.5 8.5l3 3 6-7" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-      {error && <p className="r21-notes-error">{error}</p>}
-    </section>
-  );
-}
-
-function CapacityTile({ capacity, completedHours }: { capacity: ApiOutlookCapacity | null; completedHours: number }) {
-  if (!capacity) return null;
-
-  if (!capacity.hasUrl) {
-    return (
-      <section className="r21-capacity is-empty" aria-label="Sprint capacity">
-        <div className="r21-capacity-head">
-          <span className="r21-capacity-title">Capacity</span>
-          <span className="r21-capacity-meta">no calendar yet</span>
-        </div>
-        <p className="r21-capacity-empty">
-          Connect your Outlook calendar to see how many hours you have available after meetings.
-          See <code>docs/setup/outlook-calendar.md</code> for the publish-URL steps.
-        </p>
-      </section>
-    );
-  }
-
-  if (capacity.fetchError) {
-    return (
-      <section className="r21-capacity is-error" aria-label="Sprint capacity">
-        <div className="r21-capacity-head">
-          <span className="r21-capacity-title">Capacity</span>
-          <span className="r21-capacity-meta">couldn't read calendar</span>
-        </div>
-        <p className="r21-capacity-empty">
-          Calendar fetch failed — check your published Outlook URL is still valid.
-        </p>
-      </section>
-    );
-  }
-
-  const working = Math.round(capacity.workingHoursTotal);
-  const available = Math.round(capacity.availableHours);
-  const planned = Math.round(capacity.plannedHours);
-  const completed = Math.round(completedHours);
-  const diff = capacity.difference;
-  const absDiff = Math.round(Math.abs(diff));
-
-  let state: 'over' | 'under' | 'on-track' = 'on-track';
-  let phrase = 'on track';
-  if (diff >= 8) {
-    state = 'over';
-    phrase = `${absDiff}h over`;
-  } else if (diff <= -8) {
-    state = 'under';
-    phrase = `${absDiff}h of room left`;
-  } else if (Math.abs(diff) >= 1) {
-    phrase = diff > 0 ? `${absDiff}h over` : `${absDiff}h under`;
-  }
-
-  return (
-    <section className={`r21-capacity is-${state}`} aria-label="Sprint capacity">
-      <div className="r21-capacity-head">
-        <span className="r21-capacity-title">Capacity</span>
-        <span className={`r21-capacity-verdict is-${state}`}>{phrase}</span>
-      </div>
-      <div className="r21-capacity-row">
-        <div className="r21-capacity-num">
-          <span className="r21-capacity-num-label">total</span>
-          <Mono className="r21-capacity-num-val">{working}h</Mono>
-        </div>
-        <div className="r21-capacity-num">
-          <span className="r21-capacity-num-label">
-            available
-            <span
-              className="r21-capacity-info"
-              data-tip="Calculated time after meetings from Outlook."
-              aria-label="Calculated time after meetings from Outlook"
-              role="tooltip"
-            >ⓘ</span>
-          </span>
-          <Mono className="r21-capacity-num-val">{available}h</Mono>
-        </div>
-        <div className="r21-capacity-num">
-          <span className="r21-capacity-num-label">planned</span>
-          <Mono className="r21-capacity-num-val">{planned}h</Mono>
-        </div>
-        <div className="r21-capacity-num">
-          <span className="r21-capacity-num-label">completed</span>
-          <Mono className="r21-capacity-num-val">{completed}h</Mono>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 function R21Focus({
   task,
@@ -942,7 +787,6 @@ function DailyView({
   waitingCount,
   live,
   focalTitle,
-  onShowFocus,
   onRefresh,
 }: {
   stories: ApiUserStoryGroup[];
@@ -958,10 +802,13 @@ function DailyView({
   waitingCount: number;
   live: boolean;
   focalTitle?: string;
-  onShowFocus: () => void;
   onRefresh: () => void;
 }) {
-  const remaining = Math.round(capacity.remainingHours);
+  // The stories column is the scroller for the "Live on…" jump button in
+  // the rail. Capture it via ref so RailRemaining can scroll the right
+  // element + flash the live card.
+  const storiesColRef = useRef<HTMLDivElement>(null);
+
   // Which story cards are currently expanded (show per-task EST/REM). Default
   // is collapsed for every card — Moran expands just the one he's diving into.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -1011,7 +858,8 @@ function DailyView({
   }, [stories]);
 
   return (
-    <div className="r21-daily">
+    <>
+    <div className="r21-daily" ref={storiesColRef}>
       <div className="r21-daily-head">
         <div>
           <span className="r21-daily-cap">DAILY · {sprintName}</span>
@@ -1035,34 +883,6 @@ function DailyView({
           when the delivery manager opens the board: yesterday's work + today's
           work, brief, optimized for speaking aloud. */}
       <StandupCard standup={standup} />
-
-      {/* Merged-in from the old Overview place: a slim sprint strip, the
-          helper-notes panel, and the capacity tile. Together they give the
-          Daily page the at-a-glance read Moran used to switch to Overview
-          for, without the second view. */}
-      <div className="r21-daily-strip">
-        <div className="r21-daily-strip-left">
-          <span className="r21-daily-strip-cap">REMAINING</span>
-          <Mono className="r21-daily-strip-big">{remaining}</Mono>
-          <span className="r21-daily-strip-unit">h</span>
-        </div>
-        <div className="r21-daily-strip-mid">
-          day <span className="v">{today}</span> of <span className="v">{totalDays || '—'}</span>
-          <span className="sep">·</span>
-          <span className="v">{goingCount}</span> going
-          <span className="sep">·</span>
-          <span className="v">{waitingCount}</span> waiting
-        </div>
-        <div className="r21-daily-strip-right">
-          {live && focalTitle
-            ? <>Live on <button type="button" className="linkish" onClick={onShowFocus}>{focalTitle}</button></>
-            : <span className="r21-daily-strip-quiet">Nothing live</span>}
-        </div>
-      </div>
-
-      <HelperNotesPanel notes={helperNotes} onRefresh={onRefresh} />
-
-      <CapacityTile capacity={outlookCapacity} completedHours={capacity.completedHours} />
 
       {stories.length === 0 ? (
         <p className="r21-daily-empty">No stories in this sprint yet.</p>
@@ -1155,6 +975,276 @@ function DailyView({
         </div>
       )}
     </div>
+
+    <aside className="r22-rail" aria-label="At a glance">
+      <RailRemaining
+        remainingHours={capacity.remainingHours}
+        plannedHours={capacity.totalEstimateHours || outlookCapacity?.workingHoursTotal || 0}
+        today={today}
+        totalDays={totalDays}
+        goingCount={goingCount}
+        waitingCount={waitingCount}
+        live={live}
+        focalTitle={focalTitle}
+        scrollerRef={storiesColRef}
+      />
+      <RailNotes notes={helperNotes} onRefresh={onRefresh} />
+      <RailCapacity capacity={outlookCapacity} completedHours={capacity.completedHours} />
+    </aside>
+    </>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Daily v2 rail cards (R22)                                                 */
+/* -------------------------------------------------------------------------- */
+
+function RailRemaining({
+  remainingHours,
+  plannedHours,
+  today,
+  totalDays,
+  goingCount,
+  waitingCount,
+  live,
+  focalTitle,
+  scrollerRef,
+}: {
+  remainingHours: number;
+  plannedHours: number;
+  today: number;
+  totalDays: number;
+  goingCount: number;
+  waitingCount: number;
+  live: boolean;
+  focalTitle?: string;
+  scrollerRef: React.RefObject<HTMLDivElement>;
+}) {
+  const remaining = Math.round(remainingHours);
+  const planned = Math.round(plannedHours);
+  const pct = planned > 0 ? Math.min(100, Math.round((remaining / planned) * 100)) : 0;
+
+  function jumpToLive() {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const card = scroller.querySelector('.r21-daily-card.is-live') as HTMLElement | null;
+    if (!card) return;
+    // If the live card sits in a collapsed feature header, open the feature
+    // first. The feature head responds to a synthetic click.
+    const section = card.closest('.r21-daily-feature');
+    if (section && section.classList.contains('is-collapsed')) {
+      const head = section.querySelector('.r21-daily-feature-head') as HTMLElement | null;
+      if (head) head.click();
+    }
+    const top = card.getBoundingClientRect().top
+              - scroller.getBoundingClientRect().top
+              + scroller.scrollTop - 28;
+    scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    card.classList.remove('r22-flash');
+    // Force a reflow so the animation restarts each click.
+    void card.offsetWidth;
+    card.classList.add('r22-flash');
+    setTimeout(() => card.classList.remove('r22-flash'), 1600);
+  }
+
+  return (
+    <section className="r22-rail-card r22-rail-remaining" aria-label="Remaining hours">
+      <div className="r22-rail-card-head">
+        <span className="r22-rail-card-label">Remaining</span>
+        <span className="r22-rail-card-meta">day {today} / {totalDays || '—'}</span>
+      </div>
+      <div className="hero">
+        <span className="num">{remaining}</span>
+        <span className="unit">h</span>
+        {planned > 0 && <span className="of">of {planned}h</span>}
+      </div>
+      {planned > 0 && (
+        <div className="bar" aria-hidden="true"><i style={{ width: `${pct}%` }} /></div>
+      )}
+      <div className="stats">
+        <div className="stat is-going">
+          <span className="n">{goingCount}</span>
+          <span className="l">going</span>
+        </div>
+        <div className="stat is-waiting">
+          <span className="n">{waitingCount}</span>
+          <span className="l">waiting</span>
+        </div>
+      </div>
+      {live && focalTitle ? (
+        <button type="button" className="live" onClick={jumpToLive} title="Jump to the story you're working on">
+          <span className="dot" aria-hidden="true" />
+          Live on <b>{focalTitle}</b>
+          <span className="arr" aria-hidden="true">↗</span>
+        </button>
+      ) : (
+        <span className="live is-quiet">
+          <span className="dot" aria-hidden="true" />
+          Nothing live right now
+        </span>
+      )}
+    </section>
+  );
+}
+
+function RailNotes({
+  notes,
+  onRefresh,
+}: {
+  notes: ApiHelperNotes;
+  onRefresh: () => void;
+}) {
+  const [pending, setPending] = useState<Set<number>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+
+  const visible = notes.notes.filter(n => !pending.has(n.id));
+  const empty = !notes.summary && visible.length === 0;
+
+  async function clear(note: ApiHelperNote) {
+    setError(null);
+    setPending(prev => new Set(prev).add(note.id));
+    try {
+      await dismissHelperNote(note.id);
+      onRefresh();
+    } catch (e) {
+      setPending(prev => {
+        const next = new Set(prev);
+        next.delete(note.id);
+        return next;
+      });
+      setError(e instanceof Error ? e.message : 'Could not clear that note');
+    }
+  }
+
+  return (
+    <section className="r22-rail-card r22-rail-notes" aria-label="Notes from your helper">
+      <div className="r22-rail-card-head">
+        <span className="r22-rail-card-label">Notes from your helper</span>
+        {notes.summaryAt && <span className="r22-rail-card-meta">{relAgo(notes.summaryAt)}</span>}
+      </div>
+      {empty ? (
+        <p className="empty">All quiet here — I'll jot notes as I notice things.</p>
+      ) : (
+        <>
+          {notes.summary && <p className="summary">{notes.summary}</p>}
+          {visible.length > 0 && (
+            <ul className="list">
+              {visible.map(n => (
+                <li key={n.id} className="note">
+                  <p>{n.body}</p>
+                  <button
+                    type="button"
+                    className="note-check"
+                    onClick={() => clear(n)}
+                    title="Tick off — I've handled this"
+                    aria-label="Tick off this note"
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <path d="M3.5 8.5l3 3 6-7" stroke="currentColor" strokeWidth="1.7" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+      {error && <p className="error">{error}</p>}
+    </section>
+  );
+}
+
+function RailCapacity({ capacity, completedHours }: { capacity: ApiOutlookCapacity | null; completedHours: number }) {
+  if (!capacity) return null;
+
+  if (!capacity.hasUrl) {
+    return (
+      <section className="r22-rail-card r22-rail-capacity" aria-label="Sprint capacity">
+        <div className="r22-rail-card-head">
+          <span className="r22-rail-card-label">Capacity</span>
+          <span className="r22-rail-card-meta">no calendar</span>
+        </div>
+        <p className="empty">
+          Connect your Outlook calendar to see hours available after meetings.
+        </p>
+      </section>
+    );
+  }
+
+  if (capacity.fetchError) {
+    return (
+      <section className="r22-rail-card r22-rail-capacity" aria-label="Sprint capacity">
+        <div className="r22-rail-card-head">
+          <span className="r22-rail-card-label">Capacity</span>
+          <span className="r22-rail-card-meta">calendar error</span>
+        </div>
+        <p className="empty">
+          Calendar fetch failed — check the published Outlook URL is still valid.
+        </p>
+      </section>
+    );
+  }
+
+  const working = Math.round(capacity.workingHoursTotal);
+  const available = Math.round(capacity.availableHours);
+  const planned = Math.round(capacity.plannedHours);
+  const completed = Math.round(completedHours);
+  const diff = capacity.difference;
+  const absDiff = Math.round(Math.abs(diff));
+
+  let state: 'over' | 'under' | 'on-track' = 'on-track';
+  let phrase = 'on track';
+  if (diff >= 8) {
+    state = 'over';
+    phrase = `${absDiff}h over`;
+  } else if (diff <= -8) {
+    state = 'under';
+    phrase = `${absDiff}h of room left`;
+  } else if (Math.abs(diff) >= 1) {
+    phrase = diff > 0 ? `${absDiff}h over` : `${absDiff}h under`;
+  }
+
+  const barPct = working > 0 ? Math.min(100, Math.round((planned / working) * 100)) : 0;
+  const barClass = state === 'over' ? 'is-over' : 'is-ok';
+
+  return (
+    <section className="r22-rail-card r22-rail-capacity" aria-label="Sprint capacity">
+      <div className="r22-rail-card-head">
+        <span className="r22-rail-card-label">Capacity</span>
+        <span className={`badge is-${state}`}>{phrase}</span>
+      </div>
+      <div className="bar" aria-hidden="true"><i className={barClass} style={{ width: `${barPct}%` }} /></div>
+      <div className="legend">
+        <span>planned <span className="v">{planned}h</span></span>
+        <span>available <span className="v">{available}h</span></span>
+      </div>
+      <div className="r22-rail-cap-grid">
+        <div className="r22-rail-cap-num is-key">
+          <span className="l">
+            available
+            <span
+              className="r21-capacity-info"
+              data-tip="Calculated time after meetings from Outlook."
+              aria-label="Calculated time after meetings from Outlook"
+              role="tooltip"
+            >ⓘ</span>
+          </span>
+          <span className="n">{available}h</span>
+        </div>
+        <div className="r22-rail-cap-num is-key">
+          <span className="l">planned</span>
+          <span className="n">{planned}h</span>
+        </div>
+        <div className="r22-rail-cap-num">
+          <span className="l">total</span>
+          <span className="n">{working}h</span>
+        </div>
+        <div className="r22-rail-cap-num">
+          <span className="l">completed</span>
+          <span className="n">{completed}h</span>
+        </div>
+      </div>
+    </section>
   );
 }
 
