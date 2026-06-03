@@ -16,8 +16,8 @@
 import { buildDashboardCached } from './dashboard-cache';
 import {
   getCurrentIteration,
-  getMyWorkItems,
   listAllIterations,
+  listMyOpenStoriesNotInSprint,
   type Iteration,
   type WorkItem,
 } from './ado';
@@ -171,18 +171,38 @@ function pickNextSprint(current: Iteration | null, all: Iteration[]): CockpitIte
   return toCockpitIteration(after[0]);
 }
 
-/** Backlog level test based on path depth + literal "Backlog" segment. */
+/**
+ * Classify a work item's iteration path as backlog vs sprint.
+ *
+ * Moran's tree shape (verified 2026-06-03 from the iteration picker):
+ *   IDP - DevOps                       → backlog (area root, no year)
+ *   IDP - DevOps\Backlog               → backlog (literal segment)
+ *   IDP - DevOps\2026                  → year
+ *   IDP - DevOps\2026\Q1               → quarter
+ *   IDP - DevOps\2026\Q1\26_03         → sprint (anything below quarter)
+ *
+ * Returns null if the path is empty/unparseable.
+ */
 function classifyIterationLevel(path: string): BacklogLevel | 'sprint' | null {
   if (!path) return null;
   const segments = path.split('\\').filter(Boolean);
   if (segments.length === 0) return null;
+
+  // Any segment literally named "Backlog" → backlog (top wins).
+  if (segments.some(s => /^backlog$/i.test(s))) return 'backlog';
+
+  // Single segment = just the area root, no year/quarter chosen → backlog.
+  if (segments.length === 1) return 'backlog';
+
   const last = segments[segments.length - 1];
-  if (/backlog/i.test(last)) return 'backlog';
-  // Year segment: ends with a 4-digit year.
-  if (/^\d{4}$/.test(last) && segments.length <= 2) return 'year';
-  // Quarter segment: ends with Q<digit>.
+
+  // Last segment is a 4-digit year → year-level bucket.
+  if (/^\d{4}$/.test(last)) return 'year';
+
+  // Last segment is Q1..Q4 → quarter-level bucket.
   if (/^Q\d+$/i.test(last)) return 'quarter';
-  // Anything else (named sprint like 26_11) is a real sprint iteration.
+
+  // Anything else (a named sprint like 26_11) is a concrete sprint.
   return 'sprint';
 }
 
@@ -193,51 +213,42 @@ function isSprintLevel(path: string): boolean {
 async function collectBacklogStories(
   currentIteration: Iteration | null,
 ): Promise<CockpitBacklogStory[]> {
-  // Find all candidate iteration paths (year / quarter / backlog) the team
-  // uses, then fetch @Me work items under each.
-  const all = await listAllIterations();
-  const candidateLevels = new Map<string, BacklogLevel>();
-  for (const it of all) {
-    const lvl = classifyIterationLevel(it.path);
-    if (lvl && lvl !== 'sprint') candidateLevels.set(it.path, lvl);
-  }
-  // listAllIterations only returns iterations with startDate + finishDate.
-  // Year and quarter "buckets" usually have those too; if Moran's team
-  // doesn't, we may need a separate query. Live with what's exposed first.
+  // One WIQL query: every open User Story assigned to @Me that isn't in the
+  // current sprint. Classification of year / quarter / backlog / other-sprint
+  // happens here in TS based on the iteration path each item carries back.
+  if (!currentIteration) return [];
+  const items: WorkItem[] = await listMyOpenStoriesNotInSprint(currentIteration.path);
 
   const out: CockpitBacklogStory[] = [];
-  for (const [path, level] of candidateLevels) {
-    if (currentIteration && path === currentIteration.path) continue;
-    const items: WorkItem[] = await getMyWorkItems(path);
-    for (const w of items) {
-      // Only Stories at backlog level — Tasks belong to their parent story,
-      // and Features/Epics aren't planning-ceremony candidates.
-      if (w.type !== 'User Story') continue;
-      out.push({
-        id: w.id,
-        title: w.title,
-        displayName: displayNameFor(w.id, w.title),
-        type: w.type,
-        state: w.state,
-        iterationPath: w.iterationPath,
-        level,
-        storyPoints: w.storyPoints,
-        effort: w.effort,
-        originalEstimate: w.originalEstimate,
-        remainingWork: w.remainingWork,
-        feature: w.parentId && w.parentTitle
-          ? {
-              id: w.parentId,
-              title: w.parentTitle,
-              displayName: displayNameFor(w.parentId, w.parentTitle),
-            }
-          : undefined,
-      });
-    }
+  for (const w of items) {
+    const level = classifyIterationLevel(w.iterationPath);
+    // Items in OTHER specific sprints (past or future) aren't backlog
+    // candidates — they're scheduled work for a different sprint.
+    if (level === 'sprint' || level == null) continue;
+    out.push({
+      id: w.id,
+      title: w.title,
+      displayName: displayNameFor(w.id, w.title),
+      type: w.type,
+      state: w.state,
+      iterationPath: w.iterationPath,
+      level,
+      storyPoints: w.storyPoints,
+      effort: w.effort,
+      originalEstimate: w.originalEstimate,
+      remainingWork: w.remainingWork,
+      feature: w.parentId && w.parentTitle
+        ? {
+            id: w.parentId,
+            title: w.parentTitle,
+            displayName: displayNameFor(w.parentId, w.parentTitle),
+          }
+        : undefined,
+    });
   }
 
-  // Sort: by level (backlog first, then quarter, then year), then by id desc
-  // (newest first within a bucket).
+  // Sort: by level (backlog literal first, then quarter, then year), then
+  // by id desc (newest first within a bucket).
   const levelOrder: Record<BacklogLevel, number> = { backlog: 0, quarter: 1, year: 2 };
   out.sort((a, b) => {
     const lvl = levelOrder[a.level] - levelOrder[b.level];

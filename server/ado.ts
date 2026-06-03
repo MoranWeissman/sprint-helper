@@ -470,6 +470,35 @@ export async function listClosedSiblings(parentId: number): Promise<WorkItem[]> 
 }
 
 /**
+ * All open User Stories assigned to @Me that are NOT in the given sprint
+ * iteration path. Used by the Plan cockpit's backlog section.
+ *
+ * One query, no per-iteration enumeration. Year-level, quarter-level,
+ * Backlog literal, and even area-root (no year set at all) all come back
+ * because we just ask ADO for "everything assigned to me, open, not in
+ * this sprint" and classify the iteration path on the TS side.
+ */
+export async function listMyOpenStoriesNotInSprint(currentSprintPath: string): Promise<WorkItem[]> {
+  const fieldList = WORK_ITEM_FIELDS.map(f => `[${f}]`).join(', ');
+  const wiql = [
+    `SELECT ${fieldList} FROM WorkItems`,
+    `WHERE [System.AssignedTo] = @Me`,
+    `  AND [System.WorkItemType] = 'User Story'`,
+    `  AND [System.State] NOT IN ('Done', 'Closed', 'Resolved', 'Completed', 'Removed')`,
+    `  AND [System.IterationPath] <> '${escapeWiql(currentSprintPath)}'`,
+    'ORDER BY [System.IterationPath], [System.ChangedDate] DESC',
+  ].join(' ');
+  const { stdout } = await azJson(['boards', 'query', '--wiql', wiql]);
+  const raw = JSON.parse(stdout) as Array<{
+    id: number;
+    rev: number;
+    url: string;
+    fields: Record<string, unknown>;
+  }>;
+  return raw.map(w => mapWorkItem(w));
+}
+
+/**
  * Recently-closed tasks (assigned to @Me) across the whole project, for
  * computing a personal calibration ratio (actual / estimate). Includes only
  * items where both OriginalEstimate AND CompletedWork are populated.

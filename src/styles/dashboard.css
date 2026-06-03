@@ -3653,12 +3653,18 @@ html, body {
   text-overflow: ellipsis;
 }
 
-.r12-cockpit-gap-wrap { padding: 0 22px 18px; }
-.r12-cockpit-gap-summary {
-  cursor: pointer;
-  padding: 14px 0;
-  user-select: none;
+/* Gap section header — title + Scan button in one row, always visible. */
+.r12-cockpit-gap-section { /* uses same .r12-cockpit-section base */ }
+.r12-cockpit-gap-head {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.r12-cockpit-gap-head .r12-cockpit-h {
+  margin: 0;
+  display: inline-flex;
   align-items: center;
   gap: 10px;
 }
@@ -3669,7 +3675,7 @@ html, body {
   padding: 0 6px;
   align-items: center;
   justify-content: center;
-  background: color-mix(in oklch, var(--ev-blocker, oklch(0.60 0.18 30)) 20%, transparent);
+  background: color-mix(in oklch, var(--ev-blocker, oklch(0.60 0.18 30)) 22%, transparent);
   color: var(--ink-1);
   border-radius: 11px;
   font-size: 11.5px;
@@ -3677,10 +3683,24 @@ html, body {
   text-transform: none;
   font-weight: 600;
 }
-.r12-cockpit-gap-body { padding: 4px 0 0; }
 .r12-cockpit-gap-intro {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   color: var(--ink-2);
   font-size: 13.5px;
   line-height: 1.55;
+}
+/* The Scan button in the section header — accent-colored so it reads as
+   the primary action of this whole section. Same shape as the other
+   cockpit action buttons; just a stronger fill. */
+.r12-cockpit-act-scan {
+  background: color-mix(in oklch, var(--accent) 22%, transparent);
+  border-color: color-mix(in oklch, var(--accent) 55%, var(--line));
+  color: var(--ink-1);
+  font-weight: 500;
+  padding: 7px 14px;
+  font-size: 13px;
+}
+.r12-cockpit-act-scan:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--accent) 34%, transparent);
+  border-color: color-mix(in oklch, var(--accent) 70%, var(--line));
 }

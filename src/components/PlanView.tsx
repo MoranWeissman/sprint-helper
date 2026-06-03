@@ -460,67 +460,71 @@ function GapSection({ onScanComplete }: { onScanComplete?: (n: number) => void }
   };
 
   return (
-    <details className="r12-cockpit-section r12-cockpit-gap-wrap" open={state.status === 'ok' && state.data.totalGaps > 0}>
-      <summary className="r12-cockpit-h r12-cockpit-gap-summary">
-        Gaps (sanity check)
-        {state.status === 'ok' && state.data.totalGaps > 0 && (
-          <span className="r12-cockpit-gap-badge">{state.data.totalGaps}</span>
-        )}
-      </summary>
-      <div className="r12-cockpit-gap-body">
-        <p className="r12-cockpit-gap-intro">
-          Find sprint items that don't have an estimate yet. The dashboard discovers them; the
-          conversation in Claude Code fills them in.
-        </p>
-        <button className="r12-plan-scan" onClick={runScan} disabled={state.status === 'loading'}>
+    <section className="r12-cockpit-section r12-cockpit-gap-section">
+      <div className="r12-cockpit-gap-head">
+        <h3 className="r12-cockpit-h">
+          Gaps (sanity check)
+          {state.status === 'ok' && state.data.totalGaps > 0 && (
+            <span className="r12-cockpit-gap-badge">{state.data.totalGaps}</span>
+          )}
+        </h3>
+        <button
+          className="r12-cockpit-act r12-cockpit-act-scan"
+          onClick={runScan}
+          disabled={state.status === 'loading'}
+        >
           {state.status === 'loading' ? 'Scanning…' : 'Scan for gaps'}
         </button>
-
-        {state.status === 'error' && (
-          <div className="r12-plan-error" role="alert">
-            Couldn't load the gap list — {state.error}. <button onClick={runScan}>Try again</button>
-          </div>
-        )}
-
-        {state.status === 'ok' && state.data.totalGaps === 0 && (
-          <div className="r12-plan-empty">
-            Every Task and Story in the current sprint has its planning fields filled in. Nothing to do here.
-            <button className="r12-plan-clear-inline" onClick={onClear}>Clear scan</button>
-          </div>
-        )}
-
-        {state.status === 'ok' && state.data.totalGaps > 0 && (
-          <>
-            <div className="r12-plan-actions">
-              <span className="r12-plan-count">
-                {state.data.totalGaps} {state.data.totalGaps === 1 ? 'item' : 'items'} need effort
-              </span>
-            </div>
-
-            <GapList gaps={state.data.gaps} />
-
-            <section className="r12-plan-prompt-panel" aria-label="Generated prompt for Claude Code">
-              <header className="r12-plan-prompt-head">
-                <span className="r12-plan-prompt-cap">Prompt for Claude Code</span>
-                <div className="r12-plan-prompt-actions">
-                  <button className="r12-plan-copy" onClick={onCopy}>
-                    {copied ? 'Copied ✓' : 'Copy'}
-                  </button>
-                  <button className="r12-plan-clear" onClick={onClear} title="Clear the saved scan — next scan will start fresh">
-                    Clear
-                  </button>
-                </div>
-              </header>
-              <pre id="r12-plan-prompt-pre" className="r12-plan-prompt">{state.data.prompt}</pre>
-              <p className="r12-plan-prompt-hint">
-                This panel stays here until you clear it — copy the prompt, hand it to a chat,
-                come back later to verify.
-              </p>
-            </section>
-          </>
-        )}
       </div>
-    </details>
+      <p className="r12-cockpit-gap-intro">
+        Find sprint items that don't have an estimate yet. The dashboard discovers them; the
+        conversation in Claude Code fills them in.
+      </p>
+
+      {state.status === 'error' && (
+        <div className="r12-plan-error" role="alert">
+          Couldn't load the gap list — {state.error}. <button onClick={runScan}>Try again</button>
+        </div>
+      )}
+
+      {state.status === 'ok' && state.data.totalGaps === 0 && (
+        <div className="r12-plan-empty">
+          Every Task and Story in the current sprint has its planning fields filled in. Nothing to do here.
+          <button className="r12-plan-clear-inline" onClick={onClear}>Clear scan</button>
+        </div>
+      )}
+
+      {state.status === 'ok' && state.data.totalGaps > 0 && (
+        <>
+          <div className="r12-plan-actions">
+            <span className="r12-plan-count">
+              {state.data.totalGaps} {state.data.totalGaps === 1 ? 'item' : 'items'} need effort
+            </span>
+          </div>
+
+          <GapList gaps={state.data.gaps} />
+
+          <section className="r12-plan-prompt-panel" aria-label="Generated prompt for Claude Code">
+            <header className="r12-plan-prompt-head">
+              <span className="r12-plan-prompt-cap">Prompt for Claude Code</span>
+              <div className="r12-plan-prompt-actions">
+                <button className="r12-plan-copy" onClick={onCopy}>
+                  {copied ? 'Copied ✓' : 'Copy'}
+                </button>
+                <button className="r12-plan-clear" onClick={onClear} title="Clear the saved scan — next scan will start fresh">
+                  Clear
+                </button>
+              </div>
+            </header>
+            <pre id="r12-plan-prompt-pre" className="r12-plan-prompt">{state.data.prompt}</pre>
+            <p className="r12-plan-prompt-hint">
+              This panel stays here until you clear it — copy the prompt, hand it to a chat,
+              come back later to verify.
+            </p>
+          </section>
+        </>
+      )}
+    </section>
   );
 }
 
