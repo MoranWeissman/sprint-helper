@@ -2784,39 +2784,25 @@ html, body {
 .r21-daily-feature-head.is-state-waiting  { border-left-color: var(--st-waiting); }
 .r21-daily-feature-head.is-state-blocked  { border-left-color: var(--blocked-line-strong); }
 
-/* Collapse toggle — small chevron at the start of the header.
-   stopPropagation in the JSX keeps the parent's onClick from firing. */
-.r21-daily-feature-toggle {
-  appearance: none;
-  background: transparent;
-  border: 1px solid transparent;
+/* Collapse indicator — small chevron at the start of the header. Not a
+   button anymore: the whole header toggles collapse on click. The caret
+   just signals "this is collapsible" and which state it's in. */
+.r21-daily-feature-caret {
   color: var(--ink-3);
-  width: 28px; height: 28px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 140ms ease, color 140ms ease;
-  flex: none;
-}
-.r21-daily-feature-toggle:hover {
-  background: color-mix(in oklch, var(--ink-1) 8%, transparent);
-  color: var(--ink-1);
-}
-.r21-daily-feature-toggle:focus-visible {
-  outline: 2px solid var(--feature);
-  outline-offset: 2px;
-}
-.r21-daily-feature-toggle .caret {
-  font-size: 13px;
+  font-size: clamp(11px, 0.9vw + 4px, 14px);
   font-family: var(--font-mono);
   line-height: 1;
-  transform: translateY(-0.5px);
+  width: 16px;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: none;
+  transition: color 140ms ease;
 }
+.r21-daily-feature-head:hover .r21-daily-feature-caret { color: var(--ink-1); }
 
 .r21-daily-feature-kind {
   display: inline-flex; align-items: center;
   padding: 3px 10px;
-  font-size: 11.5px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
+  font-size: clamp(10px, 0.6vw + 7px, 12px); letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
   border-radius: 999px;
   background: var(--feature-bg);
   border: 1px solid color-mix(in oklch, var(--feature) 50%, transparent);
@@ -2828,13 +2814,18 @@ html, body {
   border-color: var(--line-soft);
   color: var(--ink-3);
 }
-.r21-daily-feature-id { font-family: var(--font-mono); font-size: 13px; color: var(--ink-4); flex: none; }
+.r21-daily-feature-id {
+  font-family: var(--font-mono);
+  font-size: clamp(11px, 0.6vw + 8px, 13px);
+  color: var(--ink-4);
+  flex: none;
+}
 
 /* Inline state pill — sits between #id and the title for quick read. */
 .r21-daily-feature-state {
   display: inline-flex; align-items: center;
   padding: 2px 9px;
-  font-size: 11px; font-weight: 500; letter-spacing: 0.04em;
+  font-size: clamp(10px, 0.5vw + 7px, 11.5px); font-weight: 500; letter-spacing: 0.04em;
   border-radius: 999px;
   border: 1px solid var(--line-soft);
   color: var(--ink-2);
@@ -2846,10 +2837,14 @@ html, body {
 .r21-daily-feature-state.state-waiting  { color: var(--st-waiting);  border-color: color-mix(in oklch, var(--st-waiting) 40%, transparent); background: color-mix(in oklch, var(--st-waiting) 12%, transparent); }
 .r21-daily-feature-state.state-blocked  { color: var(--blocked-line-strong); border-color: color-mix(in oklch, var(--blocked-line-strong) 40%, transparent); background: color-mix(in oklch, var(--blocked-line-strong) 12%, transparent); }
 
-/* Title takes the remaining width and truncates if it overflows. */
+/* Title takes the remaining width and truncates if it overflows. Scales
+   down on narrower windows so it stays one line as long as possible
+   before the ellipsis kicks in. */
 .r21-daily-feature-title {
   margin: 0;
-  font-size: 16px; font-weight: 500; color: var(--ink-0);
+  font-size: clamp(13px, 0.7vw + 8px, 16px);
+  font-weight: 500;
+  color: var(--ink-0);
   letter-spacing: -0.005em;
   flex: 1 1 auto;
   min-width: 0;
@@ -2858,26 +2853,62 @@ html, body {
   text-overflow: ellipsis;
 }
 
-.r21-daily-feature-meta { font-size: 11.5px; letter-spacing: 0.04em; color: var(--ink-4); flex: none; display: inline-flex; align-items: center; gap: 10px; }
-.r21-daily-feature-open { font-family: var(--font-mono); color: var(--feature); opacity: 0.7; transition: opacity 160ms ease, transform 160ms ease; }
+.r21-daily-feature-meta {
+  font-size: clamp(10px, 0.5vw + 7px, 11.5px);
+  letter-spacing: 0.04em;
+  color: var(--ink-4);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.r21-daily-feature-count { flex: none; }
 
-.r21-daily-feature-head.is-openable {
+/* "View" button — opens the feature in the drawer. stopPropagation in the
+   JSX keeps the parent header's collapse-on-click from firing. */
+.r21-daily-feature-view {
+  appearance: none;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px;
+  font-size: clamp(10px, 0.5vw + 7px, 11.5px);
+  font-family: inherit;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+  color: var(--feature);
+  background: var(--feature-bg);
+  border: 1px solid color-mix(in oklch, var(--feature) 40%, transparent);
+  border-radius: 6px;
   cursor: pointer;
+  flex: none;
+  transition: background 140ms ease, border-color 140ms ease, transform 100ms ease;
 }
-.r21-daily-feature-head.is-openable:hover {
-  background: color-mix(in oklch, var(--bg-2) 80%, var(--feature));
-  border-color: color-mix(in oklch, var(--feature) 30%, var(--line-soft));
+.r21-daily-feature-view .arr {
+  font-family: var(--font-mono);
+  font-size: 1.05em;
+  line-height: 1;
 }
-.r21-daily-feature-head.is-openable:hover .r21-daily-feature-open {
-  opacity: 1;
-  transform: translateX(2px);
+.r21-daily-feature-view:hover {
+  background: color-mix(in oklch, var(--feature) 20%, var(--feature-bg));
+  border-color: var(--feature);
 }
-.r21-daily-feature-head.is-openable:focus-visible {
+.r21-daily-feature-view:focus-visible {
   outline: 2px solid var(--feature);
   outline-offset: 2px;
 }
-.r21-daily-feature-head.is-openable:active {
-  transform: translateY(1px);
+.r21-daily-feature-view:active { transform: translateY(1px); }
+
+/* The whole header is clickable to toggle collapse, except where buttons
+   inside stop propagation (the View button). */
+.r21-daily-feature-head.is-collapsible {
+  cursor: pointer;
+}
+.r21-daily-feature-head.is-collapsible:hover {
+  background: color-mix(in oklch, var(--bg-2) 80%, var(--feature));
+  border-color: color-mix(in oklch, var(--feature) 30%, var(--line-soft));
+}
+.r21-daily-feature-head.is-collapsible:focus-visible {
+  outline: 2px solid var(--feature);
+  outline-offset: 2px;
 }
 
 /* === The card grid — as many cards per row as fit. === */

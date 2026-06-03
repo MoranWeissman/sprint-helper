@@ -1067,43 +1067,34 @@ function DailyView({
               ? g.stories.filter(s => s.id !== g.feature!.id)
               : g.stories;
             const featureId = g.feature?.id;
-            const openFeature = featureId ? () => onOpenItem(featureId) : undefined;
             const featureState = featureDominantState(childStories);
             const isCollapsed = featureId ? featuresCollapsed.has(featureId) : false;
+            const toggle = featureId ? () => toggleFeatureCollapsed(featureId) : undefined;
             return (
               <section
                 className={`r21-daily-feature is-state-${featureState} ${isCollapsed ? 'is-collapsed' : ''}`}
                 key={g.feature?.id ?? `none-${idx}`}
               >
                 <header
-                  className={`r21-daily-feature-head ${g.feature ? 'is-openable' : 'is-orphan'} is-state-${featureState}`}
-                  {...(openFeature ? {
+                  className={`r21-daily-feature-head ${g.feature ? 'is-collapsible' : 'is-orphan'} is-state-${featureState}`}
+                  {...(toggle ? {
                     role: 'button' as const,
                     tabIndex: 0,
-                    onClick: openFeature,
+                    onClick: toggle,
                     onKeyDown: (e: KeyboardEvent) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        openFeature();
+                        toggle();
                       }
                     },
-                    title: 'Open this feature in the drawer',
+                    'aria-expanded': !isCollapsed,
+                    title: isCollapsed ? 'Show stories under this feature' : 'Hide stories under this feature',
                   } : {})}
                 >
                   {featureId && (
-                    <button
-                      type="button"
-                      className="r21-daily-feature-toggle"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleFeatureCollapsed(featureId);
-                      }}
-                      aria-expanded={!isCollapsed}
-                      aria-label={isCollapsed ? `Show ${childStories.length} stories` : `Hide ${childStories.length} stories`}
-                      title={isCollapsed ? 'Show stories under this feature' : 'Hide stories under this feature'}
-                    >
-                      <span className="caret" aria-hidden="true">{isCollapsed ? '▸' : '▾'}</span>
-                    </button>
+                    <span className="r21-daily-feature-caret" aria-hidden="true">
+                      {isCollapsed ? '▸' : '▾'}
+                    </span>
                   )}
                   <span className="r21-daily-feature-kind">{g.feature?.type ?? 'No feature'}</span>
                   {g.feature && <Mono className="r21-daily-feature-id">#{g.feature.id}</Mono>}
@@ -1116,8 +1107,23 @@ function DailyView({
                     {g.feature?.title ?? 'Stories without a parent feature'}
                   </h3>
                   <span className="r21-daily-feature-meta">
-                    {childStories.length} {childStories.length === 1 ? 'story' : 'stories'}
-                    {g.feature && <span className="r21-daily-feature-open" aria-hidden="true">↗</span>}
+                    <span className="r21-daily-feature-count">
+                      {childStories.length} {childStories.length === 1 ? 'story' : 'stories'}
+                    </span>
+                    {featureId && (
+                      <button
+                        type="button"
+                        className="r21-daily-feature-view"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenItem(featureId);
+                        }}
+                        title="Open this feature in the drawer"
+                      >
+                        <span>View</span>
+                        <span className="arr" aria-hidden="true">↗</span>
+                      </button>
+                    )}
                   </span>
                 </header>
                 {!isCollapsed && childStories.length > 0 && (
