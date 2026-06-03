@@ -35,6 +35,7 @@ import {
   getRunningStartsMap,
   getUncapturedSecondsMap,
 } from './timers';
+import { getSHCreatedIdSet } from './sh-created';
 
 export type { SessionEvent, SessionEventType, Session } from './sessions';
 
@@ -80,6 +81,13 @@ export interface DashboardWorkItem {
   tags?: string[];
   /** Parent story's tags — used so a task can show its parent story is blocked. */
   parentTags?: string[];
+  /**
+   * True when this work item was created via the MCP `task_create` /
+   * `story_create` tools. Local-only marker; the dashboard renders a
+   * discreet "SH" pip so Moran can see what sprint-helper is on the
+   * hook for keeping honest.
+   */
+  wasSHCreated?: boolean;
   url: string;
 }
 
@@ -127,6 +135,8 @@ export interface UserStoryGroup {
   hasActiveSession: boolean;
   /** Parsed System.Tags on the story (or self-as-story) itself. Includes "Blocked" when tagged blocked. */
   tags?: string[];
+  /** Same marker as DashboardWorkItem.wasSHCreated — surfaced on stories too. */
+  wasSHCreated?: boolean;
 }
 
 export interface DashboardPayload {
@@ -237,6 +247,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
   // Pull local timer state. Each map is keyed by numeric work item id.
   const uncaptured = getUncapturedSecondsMap();
   const running = getRunningStartsMap();
+  const shCreatedIds = getSHCreatedIdSet();
 
   // Pull MCP session state — active sessions + recent events per work item.
   const itemIds = items.map(w => w.id);
@@ -250,6 +261,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
 
   for (const w of items) {
     const projected = projectWorkItem(w, uncaptured, running, activeSessions, recentEvents, sessionCounts);
+    if (shCreatedIds.has(w.id)) projected.wasSHCreated = true;
     if (DONE_STATES.has(w.state)) done.push(projected);
     else if (ACTIVE_STATES.has(w.state)) inProgress.push(projected);
     else upNext.push(projected);
@@ -275,6 +287,12 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
   const totalDays = sprintDays(iteration.startDate, iteration.finishDate);
 
   const userStories = groupByParent(items, [...inProgress, ...upNext, ...done]);
+
+  // R12: project SH-created marker onto story groups, same source of truth as
+  // the per-task projection above.
+  for (const g of userStories) {
+    if (shCreatedIds.has(Number(g.id))) g.wasSHCreated = true;
+  }
 
   // R10b: when a non-Task item (User Story / Feature / Epic) is itself in
   // one of the flat workItems lists — typically because Moran opened a
