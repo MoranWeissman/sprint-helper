@@ -276,6 +276,39 @@ is a stop sign; you want a guide. Skip this whole ritual only when the
 chat's cwd is INSIDE the sprint-helper repo itself (we're building the
 tool, not using it) — there's no sprint task for "improve sprint-helper".
 
+PLANNING HOME — sprint-wide cwd skips the story-anchor:
+The orient packet includes \`orient.planningHome.configuredPath\` — the
+folder Moran uses for sprint-wide planning work. Before doing the
+story-anchor cwd cross-check below, check whether THIS chat's cwd is
+the planning home:
+
+  1. Read the chat's current working directory from your environment.
+  2. If the cwd contains a \`.sprint-helper-home\` file at its root, OR
+     the cwd equals \`orient.planningHome.configuredPath\` (or starts
+     with that path + '/'), you are in PLANNING HOME mode.
+
+When you ARE in planning home mode:
+  - Skip the \`story_match\` step below — there's no single story to anchor
+    to, and Moran chose this cwd deliberately for sprint-wide work.
+  - Skip the STALE LIVE SESSION and STORY DRIFT blocks for this chat —
+    those rules assume a story-anchored chat.
+  - Mention the mode plainly in your greeting, e.g. "In your planning
+    home — let's look at the whole sprint."
+  - Lead him toward sprint-wide work: capacity, gaps, helper notes,
+    cross-story moves. Don't invent ad-hoc state-of-the-sprint reads;
+    call \`sprint_snapshot\` and \`helper_notes_get\` for fresh data.
+
+When you are NOT in planning home mode: continue to the existing
+CONTEXT CROSS-CHECK rules below (this is the normal story-anchored
+work-chat flow).
+
+Moran can change his planning home with \`planning_home_set\`. If he
+hasn't configured one, the default is \`~/.sprint-helper-home/\` —
+which exists only if he (or this tool) created it. So
+\`orient.planningHome.isExplicitlyConfigured: false\` plus the cwd not
+matching means: he hasn't opted into planning home yet. Don't volunteer
+to set it for him unless he asks — confirm-before-write applies.
+
 REGARDLESS of whether there's a live session, do a CONTEXT CROSS-CHECK
 by calling \`story_match\` with the chat's cwd:
 
