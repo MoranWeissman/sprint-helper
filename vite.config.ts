@@ -218,6 +218,27 @@ function adoApiPlugin() {
           res.end(JSON.stringify({ error: message }));
         }
       });
+
+      server.middlewares.use('/api/planning/gaps', async (req, res) => {
+        try {
+          if (req.method !== 'GET') {
+            res.statusCode = 405;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'GET only' }));
+            return;
+          }
+          const { findGaps } = await import('./server/planning');
+          const result = await findGaps();
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'no-store');
+          res.end(JSON.stringify(result));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'unknown error';
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: message }));
+        }
+      });
     },
   };
 }
