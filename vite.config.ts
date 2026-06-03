@@ -93,8 +93,9 @@ function adoApiPlugin() {
               state?: 'waiting' | 'going' | 'done';
               originalEstimate?: number;
               remainingWork?: number;
+              iterationPath?: string;
             };
-            const { setEstimate, setRemaining, setStateBucket } = await import('./server/writes');
+            const { setEstimate, setIterationPath, setRemaining, setStateBucket } = await import('./server/writes');
             const applied: Record<string, unknown> = {};
             if (body.state) {
               if (!['waiting', 'going', 'done'].includes(body.state)) {
@@ -124,6 +125,16 @@ function adoApiPlugin() {
               }
               await setRemaining(id, body.remainingWork);
               applied.remainingWork = body.remainingWork;
+            }
+            if (body.iterationPath != null) {
+              if (typeof body.iterationPath !== 'string' || body.iterationPath.length === 0) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'iterationPath must be a non-empty string' }));
+                return;
+              }
+              await setIterationPath(id, body.iterationPath);
+              applied.iterationPath = body.iterationPath;
             }
             if (Object.keys(applied).length > 0) {
               const { invalidateDashboardCache } = await import('./server/dashboard-cache');
@@ -233,6 +244,27 @@ function adoApiPlugin() {
           }
           const { findGaps } = await import('./server/planning');
           const result = await findGaps();
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'no-store');
+          res.end(JSON.stringify(result));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'unknown error';
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: message }));
+        }
+      });
+
+      server.middlewares.use('/api/planning/cockpit', async (req, res) => {
+        try {
+          if (req.method !== 'GET') {
+            res.statusCode = 405;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'GET only' }));
+            return;
+          }
+          const { buildCockpitPayload } = await import('./server/planning-cockpit');
+          const result = await buildCockpitPayload();
           res.setHeader('Content-Type', 'application/json');
           res.setHeader('Cache-Control', 'no-store');
           res.end(JSON.stringify(result));

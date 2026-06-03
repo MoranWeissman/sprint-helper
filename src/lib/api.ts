@@ -457,6 +457,98 @@ export async function fetchPlanningGaps(): Promise<ApiPlanningGapsResponse> {
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Planning cockpit                                                          */
+/* -------------------------------------------------------------------------- */
+
+export interface ApiCockpitIteration {
+  name: string;
+  path: string;
+  startDate: string;
+  finishDate: string;
+}
+
+export interface ApiCockpitOpenTask {
+  id: number;
+  title: string;
+  displayName: string;
+  state: string;
+  type: string;
+  originalEstimate?: number;
+  remainingWork?: number;
+}
+
+export interface ApiCockpitOpenStory {
+  id: number;
+  title: string;
+  displayName: string;
+  state: string;
+  totalEstimateHours: number;
+  completedHours: number;
+  remainingHours: number;
+  storyPoints?: number;
+  effort?: number;
+  feature?: { id: number; title: string; displayName: string };
+  doneTaskCount: number;
+  totalTaskCount: number;
+  openTasks: ApiCockpitOpenTask[];
+}
+
+export type ApiBacklogLevel = 'year' | 'quarter' | 'backlog';
+
+export interface ApiCockpitBacklogStory {
+  id: number;
+  title: string;
+  displayName: string;
+  type: string;
+  state: string;
+  iterationPath: string;
+  level: ApiBacklogLevel;
+  storyPoints?: number;
+  effort?: number;
+  originalEstimate?: number;
+  remainingWork?: number;
+  feature?: { id: number; title: string; displayName: string };
+}
+
+export interface ApiCockpitPayload {
+  currentSprint: ApiCockpitIteration | null;
+  nextSprint: ApiCockpitIteration | null;
+  openStories: ApiCockpitOpenStory[];
+  backlogStories: ApiCockpitBacklogStory[];
+}
+
+export async function fetchCockpit(): Promise<ApiCockpitPayload> {
+  const r = await fetch('/api/planning/cockpit', { cache: 'no-store' });
+  const body = await r.json();
+  if (!r.ok || 'error' in body) throw new Error(body.error ?? 'Could not load planning cockpit');
+  return body as ApiCockpitPayload;
+}
+
+export async function moveWorkItemToIteration(workItemId: number, iterationPath: string): Promise<void> {
+  const r = await fetch(`/api/workitem/${workItemId}/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ iterationPath }),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok || (body && 'error' in body)) {
+    throw new Error((body && body.error) || 'Could not move the work item');
+  }
+}
+
+export async function markWorkItemDone(workItemId: number): Promise<void> {
+  const r = await fetch(`/api/workitem/${workItemId}/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: 'done' }),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok || (body && 'error' in body)) {
+    throw new Error((body && body.error) || 'Could not close the work item');
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Helper's notes                                                            */
 /* -------------------------------------------------------------------------- */
 
