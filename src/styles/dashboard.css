@@ -3613,6 +3613,46 @@ html, body {
   cursor: help;
 }
 
+.r12-cockpit-backlog-group { margin-top: 10px; }
+.r12-cockpit-backlog-group:first-child { margin-top: 0; }
+.r12-cockpit-backlog-level {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+.r12-cockpit-backlog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.r12-cockpit-backlog-row {
+  display: grid;
+  grid-template-columns: 1fr 130px 100px auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-1);
+  font-size: 13.5px;
+}
+.r12-cockpit-backlog-title { color: var(--ink-1); }
+.r12-cockpit-backlog-meta { color: var(--ink-3); font-size: 12.5px; }
+.r12-cockpit-backlog-iter {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--ink-3);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .r12-cockpit-gap-wrap { padding: 0 22px 18px; }
 .r12-cockpit-gap-summary {
   cursor: pointer;

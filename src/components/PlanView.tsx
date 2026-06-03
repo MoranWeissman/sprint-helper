@@ -113,6 +113,19 @@ export function PlanView({ onScanComplete }: PlanViewProps) {
     }
   };
 
+  const onPullBacklog = async (storyId: number, nextSprintPath: string) => {
+    setActingOn(storyId);
+    setActionError(null);
+    try {
+      await moveWorkItemToIteration(storyId, nextSprintPath);
+      await refreshCockpit();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Pull failed');
+    } finally {
+      setActingOn(null);
+    }
+  };
+
   return (
     <div className="r12-plan">
       <CockpitHeader cockpit={cockpit} />
@@ -128,6 +141,12 @@ export function PlanView({ onScanComplete }: PlanViewProps) {
         actingOn={actingOn}
         onMoveTask={onMoveTask}
         onCloseTask={onCloseTask}
+      />
+
+      <CockpitBacklogSection
+        cockpit={cockpit}
+        actingOn={actingOn}
+        onPullStory={onPullBacklog}
       />
 
       <GapSection onScanComplete={onScanComplete} />
@@ -302,6 +321,81 @@ function CockpitOpenTaskRow({
       </span>
     </li>
   );
+}
+
+function CockpitBacklogSection({
+  cockpit,
+  actingOn,
+  onPullStory,
+}: {
+  cockpit: CockpitState;
+  actingOn: number | null;
+  onPullStory: (storyId: number, nextSprintPath: string) => Promise<void>;
+}) {
+  if (cockpit.status !== 'ok') return null;
+  const { nextSprint, backlogStories } = cockpit.data;
+  if (backlogStories.length === 0) {
+    return (
+      <section className="r12-cockpit-section">
+        <h3 className="r12-cockpit-h">Pull from backlog</h3>
+        <div className="r12-cockpit-empty">Nothing in backlog assigned to you — clean slate.</div>
+      </section>
+    );
+  }
+  // Group by level (backlog literal first, then quarter, then year).
+  const groups = [
+    { level: 'backlog' as const, label: 'Backlog', stories: backlogStories.filter(s => s.level === 'backlog') },
+    { level: 'quarter' as const, label: 'Quarter', stories: backlogStories.filter(s => s.level === 'quarter') },
+    { level: 'year' as const, label: 'Year', stories: backlogStories.filter(s => s.level === 'year') },
+  ].filter(g => g.stories.length > 0);
+  return (
+    <section className="r12-cockpit-section">
+      <h3 className="r12-cockpit-h">Pull from backlog</h3>
+      {groups.map(group => (
+        <div key={group.level} className="r12-cockpit-backlog-group">
+          <h4 className="r12-cockpit-backlog-level">{group.label} ({group.stories.length})</h4>
+          <ul className="r12-cockpit-backlog-list">
+            {group.stories.map(s => (
+              <li key={s.id} className="r12-cockpit-backlog-row">
+                <span className="r12-cockpit-backlog-title" dangerouslySetInnerHTML={{ __html: linkifyDisplayName(s.displayName) }} />
+                <span className="r12-cockpit-backlog-meta">
+                  {s.storyPoints != null && s.storyPoints > 0 ? `${s.storyPoints} SP · ` : ''}
+                  {s.effort != null && s.effort > 0 ? `${Math.round(s.effort)}h effort` : 'no effort yet'}
+                </span>
+                <span className="r12-cockpit-backlog-iter" title={s.iterationPath}>
+                  {lastIterSegment(s.iterationPath)}
+                </span>
+                <span className="r12-cockpit-task-actions">
+                  {nextSprint ? (
+                    <button
+                      type="button"
+                      className="r12-cockpit-act r12-cockpit-act-move"
+                      disabled={actingOn === s.id}
+                      onClick={() => {
+                        if (!window.confirm(`Pull "${s.title}" into ${nextSprint.name}?`)) return;
+                        void onPullStory(s.id, nextSprint.path);
+                      }}
+                    >
+                      → {nextSprint.name}
+                    </button>
+                  ) : (
+                    <span className="r12-cockpit-act-disabled" title="No next sprint scheduled.">
+                      → next (n/a)
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function lastIterSegment(path: string): string {
+  const parts = path.split('\\').filter(Boolean);
+  return parts.length === 0 ? path : parts[parts.length - 1];
 }
 
 function classifyState(state: string): 'going' | 'waiting' | 'done' | 'blocked' {
