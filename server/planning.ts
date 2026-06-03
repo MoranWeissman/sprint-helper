@@ -170,8 +170,10 @@ function round2(n: number): number {
 
 /**
  * Find planning gaps across the current sprint. Tasks count as a gap when
- * OriginalEstimate OR RemainingWork is missing; stories/features/epics
- * count when StoryPoints (stories only) OR Effort is missing.
+ * OriginalEstimate OR RemainingWork is missing. Stories count when Effort
+ * is missing — Story Points derive from Effort, so they're never an
+ * independent gap. Features and Epics are not flagged (planning fields
+ * are optional on them in Moran's tenant, decision 2026-06-03).
  */
 export async function findGaps(): Promise<PlanningGapsResult> {
   const { payload } = await buildDashboardCached();
