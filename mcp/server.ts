@@ -305,7 +305,7 @@ CONTEXT CROSS-CHECK rules below (this is the normal story-anchored
 work-chat flow).
 
 Moran can change his planning home with \`planning_home_set\`. If he
-hasn't configured one, the default is \`~/.sprint-helper-home/\` —
+hasn't configured one, the default is \`~/.sprint-helper/home/\` —
 which exists only if he (or this tool) created it. So
 \`orient.planningHome.isExplicitlyConfigured: false\` plus the cwd not
 matching means: he hasn't opted into planning home yet. Don't volunteer
@@ -711,8 +711,8 @@ calling \`session_log\`, \`helper_note_add\`, or
 \`helper_note_set_summary\`, sanity-check the body against this:
 
   Would a future engineer skimming this entry in
-  \`~/sprint-helper/sprints/<sprint>/<task>.md\` six weeks from now
-  understand what happened on THE TASK?
+  \`~/.sprint-helper/archive/sprints/<sprint>/<task>.md\` six weeks from
+  now understand what happened on THE TASK?
 
 Belongs in the body:
   - What you did on the task (built X, pushed Y, found Z).
@@ -1886,7 +1886,7 @@ server.registerTool(
   {
     title: "Set Moran's sprint-helper planning home folder",
     description:
-      "Configure the absolute path Moran wants to use as his sprint-helper PLANNING HOME — the cwd where he runs sprint-wide planning chats (not story-anchored work chats). Creates the folder if needed and drops a `.sprint-helper-home` marker file inside so the assistant can detect the planning-home mode in any future chat opened there. Default location if Moran doesn't override: `~/.sprint-helper-home/`.",
+      "Configure the absolute path Moran wants to use as his sprint-helper PLANNING HOME — the cwd where he runs sprint-wide planning chats (not story-anchored work chats). Creates the folder if needed and drops a `.sprint-helper-home` marker file inside so the assistant can detect the planning-home mode in any future chat opened there. Default location if Moran doesn't override: `~/.sprint-helper/home/`.",
     inputSchema: {
       path: z
         .string()

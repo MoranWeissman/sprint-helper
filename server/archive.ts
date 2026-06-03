@@ -1,16 +1,20 @@
 /**
  * Markdown archive (R8). The SQLite DB at `~/.sprint-helper/data.db` stays
  * the source of truth; this module mirrors session activity to plain
- * markdown files under `~/sprint-helper/sprints/<sprint>/<title> (#id).md`
+ * markdown files under `~/.sprint-helper/archive/sprints/<sprint>/<title> (#id).md`
  * so Moran can browse, search, and archive without the app running.
  *
- * Decisions (locked with Moran 2026-06-02):
- *   - Location: `~/sprint-helper/` (visible folder, side-by-side with repos).
+ * Decisions (locked with Moran 2026-06-02; path consolidated 2026-06-03):
+ *   - Location: `~/.sprint-helper/archive/` — sits next to data.db so
+ *     everything sprint-helper owns lives under one hidden root.
  *   - Granularity: one file per TASK (all sittings inside one markdown file).
  *   - Update trigger: every session_start / session_log / session_end —
  *     each call rewrites the file in full. Files are kilobytes; this is fine.
  *   - Per-sprint `summary.md` and `helper-notes.md` are added by other
  *     functions in this module.
+ *
+ * Migration: any historical data under `~/sprint-helper/` from before the
+ * consolidation gets copied by `scripts/migrate-archive-path.ts` (one-shot).
  *
  * Atomic writes: write to `<path>.tmp` then rename. A crash mid-write
  * leaves either the old file or the new one, never a half-written file.
@@ -26,7 +30,7 @@ import {
   type SessionEvent,
 } from './sessions';
 
-const ARCHIVE_ROOT = join(homedir(), 'sprint-helper', 'sprints');
+const ARCHIVE_ROOT = join(homedir(), '.sprint-helper', 'archive', 'sprints');
 
 /** Reserved chars + control bytes stripped from filesystem paths. */
 function safeFilename(s: string): string {
@@ -321,8 +325,8 @@ export async function mirrorSprintSummary(): Promise<{
 
 /**
  * Append-friendly daily-standup snapshot. Writes
- * `~/sprint-helper/sprints/<sprint>/standups/<today>.md` so Moran can
- * scroll back through what he said at standup over the sprint. Always
+ * `~/.sprint-helper/archive/sprints/<sprint>/standups/<today>.md` so Moran
+ * can scroll back through what he said at standup over the sprint. Always
  * rewritten in full from the same data the dashboard's StandupCard
  * shows; safe to call as often as you like.
  */

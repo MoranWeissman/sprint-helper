@@ -10,7 +10,9 @@
  *  1. A marker file `.sprint-helper-home` exists inside the cwd. Strong,
  *     explicit signal — Moran can `touch .sprint-helper-home` in any folder.
  *  2. The configured path in `settings.planning_home_path` equals (or is a
- *     prefix of) the cwd. Default value: `~/.sprint-helper-home/`.
+ *     prefix of) the cwd. Default value: `~/.sprint-helper/home/` — sits
+ *     under the same hidden root as `data.db` and the markdown archive
+ *     (consolidation 2026-06-03).
  *
  * The model receives both signals via `orient.planningHome` and decides.
  * Nothing here writes to Azure DevOps.
@@ -22,7 +24,7 @@ import { getSetting, setSetting } from './timers';
 
 const SETTINGS_KEY = 'planning_home_path';
 const MARKER_FILENAME = '.sprint-helper-home';
-const DEFAULT_HOME_PATH = join(homedir(), '.sprint-helper-home');
+const DEFAULT_HOME_PATH = join(homedir(), '.sprint-helper', 'home');
 
 export interface PlanningHomeStatus {
   /** Absolute path Moran configured (or the default, if he never set one). */
