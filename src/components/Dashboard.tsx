@@ -291,6 +291,19 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 /**
+ * Discreet marker shown next to titles for items sprint-helper itself
+ * created via MCP. Invisible to anyone else on the board.
+ */
+function SHPip({ shown }: { shown: boolean | undefined }) {
+  if (!shown) return null;
+  return (
+    <span className="r12-sh-pip" title="Created by sprint-helper">
+      SH
+    </span>
+  );
+}
+
+/**
  * Markdown renderer for activity body text. New entries SHOULD be written
  * as proper markdown (bullets, `code`, **bold**, paragraphs separated by
  * blank lines). `breaks: true` turns a lone newline into <br>, so legacy
@@ -1108,7 +1121,10 @@ function DailyStoryCard({
             <Mono className="r21-daily-card-id">#{story.id}</Mono>
             <span className={`r21-daily-state state-${dominant}`}>{storyStateLabel(dominant)}</span>
           </span>
-          <h2 className="r21-daily-card-title">{story.title}</h2>
+          <h2 className="r21-daily-card-title">
+            {story.title}
+            <SHPip shown={story.wasSHCreated} />
+          </h2>
         </span>
         <span className="r21-daily-card-numbers">
           <span className="r21-daily-num">
@@ -1167,7 +1183,10 @@ function DailyStoryCard({
                   >
                     <span className="r21-daily-task-dot" aria-hidden="true" />
                     <Mono className="r21-daily-task-id">#{t.id}</Mono>
-                    <span className="r21-daily-task-title">{t.title}</span>
+                    <span className="r21-daily-task-title">
+                      {t.title}
+                      <SHPip shown={t.wasSHCreated} />
+                    </span>
                     <span className="r21-daily-task-state">{dailyStateLabel(t.state, t.tags)}</span>
                     <span className="r21-daily-task-numbers">
                       <span className="r21-daily-task-num">

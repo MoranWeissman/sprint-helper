@@ -3051,3 +3051,22 @@ html, body {
 .r21-app[data-density="generous"] .r21-daily-list { gap: 24px; }
 .r21-app[data-density="generous"] .r21-daily-card-head { padding: 22px 22px 18px; }
 .r21-app[data-density="generous"] .r21-daily-card-body { padding: 16px 22px 20px; gap: 14px; }
+
+/* ============================================================ */
+/* SLICE R12 — Plan mode + SH pip                                */
+/* ============================================================ */
+
+.r12-sh-pip {
+  display: inline-block;
+  margin-left: 0.4em;
+  padding: 0 0.35em;
+  font-size: 0.72em;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--ink-3);
+  background: color-mix(in oklch, var(--ink-3) 14%, transparent);
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+  vertical-align: 0.1em;
+  user-select: none;
+}
