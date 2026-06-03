@@ -24,6 +24,13 @@ import { getLastEventTimestampMap, listActiveSessions, type SessionRow } from '.
 const STALE_IDLE_MINUTES = 120;
 
 export interface OrientLiveSession {
+  /**
+   * The sessions-table id. REQUIRED for `session_end` / `session_log` calls
+   * — without this, a session that came back into view after an MCP
+   * reconnect would have no way to be stopped from this chat. See the
+   * STALE LIVE SESSION block in SERVER_INSTRUCTIONS.
+   */
+  sessionId: string;
   workItemId: number;
   title: string;
   /** Pre-formatted `**title** (#id)` ready to echo verbatim. */
@@ -217,6 +224,7 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
     const idleMinutes = minutesSince(lastActivity, now);
     const parent = parentByTaskId.get(s.workItemId) ?? null;
     return {
+      sessionId: s.id,
       workItemId: s.workItemId,
       title,
       displayName: displayNameFor(s.workItemId, title),
