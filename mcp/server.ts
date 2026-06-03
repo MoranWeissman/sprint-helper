@@ -595,11 +595,12 @@ through the life of the task.
     number for \`estimateHours\`. \`task_create\` sets both
     OriginalEstimate and RemainingWork to that value so burndown
     starts honest.
-  - Before \`story_create\`: same three steps for effortHours, and
-    propose storyPoints (his team: 1 point = 1 day) consistent with
-    the hours. Anchor by passing the Feature/Epic id as \`parentId\`
-    to estimate_anchor — its calibration ratio still helps even
-    without sibling stories.
+  - Before \`story_create\`: same three steps for effortHours. Story
+    points are derived automatically from the hours (1 point = 1
+    workday, rounded to the nearest half) and written in the same
+    PATCH — never pass points separately. Anchor by passing the
+    Feature/Epic id as \`parentId\` to estimate_anchor — its
+    calibration ratio still helps even without sibling stories.
   - Backfilling existing items with blank planning: same approach.
     Decompose, anchor (use the existing parentId), propose, confirm
     with Moran, then call \`workitem_edit\`.
