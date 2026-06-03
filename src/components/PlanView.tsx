@@ -17,6 +17,37 @@ interface PlanViewProps {
   onScanComplete?: (gapCount: number) => void;
 }
 
+// localStorage key — the last scan result hangs around across reloads
+// until Moran explicitly clears it, so the prompt is still there when
+// he comes back to the Plan page later.
+const LS_KEY = 'sh.plan.lastScan';
+
+function readPersistedScan(): ApiPlanningGapsResponse | null {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as ApiPlanningGapsResponse;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedScan(data: ApiPlanningGapsResponse): void {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(data));
+  } catch {
+    // Quota / private-mode — fail silently, in-memory still works.
+  }
+}
+
+function clearPersistedScan(): void {
+  try {
+    localStorage.removeItem(LS_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * Plan mode body (R12 Thread 4).
  *
@@ -24,14 +55,18 @@ interface PlanViewProps {
  * - Loading: scan-in-progress shell.
  * - OK + empty: "no items need effort — everything has its planning fields."
  * - OK + gaps: list grouped by feature/story with per-item anchor proposal
- *   inline, plus a sticky "Copy prompt" button at the top.
+ *   inline, plus a persistent prompt panel at the bottom (visible, with
+ *   Copy + Clear buttons, surviving page reload via localStorage).
  * - Error: brief message + retry.
  *
  * No inline accept/edit — the dashboard is the discovery surface, the chat
  * is the execution surface. See the spec for the rejected alternatives.
  */
 export function PlanView({ onScanComplete }: PlanViewProps) {
-  const [state, setState] = useState<ScanState>({ status: 'idle' });
+  const [state, setState] = useState<ScanState>(() => {
+    const persisted = readPersistedScan();
+    return persisted ? { status: 'ok', data: persisted } : { status: 'idle' };
+  });
   const [copied, setCopied] = useState(false);
 
   const runScan = async () => {
@@ -39,10 +74,17 @@ export function PlanView({ onScanComplete }: PlanViewProps) {
     try {
       const data = await fetchPlanningGaps();
       setState({ status: 'ok', data });
+      writePersistedScan(data);
       onScanComplete?.(data.totalGaps);
     } catch (err) {
       setState({ status: 'error', error: err instanceof Error ? err.message : 'unknown error' });
     }
+  };
+
+  const onClear = () => {
+    clearPersistedScan();
+    setState({ status: 'idle' });
+    setCopied(false);
   };
 
   useEffect(() => {
@@ -92,6 +134,7 @@ export function PlanView({ onScanComplete }: PlanViewProps) {
       {state.status === 'ok' && state.data.totalGaps === 0 && (
         <div className="r12-plan-empty">
           Every Task and Story in the current sprint has its planning fields filled in. Nothing to do here.
+          <button className="r12-plan-clear-inline" onClick={onClear}>Clear scan</button>
         </div>
       )}
 
@@ -101,17 +144,28 @@ export function PlanView({ onScanComplete }: PlanViewProps) {
             <span className="r12-plan-count">
               {state.data.totalGaps} {state.data.totalGaps === 1 ? 'item' : 'items'} need effort
             </span>
-            <button className="r12-plan-copy" onClick={onCopy}>
-              {copied ? 'Copied ✓' : 'Copy prompt for Claude Code'}
-            </button>
           </div>
 
           <GapList gaps={state.data.gaps} />
 
-          <details className="r12-plan-prompt-wrap">
-            <summary>See the prompt the button will copy</summary>
+          <section className="r12-plan-prompt-panel" aria-label="Generated prompt for Claude Code">
+            <header className="r12-plan-prompt-head">
+              <span className="r12-plan-prompt-cap">Prompt for Claude Code</span>
+              <div className="r12-plan-prompt-actions">
+                <button className="r12-plan-copy" onClick={onCopy}>
+                  {copied ? 'Copied ✓' : 'Copy'}
+                </button>
+                <button className="r12-plan-clear" onClick={onClear} title="Clear the saved scan — next scan will start fresh">
+                  Clear
+                </button>
+              </div>
+            </header>
             <pre id="r12-plan-prompt-pre" className="r12-plan-prompt">{state.data.prompt}</pre>
-          </details>
+            <p className="r12-plan-prompt-hint">
+              This panel stays here until you clear it — copy the prompt, hand it to a chat,
+              come back later to verify.
+            </p>
+          </section>
         </>
       )}
     </div>
