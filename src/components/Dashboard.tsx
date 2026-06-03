@@ -28,6 +28,7 @@ import type { SprintContext } from '../lib/types';
 import { Dot } from './Dot';
 import { ModePlaceholder } from './ModePlaceholder';
 import { Mono } from './Mono';
+import { PlanView } from './PlanView';
 import { ScheduleModal } from './ScheduleModal';
 import { WorkItemDrawer } from './WorkItemDrawer';
 
@@ -228,7 +229,9 @@ function DashboardLive({
         </div>
 
         <div className="r21-bodywrap">
-          {mode !== 'day' ? (
+          {mode === 'plan' ? (
+            <PlanView />
+          ) : mode !== 'day' ? (
             <ModePlaceholder mode={mode} />
           ) : isFocus ? (
             <div className="r21-body is-focus">
