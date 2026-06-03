@@ -3522,106 +3522,167 @@ html, body {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 .r12-cockpit-sec-head .r12-cockpit-h { margin: 0; }
 .r12-cockpit-sec-count {
-  font-size: 11.5px;
+  font-size: clamp(10.5px, 0.7vw + 6px, 12px);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
 
-/* Card grid — stories laid out side by side when there's room. Matches
-   the Daily view's auto-fill pattern so the eye doesn't have to relearn. */
-.r12-cockpit-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-  gap: 12px;
-}
-.r12-cockpit-grid-tight { gap: 8px; }
-
-/* Card — collapsed by default; click header to expand. Click 'View ↗'
-   to open the work-item drawer (same drawer Daily uses). */
-.r12-cockpit-card {
+/* List rows (Jira-Backlog style). One row per story or task; clicking a
+   story row toggles expansion and reveals child task rows indented below.
+   Everything in the row flexes so the title takes available width and the
+   secondary fields ride along on the right. Truncation via ellipsis keeps
+   long titles from breaking the row at any window size. */
+.r12-cockpit-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--bg-2);
-  padding: 12px 14px;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-1);
 }
-.r12-cockpit-card:hover { border-color: var(--line-strong); }
-.r12-cockpit-card.is-expanded { background: color-mix(in oklch, var(--bg-2) 70%, var(--bg-1)); }
+.r12-cockpit-rows-nested {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  margin: 4px 0 0;
+}
 
-.r12-cockpit-card-head {
+.r12-cockpit-row {
+  border-top: 1px solid var(--line);
+}
+.r12-cockpit-row:first-child { border-top: none; }
+.r12-cockpit-row-story.is-expanded { background: color-mix(in oklch, var(--bg-2) 60%, var(--bg-1)); }
+.r12-cockpit-row-task { border-top: 1px dashed color-mix(in oklch, var(--line) 60%, transparent); }
+.r12-cockpit-row-task:first-child { border-top: none; }
+.r12-cockpit-rows-nested .r12-cockpit-row { background: transparent; }
+
+.r12-cockpit-row-main {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: clamp(6px, 0.6vw + 2px, 12px);
+  padding: clamp(8px, 0.4vw + 6px, 10px) clamp(8px, 0.5vw + 6px, 14px);
+  min-width: 0;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+}
+.r12-cockpit-row-story > .r12-cockpit-row-main {
   cursor: pointer;
   user-select: none;
-  min-width: 0;
 }
-.r12-cockpit-card-head-flat { cursor: default; }
-.r12-cockpit-card-chevron {
-  display: inline-flex;
+.r12-cockpit-row-story > .r12-cockpit-row-main:hover {
+  background: color-mix(in oklch, var(--bg-2) 50%, transparent);
+}
+
+.r12-cockpit-row-chevron {
+  flex: 0 0 14px;
   width: 14px;
+  text-align: center;
   color: var(--ink-3);
   font-size: 12px;
-  flex: 0 0 14px;
 }
-.r12-cockpit-card-title {
+.r12-cockpit-row-chevron.is-leaf {
+  color: var(--ink-4, var(--ink-3));
+  font-size: 14px;
+  line-height: 1;
+}
+.r12-cockpit-row-task .r12-cockpit-row-main { padding-left: clamp(24px, 2vw + 16px, 36px); }
+
+/* State chip — colored pill, plain text. Width fits the longest state in
+   Moran's tenant (e.g. "Waiting for Testing"), but clamps small to keep
+   narrow windows readable. */
+.r12-cockpit-row-state {
+  flex: 0 0 auto;
+  min-width: 64px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: clamp(10.5px, 0.6vw + 6px, 11.5px);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+  text-align: center;
+  background: color-mix(in oklch, var(--ink-3) 22%, transparent);
+  color: var(--ink-1);
+}
+.r12-cockpit-row-state.is-going { background: color-mix(in oklch, var(--st-going, var(--accent)) 32%, transparent); }
+.r12-cockpit-row-state.is-waiting { background: color-mix(in oklch, var(--st-waiting, oklch(0.70 0.10 80)) 32%, transparent); }
+.r12-cockpit-row-state.is-blocked { background: color-mix(in oklch, var(--blocked-line-strong, oklch(0.60 0.18 30)) 32%, transparent); }
+.r12-cockpit-row-state.is-done { background: color-mix(in oklch, var(--st-done, oklch(0.55 0.08 150)) 32%, transparent); }
+
+/* Title — plain clickable text, no chip. Truncates with ellipsis so
+   long titles don't break the row. */
+.r12-cockpit-row-title {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 14.5px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  font-size: clamp(13px, 0.5vw + 9px, 14.5px);
   color: var(--ink-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  background: transparent;
-  border: none;
-  text-align: left;
-  padding: 0;
-  font-family: inherit;
-}
-.r12-cockpit-card-view {
-  appearance: none;
-  border: 1px solid var(--line);
-  background: transparent;
-  color: var(--ink-2);
-  padding: 3px 9px;
-  border-radius: 5px;
-  font-size: 12px;
   cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: color 0.12s ease;
 }
-.r12-cockpit-card-view:hover {
-  background: color-mix(in oklch, var(--accent) 12%, transparent);
-  color: var(--ink-1);
-  border-color: color-mix(in oklch, var(--accent) 45%, var(--line));
-}
-.r12-cockpit-card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 10px;
-  margin-top: 6px;
-  font-size: 12.5px;
+.r12-cockpit-row-title:hover:not(:disabled) { color: var(--accent); }
+.r12-cockpit-row-title:disabled { cursor: default; }
+
+.r12-cockpit-row-counts,
+.r12-cockpit-row-hours,
+.r12-cockpit-row-iter,
+.r12-cockpit-row-feature {
+  flex: 0 0 auto;
   color: var(--ink-3);
+  font-size: clamp(11px, 0.4vw + 8px, 12.5px);
+  white-space: nowrap;
 }
-.r12-cockpit-card-counts { color: var(--ink-2); }
-.r12-cockpit-card-effort { color: var(--ink-3); }
-.r12-cockpit-card-feature { color: var(--ink-3); }
-.r12-cockpit-card-body { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
-.r12-cockpit-card-foot {
+.r12-cockpit-row-feature {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: clamp(120px, 18vw, 280px);
+  min-width: 0;
+}
+.r12-cockpit-row-iter {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: clamp(10.5px, 0.4vw + 7px, 12px);
+}
+
+.r12-cockpit-row-actions {
+  flex: 0 0 auto;
   display: flex;
-  justify-content: flex-end;
-  margin-top: 10px;
+  gap: 6px;
+  margin-left: auto;
 }
-.r12-cockpit-card-flat {
-  /* Backlog cards are always 'open' — they show meta + action without a fold. */
+
+/* Hide noisy secondary columns on very narrow windows so the title +
+   actions never get pushed off-screen. Title always wins. */
+@media (max-width: 900px) {
+  .r12-cockpit-row-feature { display: none; }
+}
+@media (max-width: 720px) {
+  .r12-cockpit-row-iter { display: none; }
+  .r12-cockpit-row-counts { display: none; }
+}
+@media (max-width: 560px) {
+  .r12-cockpit-row-hours { display: none; }
+  .r12-cockpit-row-state { min-width: 0; padding: 2px 6px; }
+}
+
+.r12-cockpit-row-children {
+  padding: 0 clamp(8px, 0.5vw + 6px, 14px) clamp(8px, 0.4vw + 6px, 12px) clamp(20px, 1.6vw + 14px, 32px);
 }
 
 .r12-cockpit-no-open-tasks {
