@@ -319,4 +319,65 @@ export async function mirrorSprintSummary(): Promise<{
   }
 }
 
+/**
+ * Append-friendly daily-standup snapshot. Writes
+ * `~/sprint-helper/sprints/<sprint>/standups/<today>.md` so Moran can
+ * scroll back through what he said at standup over the sprint. Always
+ * rewritten in full from the same data the dashboard's StandupCard
+ * shows; safe to call as often as you like.
+ */
+export async function mirrorStandupForToday(): Promise<{
+  ok: boolean;
+  path?: string;
+  reason?: string;
+}> {
+  try {
+    const { payload } = await buildDashboardCached();
+    if (!payload.sprint) return { ok: false, reason: 'No current sprint' };
+    const { standup } = payload;
+    const sprintDir = join(ARCHIVE_ROOT, safeFilename(payload.sprint.name), 'standups');
+    const filePath = join(sprintDir, `${standup.todayDate}.md`);
+
+    const lines: string[] = [];
+    lines.push(`# Standup — ${standup.todayDate}`);
+    lines.push('');
+    lines.push(`Sprint **${payload.sprint.name}**.`);
+    lines.push('');
+
+    lines.push(`## Yesterday — ${standup.yesterdayDate}`);
+    lines.push('');
+    if (standup.yesterday.length === 0) {
+      lines.push('_Nothing logged._');
+    } else {
+      for (const e of standup.yesterday) {
+        // Session-open duration is a poor proxy for work time (overnight
+        // sessions inflate it). Skip it; the summary captures what got done.
+        lines.push(`- ${e.displayName}`);
+        if (e.parentStoryTitle) lines.push(`  - Under: _${e.parentStoryTitle}_`);
+        if (e.summary) lines.push(`  - ${e.summary}`);
+      }
+    }
+    lines.push('');
+
+    lines.push(`## Today — ${standup.todayDate}`);
+    lines.push('');
+    if (standup.today.length === 0) {
+      lines.push('_No session yet._');
+    } else {
+      for (const e of standup.today) {
+        const tag = e.state === 'live' ? ' _(live)_' : '';
+        lines.push(`- ${e.displayName}${tag}`);
+        if (e.parentStoryTitle) lines.push(`  - Under: _${e.parentStoryTitle}_`);
+        if (e.summary) lines.push(`  - ${e.summary}`);
+      }
+    }
+    lines.push('');
+
+    await writeAtomic(filePath, lines.join('\n') + '\n');
+    return { ok: true, path: filePath };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export const ARCHIVE_PATHS = { root: ARCHIVE_ROOT };

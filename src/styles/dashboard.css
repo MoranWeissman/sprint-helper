@@ -2410,6 +2410,140 @@ html, body {
 
 .r21-app[data-density="generous"] .r21-capacity { padding: 28px 34px; gap: 18px; }
 
+/* Standup card — Daily-only. Reads aloud well: yesterday + today in two
+   columns with first-sentence summaries. */
+.r21-standup {
+  background: var(--surface-3);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 20px 24px 22px;
+  margin-bottom: 22px;
+  box-shadow: inset 0 1px 0 oklch(0.98 0.005 258 / 0.04);
+}
+.r21-standup.is-empty {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 14px 22px;
+}
+.r21-standup-cap {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.r21-standup-empty {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+.r21-standup-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.r21-standup-meta {
+  font-size: 13px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.r21-standup-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+}
+@media (max-width: 900px) {
+  .r21-standup-cols { grid-template-columns: 1fr; gap: 18px; }
+}
+.r21-standup-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.r21-standup-col-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-1);
+  letter-spacing: 0.02em;
+}
+.r21-standup-col-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-4);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.r21-standup-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.r21-standup-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px 12px;
+  background: oklch(0.20 0.02 258);
+  border: 1px solid var(--line-hair);
+  border-left: 3px solid var(--ink-4);
+  border-radius: 8px;
+}
+.r21-standup-item.is-live { border-left-color: var(--accent); }
+.r21-standup-item.is-closed { border-left-color: var(--ev-progress); }
+.r21-standup-item.is-paused { border-left-color: var(--ev-note); }
+.r21-standup-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.r21-standup-item-title {
+  font-size: 14.5px;
+  color: var(--ink-0);
+  line-height: 1.35;
+  min-width: 0;
+}
+.r21-standup-item-parent {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.r21-standup-item-summary {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.r21-standup-pill {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: oklch(0.24 0.02 258);
+  color: var(--ink-2);
+  border: 1px solid var(--line-hair);
+  flex-shrink: 0;
+}
+.r21-standup-pill.is-live {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-hair);
+}
+
 /* Daily strip — merged in from the old Overview place: REMAINING + day count
    + live indicator in a single calm row above the helper-notes panel. */
 .r21-daily-strip {

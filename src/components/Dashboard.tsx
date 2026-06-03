@@ -249,6 +249,7 @@ function DashboardLive({
               capacity={data.capacity}
               outlookCapacity={data.outlookCapacity}
               helperNotes={data.helperNotes}
+              standup={data.standup}
               today={today}
               totalDays={sprintCtx?.totalDays ?? 0}
               goingCount={inProgress.length}
@@ -538,6 +539,119 @@ function R21Sidebar({
   );
 }
 
+/**
+ * Standup card — shown only in the Daily view. Reads aloud well: yesterday's
+ * tasks with a one-line summary, today's tasks with state. Empty side
+ * collapses to a calm note instead of a stark gap. Lives at the top of Daily
+ * so it's the first thing Moran sees when the delivery manager opens the
+ * board.
+ */
+function StandupCard({ standup }: { standup: ApiPayload['standup'] }) {
+  const { yesterday, today } = standup;
+  if (yesterday.length === 0 && today.length === 0) {
+    // First-time empty state: don't waste real estate.
+    return (
+      <div className="r21-standup is-empty">
+        <span className="r21-standup-cap">STANDUP</span>
+        <span className="r21-standup-empty">
+          No sessions logged yet — open one with Claude Code to start populating this card.
+        </span>
+      </div>
+    );
+  }
+
+  const yDate = formatStandupDate(standup.yesterdayDate);
+  const tDate = formatStandupDate(standup.todayDate);
+
+  return (
+    <section className="r21-standup" aria-label="Daily standup notes">
+      <div className="r21-standup-head">
+        <span className="r21-standup-cap">STANDUP</span>
+        <span className="r21-standup-meta">{tDate}</span>
+      </div>
+      <div className="r21-standup-cols">
+        <div className="r21-standup-col">
+          <h3 className="r21-standup-col-h">
+            <span>Yesterday</span>
+            <span className="r21-standup-col-meta">{yDate}</span>
+          </h3>
+          <StandupEntries entries={yesterday} emptyHint="Nothing logged yesterday." />
+        </div>
+        <div className="r21-standup-col">
+          <h3 className="r21-standup-col-h">
+            <span>Today</span>
+            <span className="r21-standup-col-meta">{tDate}</span>
+          </h3>
+          <StandupEntries entries={today} emptyHint="No session yet today." />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function StandupEntries({
+  entries,
+  emptyHint,
+}: {
+  entries: ApiPayload['standup']['yesterday'];
+  emptyHint: string;
+}) {
+  if (entries.length === 0) {
+    return <p className="r21-standup-empty">{emptyHint}</p>;
+  }
+  return (
+    <ul className="r21-standup-list">
+      {entries.map(e => (
+        <li key={e.workItemId} className={`r21-standup-item is-${e.state}`}>
+          <div className="r21-standup-item-head">
+            <span className="r21-standup-item-title">
+              {e.parentStoryTitle && (
+                <span className="r21-standup-item-parent">{e.parentStoryTitle} · </span>
+              )}
+              {extractTitleFromDisplayName(e.displayName)}
+            </span>
+            <StandupStateBadge state={e.state} minutes={e.minutesInWindow} />
+          </div>
+          {e.summary && <p className="r21-standup-item-summary">{e.summary}</p>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function StandupStateBadge({ state }: { state: 'live' | 'paused' | 'closed'; minutes: number | null }) {
+  if (state === 'live') return <span className="r21-standup-pill is-live">live</span>;
+  // Closed/paused entries: don't show minutes here. Session-open duration is
+  // a poor proxy for work time (sessions left open overnight bloat it),
+  // and the summary line already says what got done.
+  return null;
+}
+
+function extractTitleFromDisplayName(displayName: string): string {
+  // displayName ships as `**title** (#id)` — strip the bold markers + id for
+  // a clean visual line. The id is on the parent ADO link anyway.
+  const m = displayName.match(/^\*\*(.+)\*\*\s*\(#(\d+)\)\s*$/);
+  return m ? m[1] : displayName;
+}
+
+function formatMinutes(min: number): string {
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+function formatStandupDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 function HelperNotesPanel({
   notes,
   onRefresh,
@@ -778,6 +892,7 @@ function DailyView({
   capacity,
   outlookCapacity,
   helperNotes,
+  standup,
   today,
   totalDays,
   goingCount,
@@ -793,6 +908,7 @@ function DailyView({
   capacity: ApiPayload['capacity'];
   outlookCapacity: ApiOutlookCapacity | null;
   helperNotes: ApiHelperNotes;
+  standup: ApiPayload['standup'];
   today: number;
   totalDays: number;
   goingCount: number;
@@ -859,6 +975,11 @@ function DailyView({
           )}
         </div>
       </div>
+
+      {/* Standup card — Daily-only. The first thing Moran wants on the screen
+          when the delivery manager opens the board: yesterday's work + today's
+          work, brief, optimized for speaking aloud. */}
+      <StandupCard standup={standup} />
 
       {/* Merged-in from the old Overview place: a slim sprint strip, the
           helper-notes panel, and the capacity tile. Together they give the

@@ -23,7 +23,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
-import { mirrorSprintSummary, mirrorTaskFile } from '../server/archive.js';
+import { mirrorSprintSummary, mirrorStandupForToday, mirrorTaskFile } from '../server/archive.js';
 import { getCalendarUrl, setCalendarUrl } from '../server/calendar.js';
 import { computeCapacity } from '../server/capacity.js';
 import { buildDashboard } from '../server/dashboard.js';
@@ -1514,6 +1514,7 @@ server.registerTool(
     if (!session) return errorResult(`Session not found: ${sessionId}`);
     void mirrorTaskFile(session.workItemId); // background — keep the archive file fresh
     void mirrorSprintSummary(); // and refresh the sprint overview
+    void mirrorStandupForToday(); // and the standup notes for today
     try {
       const timer = done
         ? await timerService.markDone(session.workItemId)

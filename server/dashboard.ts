@@ -22,6 +22,7 @@ import {
 } from './ceremony';
 import { loadAdoConfig } from './config';
 import { getHelperNotes, type HelperNotes } from './helper-notes';
+import { buildStandup, type StandupBlock } from './standup';
 import {
   getActiveSessionMap,
   getRecentEventsMap,
@@ -175,6 +176,12 @@ export interface DashboardPayload {
     next: UpcomingCeremony | null;
     suggestedModeId: ModeId | null;
   };
+  /**
+   * What Moran did yesterday and what he's on today, pulled from the
+   * sessions DB. Surfaced only in the Daily view (the morning-standup
+   * card). Read-only summary — no edits in the dashboard.
+   */
+  standup: StandupBlock;
   fetchedAt: string;
 }
 
@@ -220,6 +227,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
       activeSessions: 0,
       helperNotes: getHelperNotes(),
       ceremonies: buildCeremonyBlock(null, null),
+      standup: buildStandup({ taskMeta: new Map() }),
       fetchedAt: new Date().toISOString(),
     };
   }
@@ -282,6 +290,14 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     outlookCapacity = null;
   }
 
+  // Build the standup block — pulls yesterday + today entries from the
+  // sessions DB, joined to task titles + parent story titles for display.
+  const taskMeta = new Map<number, { title: string; parentTitle: string | null }>();
+  for (const w of items) {
+    taskMeta.set(w.id, { title: w.title, parentTitle: w.parentTitle ?? null });
+  }
+  const standup = buildStandup({ taskMeta });
+
   return {
     user: cfg.user,
     sprint: {
@@ -304,6 +320,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
       new Date(iteration.startDate),
       new Date(iteration.finishDate),
     ),
+    standup,
     fetchedAt: new Date().toISOString(),
   };
 }

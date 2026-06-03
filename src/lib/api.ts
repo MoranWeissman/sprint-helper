@@ -142,6 +142,23 @@ export interface ApiUpcomingCeremony {
   isSuggested: boolean;
 }
 
+export interface ApiStandupEntry {
+  workItemId: number;
+  /** Pre-formatted `**title** (#id)` ready to echo. */
+  displayName: string;
+  parentStoryTitle: string | null;
+  summary: string | null;
+  minutesInWindow: number | null;
+  state: 'live' | 'paused' | 'closed';
+}
+
+export interface ApiStandupBlock {
+  yesterdayDate: string;
+  todayDate: string;
+  yesterday: ApiStandupEntry[];
+  today: ApiStandupEntry[];
+}
+
 export interface ApiPayload {
   user: string;
   sprint: ApiSprint | null;
@@ -164,6 +181,8 @@ export interface ApiPayload {
   activeSessions: number;
   /** The assistant's read on the sprint: a living summary + a few open nudges. */
   helperNotes: ApiHelperNotes;
+  /** What got worked yesterday + what's open today, for the morning standup. */
+  standup: ApiStandupBlock;
   ceremonies: {
     upcoming: ApiUpcomingCeremony[];
     next: ApiUpcomingCeremony | null;
