@@ -281,21 +281,31 @@ export async function mirrorSprintSummary(): Promise<{
     lines.push(`# Sprint ${sprint.name}`);
     lines.push('');
     lines.push(`**Window:** ${fmtISODate(sprint.startDate)} → ${fmtISODate(sprint.finishDate)}  `);
+    const totals = payload.capacity;
+    const completedTotal = Math.round(totals.completedHours);
+    const remainingTotal = Math.round(totals.remainingHours);
     if (payload.outlookCapacity && payload.outlookCapacity.hasUrl && !payload.outlookCapacity.fetchError) {
       const c = payload.outlookCapacity;
-      const planned = Math.round(c.plannedHours);
+      const total = Math.round(c.workingHoursTotal);
       const available = Math.round(c.availableHours);
+      const planned = Math.round(c.plannedHours);
       const diff = Math.round(c.difference);
       let verdict: string;
       if (diff >= 8) verdict = `roughly ${diff}h over what fits`;
       else if (diff <= -8) verdict = `about ${Math.abs(diff)}h of room left`;
       else verdict = 'close to balanced';
-      lines.push(`**Capacity:** ${planned}h planned · ${available}h available after meetings · ${verdict}  `);
+      // Match the live capacity tile's four numbers + verdict so the
+      // archived snapshot reads the same as what Moran saw on screen.
+      lines.push(
+        `**Capacity:** ${total}h total · ${available}h available · ${planned}h planned · ${completedTotal}h completed (${verdict})  `,
+      );
+    } else {
+      // No calendar wired up — still capture progress numbers for future stats.
+      lines.push(
+        `**Hours:** ${Math.round(totals.totalEstimateHours)}h estimated · ${completedTotal}h completed · ${remainingTotal}h remaining  `,
+      );
     }
-    const totals = payload.capacity;
-    lines.push(
-      `**Hours:** ${Math.round(totals.totalEstimateHours)}h estimated · ${Math.round(totals.completedHours)}h logged · ${Math.round(totals.remainingHours)}h remaining  `,
-    );
+    lines.push(`**Remaining task hours:** ${remainingTotal}h  `);
     lines.push('');
 
     lines.push('## Stories');
