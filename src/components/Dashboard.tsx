@@ -832,6 +832,10 @@ function R21Focus({
   const logged = fmtHM(loggedSec, 0);
   const startedAt = task.activeSession ? fmtClockISO(task.activeSession.startedAt) : '';
   const remaining = task.remainingWork != null ? `${Math.round(task.remainingWork)}h` : '—';
+  // Canonical CompletedWork on ADO — useful when comparing actual vs estimate
+  // on closed work where Remaining has gone to 0/—. LOGGED above includes
+  // uncommitted local time; COMPLETED is the number on the board.
+  const completed = task.completedWork != null ? `${Math.round(task.completedWork)}h` : '—';
   const events = task.recentActivity;
   // State is truth; tag is fallback only when the type has no Blocked state.
   const taskBlocked = isBlockedState(task.state) || (task.type === 'Bug' && isBlocked(task.tags));
@@ -876,12 +880,16 @@ function R21Focus({
           {task.sessionCount > 0 && <span className="sub">· {task.sessionCount} sitting{task.sessionCount === 1 ? '' : 's'}</span>}
         </span>
         <span className="r21-num">
+          <span className="cap">COMPLETED</span>
+          <span className={`val ${task.completedWork == null ? 'is-missing' : ''}`}>{completed}</span>
+        </span>
+        <span className="r21-num">
           <span className="cap">ESTIMATE</span>
           <span className="val">{estimateFor(task)}</span>
         </span>
         <span className="r21-num">
           <span className="cap">REMAINING</span>
-          <span className="val">{remaining}</span>
+          <span className={`val ${task.remainingWork == null ? 'is-missing' : ''}`}>{remaining}</span>
         </span>
       </div>
 
