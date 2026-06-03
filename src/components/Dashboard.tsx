@@ -737,7 +737,7 @@ function HelperNotesPanel({
   );
 }
 
-function CapacityTile({ capacity }: { capacity: ApiOutlookCapacity | null }) {
+function CapacityTile({ capacity, completedHours }: { capacity: ApiOutlookCapacity | null; completedHours: number }) {
   if (!capacity) return null;
 
   if (!capacity.hasUrl) {
@@ -772,6 +772,7 @@ function CapacityTile({ capacity }: { capacity: ApiOutlookCapacity | null }) {
   const working = Math.round(capacity.workingHoursTotal);
   const available = Math.round(capacity.availableHours);
   const planned = Math.round(capacity.plannedHours);
+  const completed = Math.round(completedHours);
   const diff = capacity.difference;
   const absDiff = Math.round(Math.abs(diff));
 
@@ -813,6 +814,10 @@ function CapacityTile({ capacity }: { capacity: ApiOutlookCapacity | null }) {
         <div className="r21-capacity-num">
           <span className="r21-capacity-num-label">planned</span>
           <Mono className="r21-capacity-num-val">{planned}h</Mono>
+        </div>
+        <div className="r21-capacity-num">
+          <span className="r21-capacity-num-label">completed</span>
+          <Mono className="r21-capacity-num-val">{completed}h</Mono>
         </div>
       </div>
     </section>
@@ -1057,7 +1062,7 @@ function DailyView({
 
       <HelperNotesPanel notes={helperNotes} onRefresh={onRefresh} />
 
-      <CapacityTile capacity={outlookCapacity} />
+      <CapacityTile capacity={outlookCapacity} completedHours={capacity.completedHours} />
 
       {stories.length === 0 ? (
         <p className="r21-daily-empty">No stories in this sprint yet.</p>
