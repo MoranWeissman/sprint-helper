@@ -955,7 +955,7 @@ function DailyView({
 }) {
   const remaining = Math.round(capacity.remainingHours);
   // Which story cards are currently expanded (show per-task EST/REM). Default
-  // is collapsed for every card — Moran expands just the one she's diving into.
+  // is collapsed for every card — Moran expands just the one he's diving into.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggleExpanded = (id: string) =>
     setExpanded(prev => {
@@ -967,6 +967,18 @@ function DailyView({
   const expandAll = () => setExpanded(new Set(stories.map(s => s.id)));
   const collapseAll = () => setExpanded(new Set());
   const anyExpanded = expanded.size > 0;
+
+  // Which feature sections are collapsed (hide all the story cards under them).
+  // Default is expanded for every feature — Moran collapses ones he's not
+  // touching this sprint to reduce visual load.
+  const [featuresCollapsed, setFeaturesCollapsed] = useState<Set<string>>(new Set());
+  const toggleFeatureCollapsed = (id: string) =>
+    setFeaturesCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   // Group stories by their parent Feature/Epic. Features with active work
   // float to the top; stories with no feature fall to the bottom.
@@ -1056,10 +1068,15 @@ function DailyView({
               : g.stories;
             const featureId = g.feature?.id;
             const openFeature = featureId ? () => onOpenItem(featureId) : undefined;
+            const featureState = featureDominantState(childStories);
+            const isCollapsed = featureId ? featuresCollapsed.has(featureId) : false;
             return (
-              <section className="r21-daily-feature" key={g.feature?.id ?? `none-${idx}`}>
+              <section
+                className={`r21-daily-feature is-state-${featureState} ${isCollapsed ? 'is-collapsed' : ''}`}
+                key={g.feature?.id ?? `none-${idx}`}
+              >
                 <header
-                  className={`r21-daily-feature-head ${g.feature ? 'is-openable' : 'is-orphan'}`}
+                  className={`r21-daily-feature-head ${g.feature ? 'is-openable' : 'is-orphan'} is-state-${featureState}`}
                   {...(openFeature ? {
                     role: 'button' as const,
                     tabIndex: 0,
@@ -1073,19 +1090,39 @@ function DailyView({
                     title: 'Open this feature in the drawer',
                   } : {})}
                 >
+                  {featureId && (
+                    <button
+                      type="button"
+                      className="r21-daily-feature-toggle"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleFeatureCollapsed(featureId);
+                      }}
+                      aria-expanded={!isCollapsed}
+                      aria-label={isCollapsed ? `Show ${childStories.length} stories` : `Hide ${childStories.length} stories`}
+                      title={isCollapsed ? 'Show stories under this feature' : 'Hide stories under this feature'}
+                    >
+                      <span className="caret" aria-hidden="true">{isCollapsed ? '▸' : '▾'}</span>
+                    </button>
+                  )}
                   <div className="r21-daily-feature-left">
                     <span className="r21-daily-feature-kind">{g.feature?.type ?? 'No feature'}</span>
                     {g.feature && <Mono className="r21-daily-feature-id">#{g.feature.id}</Mono>}
                     <h3 className="r21-daily-feature-title">
                       {g.feature?.title ?? 'Stories without a parent feature'}
                     </h3>
+                    {g.feature && childStories.length > 0 && (
+                      <span className={`r21-daily-feature-state state-${featureState}`}>
+                        {featureStateLabel(featureState)}
+                      </span>
+                    )}
                   </div>
                   <span className="r21-daily-feature-meta">
                     {childStories.length} {childStories.length === 1 ? 'story' : 'stories'}
                     {g.feature && <span className="r21-daily-feature-open" aria-hidden="true">↗</span>}
                   </span>
                 </header>
-                {childStories.length > 0 && (
+                {!isCollapsed && childStories.length > 0 && (
                   <div className="r21-daily-list">
                     {[...childStories]
                       .sort((a, b) => STORY_STATE_ORDER[storyDominantState(a)] - STORY_STATE_ORDER[storyDominantState(b)])
@@ -1295,6 +1332,29 @@ function storyStateLabel(d: StoryState): string {
   if (d === 'waiting') return 'not started';
   if (d === 'done') return 'closed';
   return 'no tasks';
+}
+
+/**
+ * Bubble feature state up from its child stories. Surfacing priority:
+ * blocked > going > waiting > done. A feature with mixed states reads as
+ * "going" because work is in flight; only "all done" collapses to done.
+ */
+function featureDominantState(stories: ApiUserStoryGroup[]): StoryState {
+  if (stories.length === 0) return 'empty';
+  const dominants = stories.map(storyDominantState);
+  if (dominants.some(d => d === 'blocked')) return 'blocked';
+  if (dominants.some(d => d === 'going')) return 'going';
+  if (dominants.every(d => d === 'done')) return 'done';
+  if (dominants.some(d => d === 'waiting')) return 'waiting';
+  return 'empty';
+}
+
+function featureStateLabel(d: StoryState): string {
+  if (d === 'going') return 'in work';
+  if (d === 'blocked') return 'blocked';
+  if (d === 'waiting') return 'not started';
+  if (d === 'done') return 'closed';
+  return 'no stories';
 }
 
 function dailyStateClass(state: string, tags?: string[]): string {

@@ -2759,18 +2759,60 @@ html, body {
   gap: 36px;
 }
 .r21-daily-feature { display: flex; flex-direction: column; gap: 18px; }
+.r21-daily-feature.is-collapsed { gap: 0; }
 .r21-daily-feature-head {
   display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;
   padding: 10px 0 14px;
   border-bottom: 1px solid var(--line-hair);
   position: relative;
 }
+/* Feature state stripe — bottom edge of the header, colored by the
+   bubbled-up state of child stories. Falls back to copper if no state
+   classification applies (orphan group). */
 .r21-daily-feature-head::before {
   content: ""; position: absolute; left: 0; bottom: -1px; height: 2px; width: 56px;
   background: var(--feature);
   border-radius: 999px;
+  transition: width 200ms ease, background 200ms ease;
 }
 .r21-daily-feature-head.is-orphan::before { background: var(--ink-4); }
+.r21-daily-feature-head.is-state-going::before    { background: var(--st-going); width: 96px; }
+.r21-daily-feature-head.is-state-done::before     { background: var(--st-done); }
+.r21-daily-feature-head.is-state-waiting::before  { background: var(--st-waiting); }
+.r21-daily-feature-head.is-state-blocked::before  { background: var(--blocked-line-strong); width: 96px; }
+
+/* Collapse toggle — a small chevron button at the start of the header,
+   separate from the (click-anywhere) drawer-open behavior on the rest of
+   the header. stopPropagation in the JSX keeps the parent's onClick from
+   firing when the user clicks the chevron. */
+.r21-daily-feature-toggle {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-3);
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+  flex: none;
+  margin-right: 4px;
+}
+.r21-daily-feature-toggle:hover {
+  background: color-mix(in oklch, var(--feature) 14%, transparent);
+  color: var(--ink-1);
+}
+.r21-daily-feature-toggle:focus-visible {
+  outline: 2px solid var(--feature);
+  outline-offset: 2px;
+}
+.r21-daily-feature-toggle .caret {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  line-height: 1;
+  transform: translateY(-0.5px);
+}
+
 .r21-daily-feature-left { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; min-width: 0; }
 .r21-daily-feature-kind {
   display: inline-flex; align-items: center;
@@ -2790,6 +2832,21 @@ html, body {
 .r21-daily-feature-title { margin: 0; font-size: 17px; font-weight: 500; color: var(--ink-0); letter-spacing: -0.005em; }
 .r21-daily-feature-meta { font-size: 11.5px; letter-spacing: 0.04em; color: var(--ink-4); flex: none; display: inline-flex; align-items: center; gap: 12px; }
 .r21-daily-feature-open { font-family: var(--font-mono); color: var(--feature); opacity: 0.7; transition: opacity 160ms ease, transform 160ms ease; }
+
+/* Inline state pill for the feature, mirroring the per-story pill. */
+.r21-daily-feature-state {
+  display: inline-flex; align-items: center;
+  padding: 2px 9px;
+  font-size: 11.5px; font-weight: 500; letter-spacing: 0.04em;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  color: var(--ink-2);
+  background: var(--bg-2);
+}
+.r21-daily-feature-state.state-going    { color: var(--st-going);    border-color: color-mix(in oklch, var(--st-going) 40%, transparent); background: color-mix(in oklch, var(--st-going) 12%, transparent); }
+.r21-daily-feature-state.state-done     { color: var(--st-done);     border-color: color-mix(in oklch, var(--st-done) 40%, transparent);  background: color-mix(in oklch, var(--st-done) 12%, transparent); }
+.r21-daily-feature-state.state-waiting  { color: var(--st-waiting);  border-color: color-mix(in oklch, var(--st-waiting) 40%, transparent); background: color-mix(in oklch, var(--st-waiting) 12%, transparent); }
+.r21-daily-feature-state.state-blocked  { color: var(--blocked-line-strong); border-color: color-mix(in oklch, var(--blocked-line-strong) 40%, transparent); background: color-mix(in oklch, var(--blocked-line-strong) 12%, transparent); }
 
 .r21-daily-feature-head.is-openable { cursor: pointer; transition: background 160ms ease; border-radius: 6px 6px 0 0; padding-left: 10px; padding-right: 10px; }
 .r21-daily-feature-head.is-openable:hover { background: var(--feature-bg); }
