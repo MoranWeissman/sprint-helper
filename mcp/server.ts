@@ -47,6 +47,7 @@ import {
 } from '../server/sessions.js';
 import * as timerService from '../server/timer-service.js';
 import { getWorkItem } from '../server/ado.js';
+import { markSHCreated } from '../server/sh-created.js';
 import {
   createStory,
   createTask,
@@ -1450,6 +1451,7 @@ server.registerTool(
         estimateHours,
         tags: adHoc ? ['ad-hoc'] : undefined,
       });
+      markSHCreated(created.id, 'task');
       return jsonResult(created);
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
@@ -1491,6 +1493,7 @@ server.registerTool(
         effortHours,
         parentFeatureId,
       });
+      markSHCreated(created.id, 'story');
       return jsonResult(created);
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
