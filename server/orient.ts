@@ -13,6 +13,7 @@ import type { Capacity } from './capacity';
 import { buildDashboardCached } from './dashboard-cache';
 import { getDb } from './db';
 import { ensureCapacityNudge, getHelperNotes } from './helper-notes';
+import { getPlanningHome } from './planning-home';
 import { getLastEventTimestampMap, listActiveSessions, type SessionRow } from './sessions';
 
 /**
@@ -52,6 +53,13 @@ export interface OrientLiveSession {
    * has no parent. Echo verbatim — don't assemble.
    */
   parentStoryDisplayName: string | null;
+}
+
+export interface OrientPlanningHome {
+  /** Absolute path Moran has configured (or the default). */
+  configuredPath: string;
+  /** True if Moran explicitly set the path; false if it's the default. */
+  isExplicitlyConfigured: boolean;
 }
 
 export interface OrientLastSession {
@@ -103,6 +111,14 @@ export interface OrientPacket {
    * banned word "slack" used to slip in.
    */
   capacitySummary: string | null;
+  /**
+   * Where Moran's sprint-helper planning home folder lives. The model
+   * compares this against the chat's cwd: when they match (or a
+   * `.sprint-helper-home` marker file is in the cwd), the model skips the
+   * story-anchor ritual and runs sprint-wide skills. See SERVER_INSTRUCTIONS
+   * → PLANNING HOME.
+   */
+  planningHome: OrientPlanningHome;
 }
 
 function displayNameFor(workItemId: number, title: string): string {
@@ -253,6 +269,8 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
   // up in this same orient response. (Cached payload.helperNotes would miss it.)
   const helperNotes = getHelperNotes();
 
+  const planningHome = getPlanningHome();
+
   return {
     greeting: greetingFor(now),
     fetchedAt: now.toISOString(),
@@ -275,5 +293,9 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
     },
     capacity,
     capacitySummary: plainCapacitySummary(capacity),
+    planningHome: {
+      configuredPath: planningHome.configuredPath,
+      isExplicitlyConfigured: planningHome.isExplicitlyConfigured,
+    },
   };
 }
