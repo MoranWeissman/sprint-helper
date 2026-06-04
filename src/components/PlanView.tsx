@@ -122,11 +122,11 @@ export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
     }
   };
 
-  const onCloseTask = async (taskId: number) => {
+  const onCloseTask = async (taskId: number, completedHours: number) => {
     setActingOn(taskId);
     setActionError(null);
     try {
-      await markWorkItemDone(taskId);
+      await markWorkItemDone(taskId, completedHours);
       await refreshCockpit();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Close failed');
@@ -274,7 +274,7 @@ function CloseOutSection({
   expanded: Set<number>;
   onToggleExpanded: (id: number) => void;
   onMoveTask: (task: ApiCockpitOpenTask, nextSprintPath: string) => Promise<void>;
-  onCloseTask: (taskId: number) => Promise<void>;
+  onCloseTask: (taskId: number, completedHours: number) => Promise<void>;
   onOpenItem?: (id: string) => void;
 }) {
   if (cockpit.status === 'loading') {
@@ -347,7 +347,7 @@ function CloseOutStoryRow({
   nextSprintPath: string | null;
   nextSprintName: string | null;
   onMoveTask: (task: ApiCockpitOpenTask, nextSprintPath: string) => Promise<void>;
-  onCloseTask: (taskId: number) => Promise<void>;
+  onCloseTask: (taskId: number, completedHours: number) => Promise<void>;
   onOpenItem?: (id: string) => void;
 }) {
   const stateClass = classifyState(story.state);
@@ -425,7 +425,7 @@ function CloseOutTaskRow({
   nextSprintPath: string | null;
   nextSprintName: string | null;
   onMoveTask: (task: ApiCockpitOpenTask, nextSprintPath: string) => Promise<void>;
-  onCloseTask: (taskId: number) => Promise<void>;
+  onCloseTask: (taskId: number, completedHours: number) => Promise<void>;
   onOpenItem?: (id: string) => void;
 }) {
   const stateClass = classifyState(task.state);
@@ -474,8 +474,18 @@ function CloseOutTaskRow({
           className="plan2-act plan2-act-done"
           disabled={busy}
           onClick={() => {
-            if (!window.confirm(`Mark "${task.title}" done? This closes it in Azure DevOps.`)) return;
-            void onCloseTask(task.id);
+            const def = task.originalEstimate ?? task.remainingWork ?? null;
+            const raw = window.prompt(
+              `Mark "${task.title}" done.\nHow many hours did it actually take? Saved to Azure DevOps as Completed.`,
+              def != null ? String(def) : '',
+            );
+            if (raw == null) return; // cancelled
+            const hours = Number(raw.trim());
+            if (!Number.isFinite(hours) || hours <= 0 || hours > 999) {
+              window.alert('Enter the hours it took as a number greater than 0 (max 999).');
+              return;
+            }
+            void onCloseTask(task.id, hours);
           }}
         >
           ✓ done

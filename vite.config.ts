@@ -91,11 +91,21 @@ function adoApiPlugin() {
             }
             const body = (await readJsonBody(req)) as {
               state?: 'waiting' | 'going' | 'done';
+              completedHours?: number;
               originalEstimate?: number;
               remainingWork?: number;
               iterationPath?: string;
             };
-            const { setEstimate, setIterationPath, setRemaining, setStateBucket } = await import('./server/writes');
+            // Original Estimate is set once at creation and never edited after
+            // (same lock as the workitem_edit MCP tool). Refuse changing it here
+            // too, so both doors keep one promise.
+            if (body.originalEstimate != null) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Original Estimate is set once when a task is created and cannot be edited afterwards.' }));
+              return;
+            }
+            const { setCompletedWork, setIterationPath, setRemaining, setStateBucket } = await import('./server/writes');
             const applied: Record<string, unknown> = {};
             if (body.state) {
               if (!['waiting', 'going', 'done'].includes(body.state)) {
@@ -104,19 +114,28 @@ function adoApiPlugin() {
                 res.end(JSON.stringify({ error: 'state must be waiting | going | done' }));
                 return;
               }
-              applied.state = await setStateBucket(id, body.state);
-            }
-            if (body.originalEstimate != null) {
-              if (!Number.isFinite(body.originalEstimate) || body.originalEstimate < 0 || body.originalEstimate > 999) {
-                res.statusCode = 400;
-                res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ error: 'originalEstimate must be a finite number in [0, 999]' }));
-                return;
+              if (body.state === 'done') {
+                // Closing must capture the real hours, exactly like
+                // session_end({done:true, completedHoursAfter}). A bare "mark
+                // done" with no hours is refused — the dashboard door keeping
+                // the same lock as the AI door.
+                const h = body.completedHours;
+                if (h == null || !Number.isFinite(h) || h <= 0 || h > 999) {
+                  res.statusCode = 400;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ error: 'Closing a task needs completedHours — the hours it actually took — as a number greater than 0 (max 999).' }));
+                  return;
+                }
+                await setCompletedWork(id, h);
+                await setRemaining(id, 0);
+                applied.state = await setStateBucket(id, 'done');
+                applied.completedHours = h;
+                applied.remainingWork = 0;
+              } else {
+                applied.state = await setStateBucket(id, body.state);
               }
-              await setEstimate(id, body.originalEstimate);
-              applied.originalEstimate = body.originalEstimate;
             }
-            if (body.remainingWork != null) {
+            if (body.remainingWork != null && body.state !== 'done') {
               if (!Number.isFinite(body.remainingWork) || body.remainingWork < 0 || body.remainingWork > 999) {
                 res.statusCode = 400;
                 res.setHeader('Content-Type', 'application/json');

@@ -402,14 +402,16 @@ export type StateBucket = 'waiting' | 'going' | 'done';
 
 export interface WorkItemEditPayload {
   state?: StateBucket;
-  originalEstimate?: number;
+  // Original Estimate is intentionally NOT editable here — it's set once at
+  // creation. The server route refuses it. Closing (state: 'done') goes through
+  // markWorkItemDone, which carries the real hours.
   remainingWork?: number;
 }
 
 export async function updateWorkItem(
   workItemId: string,
   payload: WorkItemEditPayload,
-): Promise<{ applied: { state?: string; originalEstimate?: number; remainingWork?: number } }> {
+): Promise<{ applied: { state?: string; remainingWork?: number } }> {
   const r = await fetch(`/api/workitem/${encodeURIComponent(workItemId)}/edit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -546,11 +548,11 @@ export async function moveWorkItemToIteration(workItemId: number, iterationPath:
   }
 }
 
-export async function markWorkItemDone(workItemId: number): Promise<void> {
+export async function markWorkItemDone(workItemId: number, completedHours: number): Promise<void> {
   const r = await fetch(`/api/workitem/${workItemId}/edit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ state: 'done' }),
+    body: JSON.stringify({ state: 'done', completedHours }),
   });
   const body = await r.json().catch(() => ({}));
   if (!r.ok || (body && 'error' in body)) {
