@@ -1195,7 +1195,7 @@ server.registerTool(
   {
     title: 'Greet Moran at the start of a chat',
     description:
-      "Read where Moran left off and what's waiting in his sprint. Call this BEFORE responding whenever you sense he's reorienting: at the start of a new chat, after a /compact, when he resumes and greets you ('hi', 'morning', 'where were we', 'what should i do'), etc. Don't wait for a 'new conversation' — Moran almost always works through resume/compact, so the greeting triggers matter more than session boundaries. Call at most once per orientation moment; don't re-fire on every 'hi'. Returns a time-of-day greeting, what day of the sprint we're on, any work sessions still open, the last task he worked on (with his summary), the current helper's notes plus how many nudges are still open, a quick count of stories/tasks missing planning fields, and his sprint capacity (real desk time vs planned hours, derived from his Outlook calendar). Use it to write a friendly 2-4 sentence greeting — don't paste the numbers. See SERVER_INSTRUCTIONS → OPENING GREETING and → CAPACITY for the full trigger list.",
+      "Read where Moran left off and what's waiting in his sprint, then write a friendly 2-4 sentence greeting (don't paste the numbers). Call once when he's reorienting — new chat, after a /compact, or a greeting like 'hi' / 'where were we'. Full trigger list and how to use the packet: SERVER_INSTRUCTIONS → OPENING GREETING and → CAPACITY.",
     inputSchema: {},
   },
   async () => {
@@ -1316,7 +1316,7 @@ server.registerTool(
   {
     title: 'Edit work item fields',
     description:
-      "Update an existing work item in Azure DevOps. Covers state (waiting / going only — close tasks via session_end, not here), Remaining Work, Completed Work, story-level Effort, tags, and iteration path. State uses Moran's plain English buckets: 'waiting' (New/To Do/Proposed) and 'going' (Active/In Progress/Doing). Closing a task is NOT done here — that route is session_end({done:true, completedHoursAfter}). Task effort fields, in hours: remainingWork (the live signal — keep it fresh as work progresses; this is what the delivery manager's view actually reads) and completedWork (climbs up — overwrite, not additive). Original Estimate is NOT editable here — it's set once at task_create and stays put as the variance baseline; if a task is taking longer, raise Remaining Work instead. Story-level: pass `effort` (total hours) and Story Points are derived in the same patch (1 point = 1 workday, half-point rounding); do not pass storyPoints separately. Tags: addTags adds them (case-insensitive dedup), removeTags removes them, both can be passed together.",
+      "Update an existing Azure DevOps work item: state (waiting/going only — close via session_end, not here), Remaining Work, Completed Work, story Effort, tags, iteration path. Original Estimate is NOT editable — it's set once at task_create. Pass at least one field; per-field rules are on each field below.",
     inputSchema: {
       workItemId: workItemIdSchema,
       state: z.enum(['waiting', 'going']).optional().describe("Move the item between 'waiting' and 'going'. To CLOSE a task, use session_end({done:true, completedHoursAfter}) instead — that's the only path that pushes Completed Work and zeros Remaining Work in one move."),
@@ -1383,7 +1383,7 @@ server.registerTool(
   {
     title: 'Read a single work item',
     description:
-      "Fetch one work item by id from Azure DevOps. Returns id, type, title, state, tags (as an array), assignedTo, iteration (last segment), parent (id+title+type), children list, originalEstimate / remainingWork / completedWork, plus url. Use this instead of shelling out to 'az boards work-item show' so writes stay coordinated with sprint-helper's caches and Moran's POM delivery manager sees consistent state.",
+      "Fetch one work item by id from Azure DevOps (fields, parent, children, effort, url). Use this instead of shelling out to 'az boards work-item show' so everything stays coordinated with sprint-helper's caches.",
     inputSchema: {
       workItemId: workItemIdSchema,
     },
@@ -2153,7 +2153,7 @@ server.registerTool(
   {
     title: 'Real desk time vs planned',
     description:
-      "Compute Moran's real desk time for the current sprint: working hours total (8h/day Mon-Fri by default), minus meetings from his Outlook calendar (BUSY full, TENTATIVE half, OOF full, all clipped to working hours), minus FREE-marked time = real desk hours. Compares to planned task hours (sum of RemainingWork on in-progress + up-next tasks). Use this when Moran asks 'is this sprint realistic?', 'how much time do I really have?', etc. If no calendar URL is set, returns capacity without meeting subtractions and flags hasUrl=false — surface that to Moran.",
+      "Compute Moran's real desk time for the current sprint: working hours (9h/day, Sun-Thu) minus meetings from his Outlook calendar (busy + out-of-office, clipped to the workday; tentative is ignored), compared to planned task hours. Use it when he asks 'is this sprint realistic?' or 'how much time do I really have?'. With no calendar URL set it skips the meeting subtraction and flags hasUrl=false — surface that to him.",
     inputSchema: {},
   },
   async () => {
