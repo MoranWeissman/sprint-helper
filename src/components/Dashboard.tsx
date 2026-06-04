@@ -169,6 +169,14 @@ function DashboardLive({
     () => liveItems.find(w => !focalTask || w.id !== focalTask.id) ?? null,
     [liveItems, focalTask],
   );
+  // The story the focal task belongs to (if any). Focus uses this as the
+  // headline + lists every sibling task underneath.
+  const focalStory = useMemo(() => {
+    const parentId = focalTask?.parent?.id;
+    if (parentId == null) return null;
+    const pid = String(parentId);
+    return stories.find(s => String(s.id) === pid) ?? null;
+  }, [focalTask, stories]);
   // Focus has top precedence — if a session is live and Moran hasn't asked to
   // see the whole board, the screen morphs to Focus.
   const isFocus = mode === 'day' && !!focalTask && !showBoard;
@@ -264,6 +272,7 @@ function DashboardLive({
               {focalTask && (
                 <R21Focus
                   task={focalTask}
+                  story={focalStory}
                   secondary={secondaryLive}
                   onOpenItem={openItem}
                   onPromoteSecondary={() => secondaryLive && setFocalId(secondaryLive.id)}
@@ -722,11 +731,13 @@ function formatStandupDate(iso: string): string {
 
 function R21Focus({
   task,
+  story,
   secondary,
   onOpenItem,
   onPromoteSecondary,
 }: {
   task: ApiWorkItem;
+  story: ApiUserStoryGroup | null;
   secondary: ApiWorkItem | null;
   onOpenItem: (id: string) => void;
   onPromoteSecondary: () => void;
@@ -736,35 +747,38 @@ function R21Focus({
   const logged = fmtHM(loggedSec, 0);
   const startedAt = task.activeSession ? fmtClockISO(task.activeSession.startedAt) : '';
   const remaining = task.remainingWork != null ? `${Math.round(task.remainingWork)}h` : '—';
-  // Canonical CompletedWork on ADO — useful when comparing actual vs estimate
-  // on closed work where Remaining has gone to 0/—. LOGGED above includes
-  // uncommitted local time; COMPLETED is the number on the board.
   const completed = task.completedWork != null ? `${Math.round(task.completedWork)}h` : '—';
   const events = task.recentActivity;
-  // State is truth; tag is fallback only when the type has no Blocked state.
   const taskBlocked = isBlockedState(task.state) || (task.type === 'Bug' && isBlocked(task.tags));
   const parentBlocked = parent
     ? isBlockedState(parent.state) || (parent.type === 'Bug' && isBlocked(task.parentTags))
     : false;
 
+  const storyDominant = story ? storyDominantState(story) : null;
+  const taskIdStr = String(task.id);
+
   return (
     <div className="r21-focal">
-      <div className="r21-focal-context">
-        <button type="button" onClick={() => onOpenItem(parent ? parent.id : task.id)}>
-          <span className="kind">{parent ? 'Story' : task.type}</span>
-          {parent && (
-            <>
-              <span className="sep">·</span>
-              <span className="story-title">{parent.title}</span>
-              <span className="sep">·</span>
-              <Mono className="id">#{parent.id}</Mono>
-            </>
-          )}
-        </button>
-      </div>
+      {story ? (
+        <header className="r21-focal-story">
+          <div className="r21-focal-story-meta">
+            <span className={`r21-daily-kind kind-${kindSlug(story.type)}`}>{story.type}</span>
+            <Mono className="r21-focal-story-id">#{story.id}</Mono>
+            {storyDominant && (
+              <span className={`r21-daily-state state-${storyDominant}`}>{storyStateLabel(storyDominant)}</span>
+            )}
+          </div>
+          <h1 className="r21-focal-story-title">
+            <button type="button" onClick={() => onOpenItem(story.id)}>{story.title}</button>
+          </h1>
+        </header>
+      ) : (
+        <>
+          <div className="r21-focal-id"><Mono>#{task.id}</Mono></div>
+          <h1 className="r21-focal-title">{task.title}</h1>
+        </>
+      )}
 
-      <div className="r21-focal-id"><Mono>#{task.id}</Mono></div>
-      <h1 className="r21-focal-title">{task.title}</h1>
       {(taskBlocked || parentBlocked) && (
         <div className="r21-focal-blocked">
           <span className="r21-blocked-pill">blocked</span>
@@ -774,28 +788,75 @@ function R21Focus({
         </div>
       )}
 
-      <div className="r21-focal-meta">
-        <span className="r21-live-pill">live</span>
-        {startedAt && <span className="r21-since">started <span className="v">{startedAt}</span></span>}
-        <span className="r21-grow" />
-        <span className="r21-num">
-          <span className="cap">LOGGED</span>
-          <span className="val">{logged}</span>
-          {task.sessionCount > 0 && <span className="sub">· {task.sessionCount} sitting{task.sessionCount === 1 ? '' : 's'}</span>}
-        </span>
-        <span className="r21-num">
-          <span className="cap">COMPLETED</span>
-          <span className={`val ${task.completedWork == null ? 'is-missing' : ''}`}>{completed}</span>
-        </span>
-        <span className="r21-num">
-          <span className="cap">ESTIMATE</span>
-          <span className="val">{estimateFor(task)}</span>
-        </span>
-        <span className="r21-num">
-          <span className="cap">REMAINING</span>
-          <span className={`val ${task.remainingWork == null ? 'is-missing' : ''}`}>{remaining}</span>
-        </span>
-      </div>
+      <section className="r21-focal-current">
+        <div className="r21-focal-current-head">
+          <span className="r21-focal-current-label">Currently running</span>
+          <span className="r21-live-pill">live</span>
+          {startedAt && <span className="r21-since">started <span className="v">{startedAt}</span></span>}
+        </div>
+        <button
+          type="button"
+          className="r21-focal-current-task"
+          onClick={() => onOpenItem(task.id)}
+          title="Open task details"
+        >
+          <Mono className="r21-focal-current-id">#{task.id}</Mono>
+          <span className="r21-focal-current-title">{task.title}</span>
+        </button>
+        <div className="r21-focal-meta">
+          <span className="r21-num">
+            <span className="cap">LOGGED</span>
+            <span className="val">{logged}</span>
+            {task.sessionCount > 0 && <span className="sub">· {task.sessionCount} sitting{task.sessionCount === 1 ? '' : 's'}</span>}
+          </span>
+          <span className="r21-num">
+            <span className="cap">COMPLETED</span>
+            <span className={`val ${task.completedWork == null ? 'is-missing' : ''}`}>{completed}</span>
+          </span>
+          <span className="r21-num">
+            <span className="cap">ESTIMATE</span>
+            <span className="val">{estimateFor(task)}</span>
+          </span>
+          <span className="r21-num">
+            <span className="cap">REMAINING</span>
+            <span className={`val ${task.remainingWork == null ? 'is-missing' : ''}`}>{remaining}</span>
+          </span>
+        </div>
+      </section>
+
+      {story && story.tasks.length > 0 && (
+        <section className="r21-focal-tasks">
+          <div className="r21-focal-tasks-head">
+            <span className="r21-focal-tasks-title">Tasks in this story</span>
+            <span className="r21-focal-tasks-count">{story.tasks.length}</span>
+          </div>
+          <ul className="r21-focal-tasks-list">
+            {story.tasks.map(t => {
+              const isLive = String(t.id) === taskIdStr;
+              const stateClass = standupTaskStateClass(t.state);
+              const tRem = t.remainingWork != null ? `${Math.round(t.remainingWork)}h` : '—';
+              return (
+                <li key={t.id} className={`r21-focal-task is-state-${stateClass} ${isLive ? 'is-live' : ''}`}>
+                  <button type="button" onClick={() => onOpenItem(t.id)}>
+                    <span className={`r21-focal-task-state state-${stateClass}`}>{t.state}</span>
+                    <span className="r21-focal-task-title">{t.title}</span>
+                    {isLive && <span className="r21-focal-task-live">live</span>}
+                    <span className="r21-grow" />
+                    <span className="r21-num is-compact">
+                      <span className="cap">EST</span>
+                      <span className="val">{estimateFor(t)}</span>
+                    </span>
+                    <span className="r21-num is-compact">
+                      <span className="cap">REM</span>
+                      <span className={`val ${t.remainingWork == null ? 'is-missing' : ''}`}>{tRem}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {secondary && (
         <button className="r21-also" onClick={onPromoteSecondary} title="Make this the focus instead">

@@ -2241,6 +2241,67 @@ html, body {
 .r21-focal-id { font-family: var(--font-mono); font-feature-settings: "tnum" 1; font-size: 15px; color: var(--ink-3); margin-bottom: 14px; }
 .r21-focal-title { font-size: 44px; line-height: 1.1; letter-spacing: -0.025em; font-weight: 400; color: var(--ink-0); margin: 0; text-wrap: pretty; max-width: 24ch; }
 .r21-focal-meta { display: flex; align-items: baseline; gap: 22px; flex-wrap: wrap; margin-top: 22px; padding-bottom: 22px; border-bottom: 1px solid var(--line-hair); }
+
+/* Story headline (Focus mode): story is the top-level subject; the live
+   task and siblings get shown underneath. */
+.r21-focal-story { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+.r21-focal-story-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.r21-focal-story-id { font-family: var(--font-mono); font-feature-settings: "tnum" 1; font-size: 14px; color: var(--ink-3); }
+.r21-focal-story-title { font-size: 44px; line-height: 1.1; letter-spacing: -0.025em; font-weight: 400; color: var(--ink-0); margin: 0; text-wrap: pretty; max-width: 28ch; }
+.r21-focal-story-title button { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; -webkit-appearance: none; appearance: none; }
+.r21-focal-story-title button:hover { color: var(--accent); }
+
+/* "Currently running" — the live task slot, sits between the story
+   headline and the sibling task list. */
+.r21-focal-current { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; padding: 18px 22px; background: var(--surface-3); border: 1px solid var(--line-soft); border-left: 3px solid var(--accent); border-radius: 14px; }
+.r21-focal-current-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.r21-focal-current-label { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; }
+.r21-focal-current-task { display: inline-flex; align-items: baseline; gap: 12px; background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; -webkit-appearance: none; appearance: none; }
+.r21-focal-current-task:hover .r21-focal-current-title { color: var(--accent); }
+.r21-focal-current-id { font-family: var(--font-mono); font-feature-settings: "tnum" 1; font-size: 14px; color: var(--ink-3); }
+.r21-focal-current-title { font-size: 22px; line-height: 1.25; color: var(--ink-0); font-weight: 400; }
+.r21-focal-current .r21-focal-meta { margin-top: 6px; padding-bottom: 0; border-bottom: 0; }
+
+/* "Tasks in this story" — every sibling task under the story, with the
+   live one spotlighted. */
+.r21-focal-tasks { margin-top: 28px; display: flex; flex-direction: column; gap: 10px; }
+.r21-focal-tasks-head { display: flex; align-items: baseline; gap: 10px; }
+.r21-focal-tasks-title { font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
+.r21-focal-tasks-count { font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); }
+.r21-focal-tasks-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.r21-focal-task { display: block; }
+.r21-focal-task > button {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  background: var(--surface-3); border: 1px solid var(--line-soft); border-radius: 11px;
+  padding: 12px 16px; font: inherit; color: inherit; text-align: left; cursor: pointer;
+  -webkit-appearance: none; appearance: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.r21-focal-task > button:hover { border-color: var(--accent-hair); background: oklch(0.205 0.022 258 / 0.5); }
+.r21-focal-task.is-live > button {
+  border-color: var(--accent-hair);
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+}
+.r21-focal-task-state {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 6px; flex: none; min-width: 70px; text-align: center;
+}
+.r21-focal-task-state.state-going { color: var(--st-going); background: color-mix(in oklch, var(--st-going) 14%, transparent); }
+.r21-focal-task-state.state-waiting { color: var(--st-waiting); background: color-mix(in oklch, var(--st-waiting) 14%, transparent); }
+.r21-focal-task-state.state-blocked { color: var(--ev-blocker); background: color-mix(in oklch, var(--ev-blocker) 14%, transparent); }
+.r21-focal-task-state.state-done { color: var(--st-done); background: color-mix(in oklch, var(--st-done) 14%, transparent); }
+.r21-focal-task-title { font-size: 14.5px; color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.r21-focal-task-live {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--accent); padding: 3px 8px; border-radius: 6px;
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+  border: 1px solid var(--accent-hair);
+  flex: none;
+}
+.r21-num.is-compact { gap: 5px; }
+.r21-num.is-compact .cap { font-size: 10px; letter-spacing: 0.12em; }
+.r21-num.is-compact .val { font-size: 14px; }
 .r21-live-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 8px; background: var(--accent-soft); border: 1px solid var(--accent-hair); border-radius: 999px; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em; color: var(--accent); line-height: 1; }
 .r21-live-pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
 .r21-since { font-size: 14px; color: var(--ink-3); letter-spacing: 0.04em; }
