@@ -13,6 +13,8 @@ import { getDb } from './db';
 
 const SUMMARY_KEY = 'helper_summary';
 const CAPACITY_NUDGE_KEY = 'capacity_nudge_state';
+const STALE_REMAINING_NUDGE_PREFIX = 'stale_remaining_nudge';
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 /** Once-per-sprint-per-direction guard so the capacity nudge doesn't re-fire. */
 interface StoredCapacityNudge {
@@ -161,5 +163,115 @@ export function ensureCapacityNudge(opts: {
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
   ).run(CAPACITY_NUDGE_KEY, JSON.stringify(next));
 
+  return note;
+}
+
+/**
+ * One row per "going" task that's a candidate for the stale-remaining check.
+ * Caller is responsible for filtering to Task type and 'going' state.
+ */
+export interface StaleRemainingCandidate {
+  workItemId: number;
+  title: string;
+  remainingWork: number | null;
+}
+
+/**
+ * Scan going-state tasks for stale Remaining Work. A task is "stale" when:
+ *   - no row currently has an open session on it (open session = active work,
+ *     not stale by definition), AND
+ *   - the most recent session_event on this task is older than `staleDays`
+ *     calendar days, OR no session_event has ever been recorded.
+ *
+ * For each stale task we add a helper note naming it by title, deduped per
+ * task per sprint via a settings key — same pattern as `ensureCapacityNudge`.
+ * Returns the notes that were freshly added.
+ */
+export function scanStaleRemaining(opts: {
+  sprintName: string;
+  candidates: StaleRemainingCandidate[];
+  staleDays?: number;
+}): HelperNote[] {
+  const staleDays = opts.staleDays ?? 2;
+  const staleMs = staleDays * MS_PER_DAY;
+  const nowMs = Date.now();
+  const db = getDb();
+
+  if (opts.candidates.length === 0) return [];
+
+  const ids = opts.candidates.map(c => c.workItemId);
+  const placeholders = ids.map(() => '?').join(',');
+
+  const openRows = db
+    .prepare(`SELECT DISTINCT work_item_id FROM sessions WHERE ended_at IS NULL AND work_item_id IN (${placeholders})`)
+    .all(...ids) as { work_item_id: number }[];
+  const openIds = new Set(openRows.map(r => r.work_item_id));
+
+  const lastRows = db
+    .prepare(
+      `SELECT work_item_id, MAX(created_at) AS last_at
+         FROM session_events
+        WHERE work_item_id IN (${placeholders})
+        GROUP BY work_item_id`,
+    )
+    .all(...ids) as { work_item_id: number; last_at: string | null }[];
+  const lastByItem = new Map<number, string>();
+  for (const r of lastRows) {
+    if (r.last_at) lastByItem.set(r.work_item_id, r.last_at);
+  }
+
+  const created: HelperNote[] = [];
+  for (const c of opts.candidates) {
+    if (openIds.has(c.workItemId)) continue;
+    const lastAt = lastByItem.get(c.workItemId);
+    let daysSince: number | null = null;
+    if (lastAt) {
+      const ageMs = nowMs - Date.parse(lastAt);
+      if (ageMs < staleMs) continue;
+      daysSince = Math.floor(ageMs / MS_PER_DAY);
+    }
+
+    const note = ensureStaleRemainingNudge({
+      sprintName: opts.sprintName,
+      workItemId: c.workItemId,
+      title: c.title,
+      remainingWork: c.remainingWork,
+      daysSince,
+    });
+    if (note) created.push(note);
+  }
+  return created;
+}
+
+function ensureStaleRemainingNudge(opts: {
+  sprintName: string;
+  workItemId: number;
+  title: string;
+  remainingWork: number | null;
+  daysSince: number | null;
+}): HelperNote | null {
+  const key = `${STALE_REMAINING_NUDGE_PREFIX}_${opts.sprintName}_${opts.workItemId}`;
+  const db = getDb();
+  const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as
+    | { value: string }
+    | undefined;
+  if (row) return null;
+
+  const displayName = `**${opts.title}** (#${opts.workItemId})`;
+  const remPart =
+    opts.remainingWork != null
+      ? `Remaining still shows ${Math.round(opts.remainingWork)}h`
+      : "Remaining hasn't been touched";
+  const lead =
+    opts.daysSince != null && opts.daysSince > 0
+      ? `${displayName} has been going for ${opts.daysSince} days but ${remPart}`
+      : `${displayName} has been going with no activity yet and ${remPart}`;
+  const body = `${lead} — update Remaining or move the task off your plate.`;
+
+  const note = addNote(body);
+  db.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  ).run(key, new Date().toISOString());
   return note;
 }

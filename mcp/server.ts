@@ -50,7 +50,6 @@ import * as timerService from '../server/timer-service.js';
 import { getWorkItem, addWorkItemComment } from '../server/ado.js';
 import { markSHCreated } from '../server/sh-created.js';
 import {
-  clearCompletedAutoFillMarker,
   createStory,
   createTask,
   ensureActive,
@@ -58,10 +57,8 @@ import {
   reparent,
   setCompletedWork,
   setEffortWithDerivedPoints,
-  setEstimate,
   setIterationPath,
   setRemaining,
-  setRemainingPriorToCloseMarker,
   setStateBucket,
   transitionFromBlocked,
   transitionToBlocked,
@@ -553,11 +550,12 @@ approved 2026-06-01.
     silently. Same philosophy as session_start auto-flip: you're starting
     work, ADO should reflect reality. No prompt.
   - When a task's work is FINISHED (clear from the progress events you've
-    logged), ASK Moran plainly: "task #N looks done — want me to close
-    it?" Only after he says yes:
-        workitem_edit({ workItemId: <task id>, state: 'done' })
-    Done writes still need explicit confirmation per the close-the-loop
-    rule. NEVER auto-done without his nod.
+    logged), ASK Moran plainly: "**<task title>** (#<id>) looks done — want
+    me to close it?" Only after he says yes, call \`session_end\` with
+    \`done: true\` and \`completedHoursAfter: <agreed hours>\` — that's
+    the ONLY path that closes a task properly (pushes Completed Work and
+    zeros Remaining Work in one move). \`workitem_edit\` cannot close
+    tasks; the schema rejects \`state: 'done'\` outright.
   - When focus shifts from one task to another within the same session,
     optionally drop a \`session_log\` "focus" event mentioning the new task
     so his activity feed shows the movement.
@@ -674,9 +672,33 @@ through the life of the task.
     "Completed = 6h (a couple over the 4h estimate). Sound right?".
     Pass 6 as completedHoursAfter.
   - Session time (the silent timer) is a SECONDARY signal — useful for
-    "you've spent 5h, estimate was 4h, want to bump Remaining or
-    Estimate?" nudges. It does NOT auto-drive CompletedWork — the
-    burndown does.
+    "you've spent 5h, estimate was 4h, want to bump Remaining?" nudges.
+    It does NOT auto-drive CompletedWork — the burndown does.
+
+EFFORT DISCIPLINE — non-negotiable rules sprint-helper enforces:
+  1. Original Estimate is set ONCE at task_create and never edited
+     after. It exists as the variance baseline — what Moran first put
+     down before any work happened. The \`workitem_edit\` tool refuses
+     attempts to change it; if you find yourself wanting to "fix" an
+     estimate that turned out too low, raise RemainingWork instead.
+  2. Remaining Work is the live signal — keep it fresh. As Moran works,
+     burn it down via \`session_log(remainingHoursAfter)\`. If a task
+     turns out larger than the original estimate, raise Remaining
+     (Original stays put for variance). This is what the delivery
+     manager's capacity bars actually read.
+  3. Closing a task is ONLY done via \`session_end({done:true,
+     completedHoursAfter})\`. \`workitem_edit\` refuses
+     \`state: 'done'\`. session_end is the path that pushes the final
+     Completed Work and zeros Remaining Work atomically; any other
+     path leaves the task half-closed.
+  4. Effort on a Story is set at \`story_create\`; Story Points get
+     derived from it in the same write. To revise Effort later, use
+     \`workitem_edit({effort: X})\` — Story Points re-derive
+     automatically. Never pass \`storyPoints\` independently anywhere.
+  5. Stale Remaining gets flagged. If a task sits in 'going' with no
+     session activity for 2+ days, sprint-helper drops a helper note
+     naming the task. That's the nudge to update Remaining or move
+     the task off your plate. Don't ignore those notes.
 
 AS WORK PROCEEDS:
   - The open session tracks time automatically. You do NOT start, pause, or
@@ -1251,12 +1273,11 @@ server.registerTool(
   {
     title: 'Edit work item fields',
     description:
-      "Update an existing work item in Azure DevOps. Covers state, effort fields, story-level effort, and tags. State uses Moran's plain English buckets: 'waiting' (New/To Do/Proposed), 'going' (Active/In Progress/Doing), 'done' (Closed/Done/Resolved). Task effort fields are in hours: originalEstimate (the plan), remainingWork (burns down as work happens), and completedWork (climbs up — what the DM watches). Story-level: pass `effort` (total hours) and Story Points are derived in the same patch (1 point = 1 workday, half-point rounding); do not pass storyPoints separately. Tags: addTags adds them (case-insensitive dedup), removeTags removes them, both can be passed together.",
+      "Update an existing work item in Azure DevOps. Covers state (waiting / going only — close tasks via session_end, not here), Remaining Work, Completed Work, story-level Effort, tags, and iteration path. State uses Moran's plain English buckets: 'waiting' (New/To Do/Proposed) and 'going' (Active/In Progress/Doing). Closing a task is NOT done here — that route is session_end({done:true, completedHoursAfter}). Task effort fields, in hours: remainingWork (the live signal — keep it fresh as work progresses; this is what the delivery manager's view actually reads) and completedWork (climbs up — overwrite, not additive). Original Estimate is NOT editable here — it's set once at task_create and stays put as the variance baseline; if a task is taking longer, raise Remaining Work instead. Story-level: pass `effort` (total hours) and Story Points are derived in the same patch (1 point = 1 workday, half-point rounding); do not pass storyPoints separately. Tags: addTags adds them (case-insensitive dedup), removeTags removes them, both can be passed together.",
     inputSchema: {
       workItemId: workItemIdSchema,
-      state: z.enum(['waiting', 'going', 'done']).optional(),
-      originalEstimate: z.number().min(0).optional().describe('Task field, in hours.'),
-      remainingWork: z.number().min(0).optional().describe('Task field, in hours. Burns down as work happens.'),
+      state: z.enum(['waiting', 'going']).optional().describe("Move the item between 'waiting' and 'going'. To CLOSE a task, use session_end({done:true, completedHoursAfter}) instead — that's the only path that pushes Completed Work and zeros Remaining Work in one move."),
+      remainingWork: z.number().min(0).optional().describe('Task field, in hours. The live signal — burns down as work happens. If a task is taking longer than estimated, raise this number (Original Estimate stays fixed for variance reporting).'),
       completedWork: z.number().min(0).optional().describe('Task field, in hours. Climbs up as work happens — overwrite (not additive). The DM tracks the sprint by this field.'),
       effort: z.number().min(0).optional().describe('Story field, in hours. Total hours he thinks the story is. StoryPoints is derived from this automatically (1 point = 1 workday) and written in the same patch — do not try to set points separately.'),
       addTags: z.array(z.string().min(1)).optional().describe('Tag names to add to this item (e.g. ["Blocked"]). Case-insensitive dedup against existing tags.'),
@@ -1264,19 +1285,18 @@ server.registerTool(
       iterationPath: z.string().min(1).optional().describe('Full ADO iteration path, backslash-separated (e.g. "IDP - DevOps\\\\2026" for the year-level, or "IDP - DevOps\\\\2026\\\\Q2\\\\26_11" for a specific sprint). Use this to move an item to a different sprint or to a parent iteration node.'),
     },
   },
-  async ({ workItemId, state, originalEstimate, remainingWork, completedWork, effort, addTags, removeTags, iterationPath }) => {
+  async ({ workItemId, state, remainingWork, completedWork, effort, addTags, removeTags, iterationPath }) => {
     if (
-      state == null && originalEstimate == null && remainingWork == null && completedWork == null &&
+      state == null && remainingWork == null && completedWork == null &&
       effort == null &&
       (addTags == null || addTags.length === 0) &&
       (removeTags == null || removeTags.length === 0) &&
       iterationPath == null
     ) {
-      return errorResult('At least one of state, originalEstimate, remainingWork, completedWork, effort, addTags, removeTags, iterationPath is required.');
+      return errorResult('At least one of state, remainingWork, completedWork, effort, addTags, removeTags, iterationPath is required.');
     }
     const applied: {
       state?: string;
-      originalEstimate?: number;
       remainingWork?: number;
       completedWork?: number;
       storyPoints?: number;
@@ -1285,30 +1305,13 @@ server.registerTool(
       iterationPath?: string;
     } = {};
     try {
-      const isDoneTransition = state === 'done';
       if (state) applied.state = await setStateBucket(workItemId, state as StateBucket);
-      if (originalEstimate != null) {
-        await setEstimate(workItemId, originalEstimate);
-        applied.originalEstimate = originalEstimate;
-      }
       if (remainingWork != null) {
         await setRemaining(workItemId, remainingWork);
-        // If this same call also moved the item to done, the auto-capture in
-        // setStateBucket recorded the pre-close Remaining. Moran's explicit
-        // value should win — overwrite the capture so a future reopen
-        // restores the number he asked for.
-        if (isDoneTransition && applied.state) {
-          setRemainingPriorToCloseMarker(workItemId, remainingWork);
-        }
         applied.remainingWork = remainingWork;
       }
       if (completedWork != null) {
         await setCompletedWork(workItemId, completedWork);
-        // Explicit Completed wins; cancel any auto-fill rollback that would
-        // unwind it on the next reopen.
-        if (isDoneTransition && applied.state) {
-          clearCompletedAutoFillMarker(workItemId);
-        }
         applied.completedWork = completedWork;
       }
       if (effort != null) {

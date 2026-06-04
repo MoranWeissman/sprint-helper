@@ -12,7 +12,7 @@
 import type { Capacity } from './capacity';
 import { buildDashboardCached } from './dashboard-cache';
 import { getDb } from './db';
-import { ensureCapacityNudge, getHelperNotes } from './helper-notes';
+import { ensureCapacityNudge, getHelperNotes, scanStaleRemaining } from './helper-notes';
 import { getPlanningHome } from './planning-home';
 import { getLastEventTimestampMap, listActiveSessions, type SessionRow } from './sessions';
 
@@ -272,6 +272,17 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
       plannedHours: capacity.plannedHours,
     });
   }
+
+  // Stale-Remaining scan: tasks in 'going' state with no session activity in
+  // 2+ days get a helper note naming the task. Deduped per task per sprint.
+  const staleCandidates = payload.workItems.inProgress
+    .filter(w => w.type.toLowerCase() === 'task')
+    .map(w => ({
+      workItemId: Number(w.id),
+      title: w.title,
+      remainingWork: w.remainingWork ?? null,
+    }));
+  scanStaleRemaining({ sprintName: sprint.name, candidates: staleCandidates });
 
   // Read helper notes AFTER the nudge, so a just-added capacity nudge shows
   // up in this same orient response. (Cached payload.helperNotes would miss it.)
