@@ -128,11 +128,18 @@ function minutesInWindow(sessions: SessionRow[], startISO: string, endISO: strin
 }
 
 interface BuildOpts {
-  /** Used to look up the task title + parent story for each work-item id. */
-  taskMeta: Map<number, { title: string; parentTitle: string | null }>;
+  /**
+   * Used to look up the title, parent story, and work-item type for each id.
+   * Type lets the standup skip Feature/Epic entries — sessions on those are
+   * always a data mistake (sessions belong on Tasks, occasionally Stories),
+   * and Moran doesn't want them appearing in his Yesterday/Today read.
+   */
+  taskMeta: Map<number, { title: string; parentTitle: string | null; type: string }>;
   /** Override "now" for tests; defaults to the current clock. */
   now?: Date;
 }
+
+const STANDUP_SKIP_TYPES = new Set(['feature', 'epic']);
 
 function entriesForWindow(
   startISO: string,
@@ -156,6 +163,7 @@ function entriesForWindow(
   const entries: StandupEntry[] = [];
   for (const [workItemId, rows] of byItem) {
     const meta = opts.taskMeta.get(workItemId);
+    if (meta && STANDUP_SKIP_TYPES.has(meta.type.toLowerCase())) continue;
     const title = meta?.title ?? `#${workItemId}`;
     const parentStoryTitle = meta?.parentTitle ?? null;
 

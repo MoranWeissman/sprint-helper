@@ -343,9 +343,9 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
 
   // Build the standup block — pulls yesterday + today entries from the
   // sessions DB, joined to task titles + parent story titles for display.
-  const taskMeta = new Map<number, { title: string; parentTitle: string | null }>();
+  const taskMeta = new Map<number, { title: string; parentTitle: string | null; type: string }>();
   for (const w of items) {
-    taskMeta.set(w.id, { title: w.title, parentTitle: w.parentTitle ?? null });
+    taskMeta.set(w.id, { title: w.title, parentTitle: w.parentTitle ?? null, type: w.type });
   }
   const standup = buildStandup({ taskMeta });
 
