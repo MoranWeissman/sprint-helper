@@ -31,6 +31,7 @@ import { buildDashboardCached, invalidateDashboardCache } from '../server/dashbo
 import { sprintCheckIn } from '../server/guardrail.js';
 import { addNote, getHelperNotes, setSummary } from '../server/helper-notes.js';
 import { buildEstimateAnchor } from '../server/estimate-anchor.js';
+import { checkStaleLogNudge } from '../server/log-nudge.js';
 import { buildOrientPacket } from '../server/orient.js';
 import { getPlanningHome, isPlanningHomeCwd, setPlanningHome } from '../server/planning-home.js';
 import { findGaps } from '../server/planning.js';
@@ -1148,22 +1149,31 @@ const server = new McpServer(
 /*  Helpers                                                      */
 /* ============================================================ */
 
-/** MCP results return content blocks; this is the boring JSON-in-text variant. */
+/**
+ * MCP results return content blocks; this is the boring JSON-in-text variant.
+ * Every successful tool response also gets a stale-session-log check appended
+ * — if any open session hasn't seen activity in 45 min, the assistant gets
+ * a one-line nudge inside its own context. See server/log-nudge.ts.
+ */
 function jsonResult(value: unknown) {
-  return {
-    content: [
-      {
-        type: 'text' as const,
-        text: JSON.stringify(value, null, 2),
-      },
-    ],
-  };
+  const blocks: Array<{ type: 'text'; text: string }> = [
+    {
+      type: 'text',
+      text: JSON.stringify(value, null, 2),
+    },
+  ];
+  const nudge = checkStaleLogNudge();
+  if (nudge) blocks.push({ type: 'text', text: nudge });
+  return { content: blocks };
 }
 
 function errorResult(message: string) {
+  const blocks: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: message }];
+  const nudge = checkStaleLogNudge();
+  if (nudge) blocks.push({ type: 'text', text: nudge });
   return {
     isError: true,
-    content: [{ type: 'text' as const, text: message }],
+    content: blocks,
   };
 }
 
