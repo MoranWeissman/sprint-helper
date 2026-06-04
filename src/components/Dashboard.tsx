@@ -710,12 +710,6 @@ function extractTitleFromDisplayName(displayName: string): string {
   return m ? m[1] : displayName;
 }
 
-function formatMinutes(min: number): string {
-  if (min < 60) return `${min}m`;
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m === 0 ? `${h}h` : `${h}h ${m}m`;
-}
 
 function formatStandupDate(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);

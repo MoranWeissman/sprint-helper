@@ -107,7 +107,7 @@ function sessionsTouchingWindow(startISO: string, endISO: string): SessionRow[] 
   // Any session whose [started_at, ended_at-or-now] interval overlaps the
   // window. Open sessions (ended_at IS NULL) count as ending "now".
   return getDb()
-    .prepare<[string, string], SessionRow>(
+    .prepare<[string, string, string], SessionRow>(
       `SELECT id, work_item_id, started_at, ended_at
          FROM sessions
         WHERE datetime(started_at) < datetime(?)
