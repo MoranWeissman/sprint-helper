@@ -3946,7 +3946,7 @@ html, body {
   font-size: 20px; color: var(--ink-3); font-weight: 400;
 }
 .r22-rail-remaining .hero .of {
-  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  font-size: 12px; letter-spacing: 0;
   color: var(--ink-3); align-self: flex-end; margin-bottom: 4px; margin-left: auto;
 }
 .r22-rail-remaining .bar {
