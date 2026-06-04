@@ -742,13 +742,37 @@ function R21Focus({
   onOpenItem: (id: string) => void;
   onPromoteSecondary: () => void;
 }) {
+  // null = story view (default); a task id = drilled into that task's
+  // activity feed. Click a task in the list to drill in; click "Back"
+  // to return.
+  const [drilledTaskId, setDrilledTaskId] = useState<string | null>(null);
+
+  const drilledTask =
+    story && drilledTaskId
+      ? story.tasks.find(t => String(t.id) === drilledTaskId) ?? null
+      : null;
+
+  if (drilledTask && story) {
+    return (
+      <FocusTaskDrill
+        task={drilledTask}
+        story={story}
+        onBack={() => setDrilledTaskId(null)}
+        onOpenItem={onOpenItem}
+      />
+    );
+  }
+
   const parent = task.parent;
   const loggedSec = Math.round((task.completedWork ?? 0) * 3600) + task.localUncapturedSeconds;
   const logged = fmtHM(loggedSec, 0);
   const startedAt = task.activeSession ? fmtClockISO(task.activeSession.startedAt) : '';
   const remaining = task.remainingWork != null ? `${Math.round(task.remainingWork)}h` : '—';
   const completed = task.completedWork != null ? `${Math.round(task.completedWork)}h` : '—';
-  const events = task.recentActivity;
+  // Story view shows STORY-level rolled-up activity (across all child tasks).
+  // Drill-in view shows per-task activity. This keeps the bottom feed
+  // useful even when individual tasks haven't logged yet.
+  const events = story ? story.recentActivity : task.recentActivity;
   const taskBlocked = isBlockedState(task.state) || (task.type === 'Bug' && isBlocked(task.tags));
   const parentBlocked = parent
     ? isBlockedState(parent.state) || (parent.type === 'Bug' && isBlocked(task.parentTags))
@@ -797,11 +821,12 @@ function R21Focus({
         <button
           type="button"
           className="r21-focal-current-task"
-          onClick={() => onOpenItem(task.id)}
-          title="Open task details"
+          onClick={() => setDrilledTaskId(String(task.id))}
+          title="See this task's own activity feed"
         >
           <Mono className="r21-focal-current-id">#{task.id}</Mono>
           <span className="r21-focal-current-title">{task.title}</span>
+          <span className="r21-focal-current-arr" aria-hidden="true">→</span>
         </button>
         <div className="r21-focal-meta">
           <span className="r21-num">
@@ -837,7 +862,7 @@ function R21Focus({
               const tRem = t.remainingWork != null ? `${Math.round(t.remainingWork)}h` : '—';
               return (
                 <li key={t.id} className={`r21-focal-task is-state-${stateClass} ${isLive ? 'is-live' : ''}`}>
-                  <button type="button" onClick={() => onOpenItem(t.id)}>
+                  <button type="button" onClick={() => setDrilledTaskId(String(t.id))} title="See this task's activity feed">
                     <span className={`r21-focal-task-state state-${stateClass}`}>{t.state}</span>
                     <span className="r21-focal-task-title">{t.title}</span>
                     {isLive && <span className="r21-focal-task-live">live</span>}
@@ -876,6 +901,94 @@ function R21Focus({
         <div className="r21-feed-list">
           {events.length === 0 ? (
             <div className="r21-feed-empty">Nothing logged yet. Claude Code will note things here as you work.</div>
+          ) : (
+            events.map(e => <ActivityEntry key={e.id} event={e} />)
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FocusTaskDrill({
+  task,
+  story,
+  onBack,
+  onOpenItem,
+}: {
+  task: ApiWorkItem;
+  story: ApiUserStoryGroup;
+  onBack: () => void;
+  onOpenItem: (id: string) => void;
+}) {
+  const loggedSec = Math.round((task.completedWork ?? 0) * 3600) + task.localUncapturedSeconds;
+  const logged = fmtHM(loggedSec, 0);
+  const startedAt = task.activeSession ? fmtClockISO(task.activeSession.startedAt) : '';
+  const remaining = task.remainingWork != null ? `${Math.round(task.remainingWork)}h` : '—';
+  const completed = task.completedWork != null ? `${Math.round(task.completedWork)}h` : '—';
+  const events = task.recentActivity;
+  const taskBlocked = isBlockedState(task.state) || (task.type === 'Bug' && isBlocked(task.tags));
+  const stateClass = standupTaskStateClass(task.state);
+  const isLive = !!task.activeSession;
+
+  return (
+    <div className="r21-focal">
+      <button type="button" className="r21-focal-back" onClick={onBack} title="Back to the story view">
+        <span className="arr" aria-hidden="true">←</span>
+        <span className="lbl">Back to</span>
+        <span className="story">{story.title}</span>
+      </button>
+
+      <div className="r21-focal-story-meta">
+        <span className={`r21-focal-task-state state-${stateClass}`}>{task.state}</span>
+        <Mono className="r21-focal-story-id">#{task.id}</Mono>
+        {isLive && <span className="r21-live-pill">live</span>}
+      </div>
+      <h1 className="r21-focal-title">
+        <button type="button" onClick={() => onOpenItem(task.id)} title="Open task details">
+          {task.title}
+        </button>
+      </h1>
+
+      {taskBlocked && (
+        <div className="r21-focal-blocked">
+          <span className="r21-blocked-pill">blocked</span>
+          <span className="r21-focal-blocked-meta">this task is blocked</span>
+        </div>
+      )}
+
+      <div className="r21-focal-meta">
+        {startedAt && <span className="r21-since">started <span className="v">{startedAt}</span></span>}
+        <span className="r21-grow" />
+        <span className="r21-num">
+          <span className="cap">LOGGED</span>
+          <span className="val">{logged}</span>
+          {task.sessionCount > 0 && <span className="sub">· {task.sessionCount} sitting{task.sessionCount === 1 ? '' : 's'}</span>}
+        </span>
+        <span className="r21-num">
+          <span className="cap">COMPLETED</span>
+          <span className={`val ${task.completedWork == null ? 'is-missing' : ''}`}>{completed}</span>
+        </span>
+        <span className="r21-num">
+          <span className="cap">ESTIMATE</span>
+          <span className="val">{estimateFor(task)}</span>
+        </span>
+        <span className="r21-num">
+          <span className="cap">REMAINING</span>
+          <span className={`val ${task.remainingWork == null ? 'is-missing' : ''}`}>{remaining}</span>
+        </span>
+      </div>
+
+      <div className="r21-feed">
+        <div className="r21-feed-head">
+          <span className="r21-feed-title">Activity for this task</span>
+          <span className="r21-feed-meta">
+            {events.length} {events.length === 1 ? 'entry' : 'entries'}
+          </span>
+        </div>
+        <div className="r21-feed-list">
+          {events.length === 0 ? (
+            <div className="r21-feed-empty">No activity logged for this task yet.</div>
           ) : (
             events.map(e => <ActivityEntry key={e.id} event={e} />)
           )}
