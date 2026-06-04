@@ -4371,3 +4371,225 @@ html, body {
   padding: 0;
   display: block;
 }
+
+/* ============================================================
+   R23 — PLAN v2: meter + numbered steps + unified rows
+   Layered on top of the existing dashboard tokens.
+   ============================================================ */
+
+/* ---- page frame ---- */
+.r12-plan { padding-bottom: 64px; }
+
+/* ---- HEADER + meter row ---- */
+.plan2-head {
+  padding: clamp(18px, 2.2vw, 26px) clamp(18px, 2.6vw, 30px) clamp(16px, 1.8vw, 22px);
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 380px;
+  gap: 30px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+.plan2-head-title { display: flex; flex-direction: column; gap: 6px; }
+.plan2-cap { font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.plan2-h { margin: 0; font-size: clamp(22px, 2.4vw, 30px); font-weight: 300; letter-spacing: -0.02em; color: var(--ink-0); }
+.plan2-sub { margin: 0; font-size: 14px; color: var(--ink-3); }
+.plan2-sub b { color: var(--ink-1); font-weight: 500; }
+
+/* ---- METER ---- */
+.plan2-meter {
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 11px;
+}
+.plan2-meter-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.plan2-meter-label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
+.plan2-meter-verdict {
+  font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  transition: color .25s ease, background .25s ease;
+}
+.plan2-meter-verdict.is-room { color: var(--st-done); background: color-mix(in oklch, var(--st-done) 15%, transparent); border: 1px solid color-mix(in oklch, var(--st-done) 32%, transparent); }
+.plan2-meter-verdict.is-near { color: var(--st-waiting); background: color-mix(in oklch, var(--st-waiting) 16%, transparent); border: 1px solid color-mix(in oklch, var(--st-waiting) 34%, transparent); }
+.plan2-meter-verdict.is-over { color: var(--ev-blocker); background: color-mix(in oklch, var(--ev-blocker) 15%, transparent); border: 1px solid color-mix(in oklch, var(--ev-blocker) 34%, transparent); }
+.plan2-meter-bar { position: relative; height: 9px; border-radius: 5px; background: var(--bg-3); overflow: hidden; }
+.plan2-meter-fill {
+  position: absolute; inset: 0 auto 0 0; border-radius: 5px; width: 0;
+  transition: width .45s cubic-bezier(.22,1,.36,1), background .25s ease;
+  background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+}
+.plan2-meter-fill.is-over { background: linear-gradient(90deg, var(--accent-deep), var(--ev-blocker)); }
+.plan2-meter-foot { display: flex; align-items: baseline; justify-content: space-between; font-size: 12px; color: var(--ink-4); }
+.plan2-meter-foot .n { font-family: var(--font-mono); font-feature-settings: "tnum" 1; color: var(--ink-1); font-size: 14px; }
+.plan2-meter-foot .n.big { color: var(--ink-0); font-size: 16px; }
+
+/* ---- NUMBERED SECTIONS ---- */
+.plan2-section { padding: clamp(16px, 1.8vw, 22px) clamp(18px, 2.6vw, 30px); border-top: 1px solid var(--line); }
+.plan2-section:first-of-type { border-top: none; }
+.plan2-sec-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.plan2-step {
+  flex: none; width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 600; font-family: var(--font-mono);
+  color: var(--accent); background: color-mix(in oklch, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--accent) 32%, transparent);
+}
+.plan2-sec-title { margin: 0; font-size: clamp(15px, 1.4vw, 16px); font-weight: 600; color: var(--ink-0); letter-spacing: -0.01em; }
+.plan2-sec-note { margin-left: auto; font-size: 12.5px; color: var(--ink-4); }
+.plan2-sec-note .n { color: var(--ink-2); font-family: var(--font-mono); }
+
+/* ---- UNIFIED ROW VOCABULARY ---- */
+.plan2-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.plan2-row {
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  border-left: 3px solid var(--line-strong);
+}
+.plan2-row.is-going   { border-left-color: var(--st-going); }
+.plan2-row.is-waiting { border-left-color: var(--st-waiting); }
+.plan2-row.is-blocked { border-left-color: var(--ev-blocker); }
+.plan2-row.is-done    { border-left-color: var(--st-done); }
+
+.plan2-row-main {
+  display: flex; align-items: center; gap: 14px;
+  width: 100%; padding: 13px 16px;
+  background: none; border: 0; font: inherit; text-align: left; color: inherit;
+  cursor: default;
+}
+.plan2-row.is-story > .plan2-row-main { cursor: pointer; }
+.plan2-row.is-story > .plan2-row-main:hover { background: color-mix(in oklch, var(--bg-2) 40%, transparent); border-radius: 9px; }
+.plan2-chevron { flex: none; width: 12px; color: var(--ink-4); font-size: 11px; transition: transform .18s ease; }
+.plan2-chevron.is-spacer { visibility: hidden; }
+.plan2-row.is-open > .plan2-row-main .plan2-chevron { transform: rotate(90deg); }
+
+/* ---- KIND markers (shape carries kind, color stays reserved for state) ---- */
+.plan2-kind {
+  flex: none; display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600;
+  color: var(--ink-4);
+  padding: 3px 8px 3px 6px; border-radius: 6px;
+  background: var(--bg-1); border: 1px solid var(--line-hair);
+  width: 64px; box-sizing: border-box;
+}
+.plan2-kind svg { flex: none; width: 13px; height: 13px; }
+.plan2-kind.k-story { color: var(--ink-2); }
+.plan2-kind.k-task  { color: var(--ink-4); background: transparent; border-color: transparent; padding-left: 0; }
+.plan2-kind.k-bug   { color: var(--ev-blocker); border-color: color-mix(in oklch, var(--ev-blocker) 28%, transparent); }
+
+/* ---- STATE chip ---- */
+.plan2-state {
+  flex: none; font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  padding: 3px 9px; border-radius: 6px; white-space: nowrap;
+  color: var(--ink-1); background: var(--bg-3);
+}
+.plan2-row.is-going .plan2-state   { color: var(--st-going);   background: color-mix(in oklch, var(--st-going) 16%, transparent); }
+.plan2-row.is-waiting .plan2-state { color: var(--st-waiting); background: color-mix(in oklch, var(--st-waiting) 16%, transparent); }
+.plan2-row.is-blocked .plan2-state { color: var(--ev-blocker); background: color-mix(in oklch, var(--ev-blocker) 16%, transparent); }
+
+/* ---- TITLE — the protagonist ---- */
+.plan2-title {
+  flex: 1 1 auto; min-width: 180px;
+  display: flex; align-items: baseline; gap: 9px; min-height: 0;
+  overflow: hidden;
+}
+.plan2-title .t { font-size: 14.5px; color: var(--ink-0); font-weight: 450; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan2-title .id { flex: none; font-family: var(--font-mono); font-size: 12px; color: var(--ink-4); }
+.plan2-title-btn { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; -webkit-appearance: none; appearance: none; display: flex; align-items: baseline; gap: 9px; overflow: hidden; flex: 1 1 auto; min-width: 0; }
+.plan2-title-btn:hover .t { color: var(--accent); }
+
+/* ---- META — labeled stat chips ---- */
+.plan2-meta { flex: none; display: flex; align-items: center; gap: 16px; }
+.plan2-stat { display: flex; flex-direction: column; gap: 1px; text-align: right; }
+.plan2-stat .l { font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-4); }
+.plan2-stat .v { font-size: 13px; font-family: var(--font-mono); font-feature-settings: "tnum" 1; color: var(--ink-1); }
+.plan2-stat .v.is-missing { color: var(--ink-4); }
+.plan2-feature { flex: none; max-width: 200px; font-size: 12px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan2-feature .id { color: var(--ink-4); font-family: var(--font-mono); }
+
+/* ---- ACTIONS ---- */
+.plan2-actions { flex: none; display: flex; gap: 6px; }
+.plan2-act {
+  appearance: none; font: inherit; font-size: 12px; cursor: pointer;
+  padding: 6px 11px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--bg-1); color: var(--ink-2);
+  white-space: nowrap; transition: background .14s, color .14s, border-color .14s;
+}
+.plan2-act:hover:not(:disabled) { color: var(--ink-0); border-color: var(--line-strong); background: var(--bg-2); }
+.plan2-act:disabled { opacity: 0.5; cursor: not-allowed; }
+.plan2-act-pull { border-color: color-mix(in oklch, var(--accent) 45%, var(--line)); color: var(--accent); }
+.plan2-act-pull:hover:not(:disabled) { background: color-mix(in oklch, var(--accent) 16%, transparent); border-color: var(--accent); }
+.plan2-act-done:hover:not(:disabled) { border-color: color-mix(in oklch, var(--st-done) 55%, var(--line)); color: var(--st-done); }
+.plan2-act.is-pulled { color: var(--st-done); border-color: color-mix(in oklch, var(--st-done) 45%, var(--line)); background: color-mix(in oklch, var(--st-done) 12%, transparent); pointer-events: none; }
+.plan2-row.is-pulled { opacity: 0.5; }
+
+/* ---- NESTED tasks under an open story ---- */
+.plan2-children { padding: 2px 12px 12px 40px; display: none; }
+.plan2-row.is-open > .plan2-children { display: block; }
+.plan2-subrows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.plan2-subrow { display: flex; align-items: center; gap: 14px; padding: 9px 4px; border-top: 1px dashed var(--line-hair); }
+.plan2-subrow:first-child { border-top: none; }
+.plan2-subrow .plan2-title { min-width: 120px; }
+.plan2-subrow .plan2-title .t { font-size: 13.5px; color: var(--ink-1); font-weight: 400; }
+.plan2-subrow-empty { font-size: 13px; color: var(--ink-4); font-style: italic; padding: 8px 4px; }
+
+/* ---- BACKLOG level sub-headers ---- */
+.plan2-level { display: flex; align-items: center; gap: 8px; margin: 16px 0 8px; }
+.plan2-level:first-child { margin-top: 4px; }
+.plan2-level-name { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.plan2-level-line { flex: 1; height: 1px; background: var(--line-hair); }
+.plan2-level-count { font-size: 11px; color: var(--ink-4); font-family: var(--font-mono); }
+
+/* ---- GAPS (sanity check) — reuses the row shell but keeps card detail ---- */
+.plan2-gap-intro { margin: 0 0 16px; font-size: 13.5px; line-height: 1.6; color: var(--ink-3); max-width: 64ch; }
+.plan2-gap-group { margin-bottom: 18px; }
+.plan2-gap-group-h { margin: 0 0 9px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.plan2-gap-group-h .id { color: var(--ink-4); font-family: var(--font-mono); font-size: 12px; }
+.plan2-gaps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.plan2-gap { padding: 13px 16px; background: var(--bg-1); border: 1px solid var(--line-hair); border-radius: 11px; }
+.plan2-gap-top { display: flex; align-items: baseline; gap: 9px; margin-bottom: 6px; }
+.plan2-gap-kind { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; font-family: var(--font-mono); padding: 2px 7px; border-radius: 5px; }
+.plan2-gap-kind.k-task  { color: var(--ink-2); background: var(--bg-3); }
+.plan2-gap-kind.k-story { color: var(--st-going); background: color-mix(in oklch, var(--st-going) 18%, transparent); }
+.plan2-gap-name { font-size: 14px; color: var(--ink-1); }
+.plan2-gap-name .id { color: var(--ink-4); font-family: var(--font-mono); font-size: 12px; margin-left: 4px; }
+.plan2-gap-missing { font-size: 12.5px; color: var(--ink-3); margin-bottom: 4px; }
+.plan2-gap-missing b { color: var(--st-waiting); font-weight: 500; }
+.plan2-gap-anchor { font-size: 12.5px; color: var(--ink-4); font-style: italic; }
+.plan2-gap-anchor.is-cold { color: color-mix(in oklch, var(--st-waiting) 65%, var(--ink-3)); font-style: normal; }
+
+.plan2-scan {
+  margin-left: auto; appearance: none; font: inherit; font-size: 13px; cursor: pointer;
+  padding: 7px 14px; border-radius: 8px;
+  border: 1px solid color-mix(in oklch, var(--accent) 50%, var(--line));
+  background: color-mix(in oklch, var(--accent) 18%, transparent); color: var(--accent);
+}
+.plan2-scan:hover:not(:disabled) { background: color-mix(in oklch, var(--accent) 28%, transparent); }
+.plan2-scan:disabled { opacity: 0.6; cursor: wait; }
+.plan2-badge { font-size: 11px; font-family: var(--font-mono); color: var(--bg-0); background: var(--st-waiting); border-radius: 999px; padding: 1px 7px; margin-left: 8px; }
+
+/* ---- PROMPT panel ---- */
+.plan2-prompt { margin-top: 14px; background: var(--bg-1); border: 1px solid var(--line-soft); border-radius: 12px; padding: 14px 16px; }
+.plan2-prompt-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.plan2-prompt-cap { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.plan2-prompt-actions { display: flex; gap: 8px; }
+.plan2-prompt-btn { appearance: none; font: inherit; font-size: 12px; cursor: pointer; padding: 5px 12px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg-2); color: var(--ink-2); }
+.plan2-prompt-btn:hover { color: var(--ink-0); border-color: var(--line-strong); }
+.plan2-prompt-btn.is-primary { border-color: color-mix(in oklch, var(--accent) 50%, var(--line)); color: var(--accent); }
+.plan2-prompt-pre { margin: 0; padding: 13px 15px; background: var(--bg-0); border: 1px solid var(--line-hair); border-radius: 9px; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65; color: var(--ink-2); white-space: pre-wrap; overflow: auto; }
+.plan2-prompt-hint { margin: 9px 0 0; font-size: 12px; color: var(--ink-4); }
+
+/* ---- Empty + error states ---- */
+.plan2-empty { font-size: 13px; color: var(--ink-3); padding: 12px 16px; background: var(--bg-1); border: 1px dashed var(--line-soft); border-radius: 11px; }
+.plan2-error { font-size: 13px; color: var(--ev-blocker); padding: 12px 16px; background: color-mix(in oklch, var(--ev-blocker) 8%, transparent); border: 1px solid color-mix(in oklch, var(--ev-blocker) 28%, transparent); border-radius: 11px; margin: 0 30px 12px; display: flex; gap: 12px; align-items: center; }
+.plan2-error button { background: none; border: 0; color: inherit; cursor: pointer; text-decoration: underline; font: inherit; }
+
+/* ---- Container queries: drop metadata BEFORE the title suffers ---- */
+@container shell (max-width: 760px) { .plan2-feature { display: none; } }
+@container shell (max-width: 720px) { .plan2-head { grid-template-columns: 1fr; gap: 16px; } }
+@container shell (max-width: 620px) { .plan2-meta .plan2-stat.is-secondary { display: none; } }
+@container shell (max-width: 560px) { .plan2-sec-head { flex-wrap: wrap; } .plan2-sec-note { margin-left: 36px; } }
+@container shell (max-width: 520px) { .plan2-meta { display: none; } .plan2-row-main { flex-wrap: wrap; row-gap: 10px; } .plan2-title { flex-basis: 100%; order: 2; } .plan2-actions { order: 3; margin-left: auto; } }
+
+/* Container queries above need `.r21-main` to be a query container. */
+.r21-main { container: shell / inline-size; }

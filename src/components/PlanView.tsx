@@ -1,10 +1,11 @@
-// src/components/PlanView.tsx
-import { useEffect, useState } from 'react';
+// src/components/PlanView.tsx — Plan v2 (header + meter + numbered steps + unified rows)
+import { useEffect, useMemo, useState } from 'react';
 import {
   fetchCockpit,
   fetchPlanningGaps,
   markWorkItemDone,
   moveWorkItemToIteration,
+  type ApiCockpitBacklogStory,
   type ApiCockpitOpenStory,
   type ApiCockpitOpenTask,
   type ApiCockpitPayload,
@@ -24,9 +25,7 @@ type CockpitState =
   | { status: 'error'; error: string };
 
 interface PlanViewProps {
-  /** Open the work-item detail drawer for the given id (number coerced to string). */
   onOpenItem?: (id: string) => void;
-  /** Called when the gap list contains items SH itself created (for the retro hook later). */
   onScanComplete?: (gapCount: number) => void;
 }
 
@@ -41,42 +40,46 @@ function readPersistedScan(): ApiPlanningGapsResponse | null {
     return null;
   }
 }
-
 function writePersistedScan(data: ApiPlanningGapsResponse): void {
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify(data));
-  } catch {
-    /* fail silently */
-  }
+  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch { /* ignore */ }
 }
-
 function clearPersistedScan(): void {
-  try {
-    localStorage.removeItem(LS_KEY);
-  } catch {
-    /* ignore */
-  }
+  try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
 }
 
 /**
- * Plan mode — the planning ceremony cockpit.
- *
- * Layout:
- *   - Header: current sprint → next sprint
- *   - Open stories in the current sprint, each with its not-done child tasks
- *     and per-task move/close actions
- *   - Pull from backlog (year / quarter / Backlog stories)  [coming next]
- *   - New story creation  [coming next]
- *   - Gaps (sanity check) — the existing gap scanner, collapsed by default,
- *     with a persistent prompt panel
+ * Working days (Sun-Thu) between two ISO date strings, inclusive of both ends.
+ * Mirrors the server's DEFAULT_WORKING_DAYS = [0,1,2,3,4].
  */
+function workingDaysBetween(startISO: string, endISO: string): number {
+  const start = new Date(startISO);
+  const end = new Date(endISO);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+  const cursor = new Date(start);
+  cursor.setHours(0, 0, 0, 0);
+  const stop = new Date(end);
+  stop.setHours(23, 59, 59, 999);
+  let count = 0;
+  while (cursor <= stop) {
+    const day = cursor.getDay();
+    if (day >= 0 && day <= 4) count++;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+}
+
+const WORKDAY_HOURS = 9;
+
 export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
   const [cockpit, setCockpit] = useState<CockpitState>({ status: 'loading' });
   const [actingOn, setActingOn] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  // Which open-story cards are currently expanded to show their open tasks.
-  // Default: all collapsed — scan the grid first, dive into the one you care about.
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  // Session-local tally of effort/hours pulled into the next sprint via the
+  // pull buttons. Resets when Plan re-mounts. The meter reads this against
+  // the next-sprint capacity to show "how much of your time you've spent."
+  const [pulledHoursThisSession, setPulledHoursThisSession] = useState(0);
+
   const toggleExpanded = (id: number) =>
     setExpanded(prev => {
       const next = new Set(prev);
@@ -95,15 +98,22 @@ export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
     }
   };
 
-  useEffect(() => {
-    void refreshCockpit();
-  }, []);
+  useEffect(() => { void refreshCockpit(); }, []);
 
-  const onMoveTask = async (taskId: number, nextSprintPath: string) => {
-    setActingOn(taskId);
+  const nextSprintCap = useMemo(() => {
+    if (cockpit.status !== 'ok') return 0;
+    const ns = cockpit.data.nextSprint;
+    if (!ns) return 0;
+    return workingDaysBetween(ns.startDate, ns.finishDate) * WORKDAY_HOURS;
+  }, [cockpit]);
+
+  const onMoveTask = async (task: ApiCockpitOpenTask, nextSprintPath: string) => {
+    setActingOn(task.id);
     setActionError(null);
     try {
-      await moveWorkItemToIteration(taskId, nextSprintPath);
+      await moveWorkItemToIteration(task.id, nextSprintPath);
+      const credit = task.remainingWork ?? task.originalEstimate ?? 0;
+      if (credit > 0) setPulledHoursThisSession(h => h + credit);
       await refreshCockpit();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Move failed');
@@ -125,11 +135,13 @@ export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
     }
   };
 
-  const onPullBacklog = async (storyId: number, nextSprintPath: string) => {
-    setActingOn(storyId);
+  const onPullBacklog = async (story: ApiCockpitBacklogStory, nextSprintPath: string) => {
+    setActingOn(story.id);
     setActionError(null);
     try {
-      await moveWorkItemToIteration(storyId, nextSprintPath);
+      await moveWorkItemToIteration(story.id, nextSprintPath);
+      const credit = story.effort ?? 0;
+      if (credit > 0) setPulledHoursThisSession(h => h + credit);
       await refreshCockpit();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Pull failed');
@@ -140,15 +152,20 @@ export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
 
   return (
     <div className="r12-plan">
-      <CockpitHeader cockpit={cockpit} />
+      <PlanHeader
+        cockpit={cockpit}
+        pulledHours={pulledHoursThisSession}
+        capHours={nextSprintCap}
+      />
 
       {actionError && (
-        <div className="r12-plan-error" role="alert">
-          {actionError} <button onClick={() => setActionError(null)}>dismiss</button>
+        <div className="plan2-error" role="alert">
+          {actionError}
+          <button onClick={() => setActionError(null)}>dismiss</button>
         </div>
       )}
 
-      <CockpitOpenStoriesSection
+      <CloseOutSection
         cockpit={cockpit}
         actingOn={actingOn}
         expanded={expanded}
@@ -158,42 +175,92 @@ export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
         onOpenItem={onOpenItem}
       />
 
-      <CockpitBacklogSection
+      <PullBacklogSection
         cockpit={cockpit}
         actingOn={actingOn}
         onPullStory={onPullBacklog}
         onOpenItem={onOpenItem}
       />
 
-      <GapSection onScanComplete={onScanComplete} />
+      <SanityCheckSection onScanComplete={onScanComplete} />
     </div>
   );
 }
 
-function CockpitHeader({ cockpit }: { cockpit: CockpitState }) {
-  if (cockpit.status !== 'ok') {
-    return (
-      <div className="r12-cockpit-head">
-        <h2 className="r12-plan-h">Plan</h2>
-        <p className="r12-cockpit-sub">
-          {cockpit.status === 'loading' ? 'Loading…' : cockpit.status === 'error' ? `Couldn't load — ${cockpit.error}` : ''}
-        </p>
-      </div>
-    );
+/* -------------------------------------------------------------------------- */
+/*  HEADER + METER                                                            */
+/* -------------------------------------------------------------------------- */
+
+function PlanHeader({
+  cockpit,
+  pulledHours,
+  capHours,
+}: {
+  cockpit: CockpitState;
+  pulledHours: number;
+  capHours: number;
+}) {
+  const current = cockpit.status === 'ok' ? cockpit.data.currentSprint : null;
+  const next = cockpit.status === 'ok' ? cockpit.data.nextSprint : null;
+
+  const titleCap = current && next
+    ? `Planning · ${current.name} → ${next.name}`
+    : current
+      ? `Planning · ${current.name}`
+      : 'Planning';
+
+  const subText = next
+    ? <>Close out what's open, then pull from the backlog into <b>{next.name}</b>.</>
+    : <>No next sprint scheduled yet — schedule one in Azure DevOps to enable pulling.</>;
+
+  const cap = Math.max(0, Math.round(capHours));
+  const pulled = Math.max(0, Math.round(pulledHours));
+  const left = cap - pulled;
+
+  let verdictText = '0h pulled';
+  let verdictClass: 'is-room' | 'is-near' | 'is-over' = 'is-room';
+  let fillOver = false;
+  if (cap > 0) {
+    if (pulled > cap) { verdictText = `${pulled - cap}h over`; verdictClass = 'is-over'; fillOver = true; }
+    else if (left <= 8) { verdictText = `${left}h left`; verdictClass = 'is-near'; }
+    else { verdictText = `${left}h to spare`; verdictClass = 'is-room'; }
+  } else {
+    verdictText = '— no cap yet';
+    verdictClass = 'is-room';
   }
-  const { currentSprint, nextSprint } = cockpit.data;
+  const pct = cap > 0 ? Math.min(100, Math.round((pulled / cap) * 100)) : 0;
+
   return (
-    <div className="r12-cockpit-head">
-      <h2 className="r12-plan-h">Plan</h2>
-      <p className="r12-cockpit-sub">
-        {currentSprint ? <>current: <strong>{currentSprint.name}</strong></> : <>no current sprint</>}
-        {nextSprint ? <> · next: <strong>{nextSprint.name}</strong></> : <> · no next sprint scheduled</>}
-      </p>
+    <div className="plan2-head">
+      <div className="plan2-head-title">
+        <span className="plan2-cap">{titleCap}</span>
+        <h1 className="plan2-h">Plan the next sprint</h1>
+        <p className="plan2-sub">{subText}</p>
+      </div>
+      <div className="plan2-meter">
+        <div className="plan2-meter-top">
+          <span className="plan2-meter-label">
+            {next ? `${next.name} commitment` : 'Next sprint commitment'}
+          </span>
+          <span className={`plan2-meter-verdict ${verdictClass}`}>{verdictText}</span>
+        </div>
+        <div className="plan2-meter-bar">
+          <span className={`plan2-meter-fill ${fillOver ? 'is-over' : ''}`} style={{ width: `${pct}%` }} />
+        </div>
+        <div className="plan2-meter-foot">
+          <span>pulled <span className="n big">{pulled}h</span></span>
+          <span>of <span className="n">{cap}h</span> available</span>
+        </div>
+      </div>
     </div>
   );
 }
 
-function CockpitOpenStoriesSection({
+/* -------------------------------------------------------------------------- */
+/*  STEP 1 — CLOSE OUT current sprint                                         */
+/* -------------------------------------------------------------------------- */
+
+function CloseOutSection({
   cockpit,
   actingOn,
   expanded,
@@ -206,208 +273,223 @@ function CockpitOpenStoriesSection({
   actingOn: number | null;
   expanded: Set<number>;
   onToggleExpanded: (id: number) => void;
-  onMoveTask: (taskId: number, nextSprintPath: string) => Promise<void>;
+  onMoveTask: (task: ApiCockpitOpenTask, nextSprintPath: string) => Promise<void>;
   onCloseTask: (taskId: number) => Promise<void>;
   onOpenItem?: (id: string) => void;
 }) {
-  if (cockpit.status !== 'ok') return null;
-  const { currentSprint, nextSprint, openStories } = cockpit.data;
-  if (openStories.length === 0) {
+  if (cockpit.status === 'loading') {
     return (
-      <section className="r12-cockpit-section">
-        <h3 className="r12-cockpit-h">Open stories in {currentSprint?.name ?? 'current sprint'}</h3>
-        <div className="r12-cockpit-empty">Nothing open — everything in this sprint is done.</div>
+      <section className="plan2-section">
+        <SectionHead step={1} title="Close out current sprint" />
+        <div className="plan2-empty">Loading…</div>
       </section>
     );
   }
+  if (cockpit.status === 'error') {
+    return (
+      <section className="plan2-section">
+        <SectionHead step={1} title="Close out current sprint" />
+        <div className="plan2-empty">Couldn't load — {cockpit.error}</div>
+      </section>
+    );
+  }
+  const { currentSprint, nextSprint, openStories } = cockpit.data;
+  const taskRemaining = openStories.reduce((s, st) => s + st.openTasks.length, 0);
+
   return (
-    <section className="r12-cockpit-section">
-      <div className="r12-cockpit-sec-head">
-        <h3 className="r12-cockpit-h">Open stories in {currentSprint?.name ?? 'current sprint'}</h3>
-        <span className="r12-cockpit-sec-count">{openStories.length} {openStories.length === 1 ? 'story' : 'stories'}</span>
-      </div>
-      <ul className="r12-cockpit-rows">
-        {openStories.map(s => (
-          <CockpitOpenStoryRow
-            key={s.id}
-            story={s}
-            isExpanded={expanded.has(s.id)}
-            onToggleExpanded={() => onToggleExpanded(s.id)}
-            nextSprintPath={nextSprint?.path ?? null}
-            nextSprintName={nextSprint?.name ?? null}
-            actingOn={actingOn}
-            onMoveTask={onMoveTask}
-            onCloseTask={onCloseTask}
-            onOpenItem={onOpenItem}
-          />
-        ))}
-      </ul>
+    <section className="plan2-section">
+      <SectionHead
+        step={1}
+        title={currentSprint ? `Close out ${currentSprint.name}` : 'Close out current sprint'}
+        note={openStories.length > 0
+          ? <><span className="n">{openStories.length}</span> {openStories.length === 1 ? 'story' : 'stories'} open · <span className="n">{taskRemaining}</span> {taskRemaining === 1 ? 'task' : 'tasks'} remaining</>
+          : null}
+      />
+      {openStories.length === 0 ? (
+        <div className="plan2-empty">Nothing open — everything in this sprint is done.</div>
+      ) : (
+        <ul className="plan2-rows">
+          {openStories.map(story => (
+            <CloseOutStoryRow
+              key={story.id}
+              story={story}
+              isExpanded={expanded.has(story.id)}
+              onToggle={() => onToggleExpanded(story.id)}
+              actingOn={actingOn}
+              nextSprintPath={nextSprint?.path ?? null}
+              nextSprintName={nextSprint?.name ?? null}
+              onMoveTask={onMoveTask}
+              onCloseTask={onCloseTask}
+              onOpenItem={onOpenItem}
+            />
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
 
-function CockpitOpenStoryRow({
+function CloseOutStoryRow({
   story,
   isExpanded,
-  onToggleExpanded,
+  onToggle,
+  actingOn,
   nextSprintPath,
   nextSprintName,
-  actingOn,
   onMoveTask,
   onCloseTask,
   onOpenItem,
 }: {
   story: ApiCockpitOpenStory;
   isExpanded: boolean;
-  onToggleExpanded: () => void;
+  onToggle: () => void;
+  actingOn: number | null;
   nextSprintPath: string | null;
   nextSprintName: string | null;
-  actingOn: number | null;
-  onMoveTask: (taskId: number, nextSprintPath: string) => Promise<void>;
+  onMoveTask: (task: ApiCockpitOpenTask, nextSprintPath: string) => Promise<void>;
   onCloseTask: (taskId: number) => Promise<void>;
   onOpenItem?: (id: string) => void;
 }) {
-  const openCount = story.openTasks.length;
-  const stateClass = `is-${classifyState(story.state)}`;
+  const stateClass = classifyState(story.state);
+  const tasksLabel = `${story.doneTaskCount}/${story.totalTaskCount}`;
   return (
-    <li className={`r12-cockpit-row r12-cockpit-row-story ${stateClass} ${isExpanded ? 'is-expanded' : ''}`}>
-      <div
-        className="r12-cockpit-row-main"
-        role="button"
-        tabIndex={0}
+    <li className={`plan2-row is-story is-${stateClass} ${isExpanded ? 'is-open' : ''}`}>
+      <button
+        type="button"
+        className="plan2-row-main"
+        onClick={onToggle}
         aria-expanded={isExpanded}
-        onClick={onToggleExpanded}
-        onKeyDown={e => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onToggleExpanded();
-          }
-        }}
       >
-        <span className="r12-cockpit-row-chevron" aria-hidden="true">{isExpanded ? '▾' : '▸'}</span>
-        <span className={`r12-cockpit-row-state ${stateClass}`}>{story.state}</span>
-        <button
-          type="button"
-          className="r12-cockpit-row-title"
-          onClick={e => {
-            e.stopPropagation();
-            onOpenItem?.(String(story.id));
-          }}
-          disabled={!onOpenItem}
-          title="Open story details"
-        >
-          <span dangerouslySetInnerHTML={{ __html: linkifyDisplayName(story.displayName) }} />
-        </button>
-        <span className="r12-cockpit-row-counts">
-          {story.doneTaskCount}/{story.totalTaskCount} · {openCount} open
+        <span className="plan2-chevron" aria-hidden="true">▸</span>
+        <KindBadge kind="story" />
+        <StateChip state={story.state} />
+        <span className="plan2-title">
+          <span className="t">{story.title}</span>
+          <span className="id">#{story.id}</span>
         </span>
-        {story.effort != null && story.effort > 0 && (
-          <span className="r12-cockpit-row-hours">{Math.round(story.effort)}h planned</span>
-        )}
+        <span className="plan2-meta">
+          <span className="plan2-stat">
+            <span className="l">tasks</span>
+            <span className="v">{tasksLabel}</span>
+          </span>
+          {story.effort != null && story.effort > 0 && (
+            <span className="plan2-stat is-secondary">
+              <span className="l">effort</span>
+              <span className="v">{Math.round(story.effort)}h</span>
+            </span>
+          )}
+        </span>
         {story.feature && (
-          <span
-            className="r12-cockpit-row-feature"
-            dangerouslySetInnerHTML={{ __html: linkifyDisplayName(story.feature.displayName) }}
-          />
+          <span className="plan2-feature">
+            {story.feature.title} <span className="id">#{story.feature.id}</span>
+          </span>
         )}
-      </div>
+      </button>
       {isExpanded && (
-        <div className="r12-cockpit-row-children">
-          {openCount === 0 ? (
-            <div className="r12-cockpit-no-open-tasks">No open tasks — story is waiting on something else.</div>
-          ) : (
-            <ul className="r12-cockpit-rows r12-cockpit-rows-nested">
-              {story.openTasks.map(t => (
-                <CockpitOpenTaskRow
-                  key={t.id}
-                  task={t}
+        <div className="plan2-children">
+          <ul className="plan2-subrows">
+            {story.openTasks.length === 0 ? (
+              <li className="plan2-subrow-empty">No open tasks — story is waiting on something else.</li>
+            ) : (
+              story.openTasks.map(task => (
+                <CloseOutTaskRow
+                  key={task.id}
+                  task={task}
+                  busy={actingOn === task.id}
                   nextSprintPath={nextSprintPath}
                   nextSprintName={nextSprintName}
-                  busy={actingOn === t.id}
-                  onMove={onMoveTask}
-                  onClose={onCloseTask}
+                  onMoveTask={onMoveTask}
+                  onCloseTask={onCloseTask}
                   onOpenItem={onOpenItem}
                 />
-              ))}
-            </ul>
-          )}
+              ))
+            )}
+          </ul>
         </div>
       )}
     </li>
   );
 }
 
-function CockpitOpenTaskRow({
+function CloseOutTaskRow({
   task,
+  busy,
   nextSprintPath,
   nextSprintName,
-  busy,
-  onMove,
-  onClose,
+  onMoveTask,
+  onCloseTask,
   onOpenItem,
 }: {
   task: ApiCockpitOpenTask;
+  busy: boolean;
   nextSprintPath: string | null;
   nextSprintName: string | null;
-  busy: boolean;
-  onMove: (taskId: number, nextSprintPath: string) => Promise<void>;
-  onClose: (taskId: number) => Promise<void>;
+  onMoveTask: (task: ApiCockpitOpenTask, nextSprintPath: string) => Promise<void>;
+  onCloseTask: (taskId: number) => Promise<void>;
   onOpenItem?: (id: string) => void;
 }) {
-  const stateClass = `is-${classifyState(task.state)}`;
+  const stateClass = classifyState(task.state);
+  const rem = task.remainingWork != null ? `${Math.round(task.remainingWork)}h` : '—';
+  const remMissing = task.remainingWork == null;
   return (
-    <li className={`r12-cockpit-row r12-cockpit-row-task ${stateClass}`}>
-      <div className="r12-cockpit-row-main">
-        <span className="r12-cockpit-row-chevron is-leaf" aria-hidden="true">·</span>
-        <span className={`r12-cockpit-row-state ${stateClass}`}>{task.state}</span>
-        <button
-          type="button"
-          className="r12-cockpit-row-title"
-          onClick={() => onOpenItem?.(String(task.id))}
-          disabled={!onOpenItem}
-          title="Open task details"
-        >
-          <span dangerouslySetInnerHTML={{ __html: linkifyDisplayName(task.displayName) }} />
-        </button>
-        <span className="r12-cockpit-row-hours">
-          {task.remainingWork != null ? `${Math.round(task.remainingWork)}h left` : '—'}
+    <li className={`plan2-subrow plan2-row is-${stateClass}`}>
+      <KindBadge kind="task" />
+      <StateChip state={task.state} />
+      <button
+        type="button"
+        className="plan2-title plan2-title-btn"
+        onClick={() => onOpenItem?.(String(task.id))}
+        disabled={!onOpenItem}
+        title="Open task details"
+      >
+        <span className="t">{task.title}</span>
+        <span className="id">#{task.id}</span>
+      </button>
+      <span className="plan2-meta">
+        <span className="plan2-stat">
+          <span className="l">remaining</span>
+          <span className={`v ${remMissing ? 'is-missing' : ''}`}>{rem}</span>
         </span>
-        <span className="r12-cockpit-row-actions">
-          {nextSprintPath ? (
-            <button
-              type="button"
-              className="r12-cockpit-act r12-cockpit-act-move"
-              disabled={busy}
-              onClick={() => {
-                if (!window.confirm(`Move "${task.title}" to ${nextSprintName ?? 'next sprint'}?`)) return;
-                void onMove(task.id, nextSprintPath);
-              }}
-            >
-              → {nextSprintName ?? 'next'}
-            </button>
-          ) : (
-            <span className="r12-cockpit-act-disabled" title="No next sprint scheduled — create one in Azure DevOps first.">
-              → next (n/a)
-            </span>
-          )}
+      </span>
+      <span className="plan2-actions">
+        {nextSprintPath ? (
           <button
             type="button"
-            className="r12-cockpit-act r12-cockpit-act-done"
+            className="plan2-act plan2-act-pull"
             disabled={busy}
             onClick={() => {
-              if (!window.confirm(`Mark "${task.title}" done? This closes it in Azure DevOps.`)) return;
-              void onClose(task.id);
+              if (!window.confirm(`Move "${task.title}" to ${nextSprintName ?? 'next sprint'}?`)) return;
+              void onMoveTask(task, nextSprintPath);
             }}
           >
-            ✓ done
+            → {nextSprintName ?? 'next'}
           </button>
-        </span>
-      </div>
+        ) : (
+          <button type="button" className="plan2-act" disabled title="No next sprint scheduled.">
+            → next (n/a)
+          </button>
+        )}
+        <button
+          type="button"
+          className="plan2-act plan2-act-done"
+          disabled={busy}
+          onClick={() => {
+            if (!window.confirm(`Mark "${task.title}" done? This closes it in Azure DevOps.`)) return;
+            void onCloseTask(task.id);
+          }}
+        >
+          ✓ done
+        </button>
+      </span>
     </li>
   );
 }
 
-function CockpitBacklogSection({
+/* -------------------------------------------------------------------------- */
+/*  STEP 2 — PULL from backlog                                                */
+/* -------------------------------------------------------------------------- */
+
+function PullBacklogSection({
   cockpit,
   actingOn,
   onPullStory,
@@ -415,93 +497,50 @@ function CockpitBacklogSection({
 }: {
   cockpit: CockpitState;
   actingOn: number | null;
-  onPullStory: (storyId: number, nextSprintPath: string) => Promise<void>;
+  onPullStory: (story: ApiCockpitBacklogStory, nextSprintPath: string) => Promise<void>;
   onOpenItem?: (id: string) => void;
 }) {
   if (cockpit.status !== 'ok') return null;
   const { nextSprint, backlogStories } = cockpit.data;
+  const nextName = nextSprint?.name ?? 'next sprint';
+
   if (backlogStories.length === 0) {
     return (
-      <section className="r12-cockpit-section">
-        <h3 className="r12-cockpit-h">Pull from backlog</h3>
-        <div className="r12-cockpit-empty">Nothing in backlog assigned to you — clean slate.</div>
+      <section className="plan2-section">
+        <SectionHead step={2} title={`Pull into ${nextName}`} note="meter updates as you pull" />
+        <div className="plan2-empty">Nothing in your backlog — clean slate.</div>
       </section>
     );
   }
-  // Group by level (backlog literal first, then quarter, then year).
+
   const groups = [
     { level: 'backlog' as const, label: 'Backlog', stories: backlogStories.filter(s => s.level === 'backlog') },
     { level: 'quarter' as const, label: 'Quarter', stories: backlogStories.filter(s => s.level === 'quarter') },
     { level: 'year' as const, label: 'Year', stories: backlogStories.filter(s => s.level === 'year') },
   ].filter(g => g.stories.length > 0);
+
   return (
-    <section className="r12-cockpit-section">
-      <div className="r12-cockpit-sec-head">
-        <h3 className="r12-cockpit-h">Pull from backlog</h3>
-        <span className="r12-cockpit-sec-count">
-          {backlogStories.length} {backlogStories.length === 1 ? 'story' : 'stories'}
-        </span>
-      </div>
+    <section className="plan2-section">
+      <SectionHead step={2} title={`Pull into ${nextName}`} note="meter updates as you pull" />
       {groups.map(group => (
-        <div key={group.level} className="r12-cockpit-backlog-group">
-          <h4 className="r12-cockpit-backlog-level">
-            {group.label} <span className="r12-cockpit-backlog-level-count">({group.stories.length})</span>
-          </h4>
-          <ul className="r12-cockpit-rows">
-            {group.stories.map(s => {
-              const stateClass = `is-${classifyState(s.state)}`;
-              return (
-                <li key={s.id} className={`r12-cockpit-row r12-cockpit-row-backlog ${stateClass}`}>
-                  <div className="r12-cockpit-row-main">
-                    <span className="r12-cockpit-row-chevron is-leaf" aria-hidden="true">·</span>
-                    <span className={`r12-cockpit-row-state ${stateClass}`}>{s.state}</span>
-                    <button
-                      type="button"
-                      className="r12-cockpit-row-title"
-                      onClick={() => onOpenItem?.(String(s.id))}
-                      disabled={!onOpenItem}
-                      title="Open story details"
-                    >
-                      <span dangerouslySetInnerHTML={{ __html: linkifyDisplayName(s.displayName) }} />
-                    </button>
-                    <span className="r12-cockpit-row-counts">
-                      {s.storyPoints != null && s.storyPoints > 0 ? `${s.storyPoints} SP` : 'no SP'}
-                    </span>
-                    <span className="r12-cockpit-row-hours">
-                      {s.effort != null && s.effort > 0 ? `${Math.round(s.effort)}h` : 'no effort'}
-                    </span>
-                    <span className="r12-cockpit-row-iter" title={s.iterationPath}>
-                      {lastIterSegment(s.iterationPath)}
-                    </span>
-                    {s.feature && (
-                      <span
-                        className="r12-cockpit-row-feature"
-                        dangerouslySetInnerHTML={{ __html: linkifyDisplayName(s.feature.displayName) }}
-                      />
-                    )}
-                    <span className="r12-cockpit-row-actions">
-                      {nextSprint ? (
-                        <button
-                          type="button"
-                          className="r12-cockpit-act r12-cockpit-act-move"
-                          disabled={actingOn === s.id}
-                          onClick={() => {
-                            if (!window.confirm(`Pull "${s.title}" into ${nextSprint.name}?`)) return;
-                            void onPullStory(s.id, nextSprint.path);
-                          }}
-                        >
-                          → {nextSprint.name}
-                        </button>
-                      ) : (
-                        <span className="r12-cockpit-act-disabled" title="No next sprint scheduled.">
-                          → next (n/a)
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                </li>
-              );
-            })}
+        <div key={group.level}>
+          <div className="plan2-level">
+            <span className="plan2-level-name">{group.label}</span>
+            <span className="plan2-level-line" />
+            <span className="plan2-level-count">{group.stories.length}</span>
+          </div>
+          <ul className="plan2-rows">
+            {group.stories.map(story => (
+              <PullBacklogRow
+                key={story.id}
+                story={story}
+                busy={actingOn === story.id}
+                nextSprintPath={nextSprint?.path ?? null}
+                nextSprintName={nextSprint?.name ?? null}
+                onPull={onPullStory}
+                onOpenItem={onOpenItem}
+              />
+            ))}
           </ul>
         </div>
       ))}
@@ -509,24 +548,88 @@ function CockpitBacklogSection({
   );
 }
 
-function lastIterSegment(path: string): string {
-  const parts = path.split('\\').filter(Boolean);
-  return parts.length === 0 ? path : parts[parts.length - 1];
-}
+function PullBacklogRow({
+  story,
+  busy,
+  nextSprintPath,
+  nextSprintName,
+  onPull,
+  onOpenItem,
+}: {
+  story: ApiCockpitBacklogStory;
+  busy: boolean;
+  nextSprintPath: string | null;
+  nextSprintName: string | null;
+  onPull: (story: ApiCockpitBacklogStory, nextSprintPath: string) => Promise<void>;
+  onOpenItem?: (id: string) => void;
+}) {
+  const stateClass = classifyState(story.state);
+  const kind = story.type.toLowerCase() === 'bug' ? 'bug' : 'story';
+  const points = story.storyPoints;
+  const effort = story.effort;
+  const pointsMissing = points == null || points === 0;
+  const effortMissing = effort == null || effort === 0;
 
-function classifyState(state: string): 'going' | 'waiting' | 'done' | 'blocked' {
-  const s = state.toLowerCase();
-  if (s === 'blocked' || s === 'on hold') return 'blocked';
-  if (['active', 'in progress', 'doing', 'committed'].includes(s)) return 'going';
-  if (['done', 'closed', 'resolved', 'completed'].includes(s)) return 'done';
-  return 'waiting';
+  return (
+    <li className={`plan2-row is-${stateClass}`}>
+      <div className="plan2-row-main">
+        <span className="plan2-chevron is-spacer" aria-hidden="true">▸</span>
+        <KindBadge kind={kind} />
+        <StateChip state={story.state} />
+        <button
+          type="button"
+          className="plan2-title plan2-title-btn"
+          onClick={() => onOpenItem?.(String(story.id))}
+          disabled={!onOpenItem}
+          title="Open story details"
+        >
+          <span className="t">{story.title}</span>
+          <span className="id">#{story.id}</span>
+        </button>
+        <span className="plan2-meta">
+          <span className="plan2-stat">
+            <span className="l">points</span>
+            <span className={`v ${pointsMissing ? 'is-missing' : ''}`}>{pointsMissing ? '—' : points}</span>
+          </span>
+          <span className="plan2-stat is-secondary">
+            <span className="l">effort</span>
+            <span className={`v ${effortMissing ? 'is-missing' : ''}`}>{effortMissing ? '—' : `${Math.round(effort!)}h`}</span>
+          </span>
+        </span>
+        {story.feature && (
+          <span className="plan2-feature">
+            {story.feature.title} <span className="id">#{story.feature.id}</span>
+          </span>
+        )}
+        <span className="plan2-actions">
+          {nextSprintPath ? (
+            <button
+              type="button"
+              className="plan2-act plan2-act-pull"
+              disabled={busy}
+              onClick={() => {
+                if (!window.confirm(`Pull "${story.title}" into ${nextSprintName ?? 'next sprint'}?`)) return;
+                void onPull(story, nextSprintPath);
+              }}
+            >
+              → {nextSprintName ?? 'next'}
+            </button>
+          ) : (
+            <button type="button" className="plan2-act" disabled title="No next sprint scheduled.">
+              → next (n/a)
+            </button>
+          )}
+        </span>
+      </div>
+    </li>
+  );
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Gap section (sanity check) — persistent prompt panel from prior commit    */
+/*  STEP 3 — SANITY CHECK (gaps + prompt panel)                                */
 /* -------------------------------------------------------------------------- */
 
-function GapSection({ onScanComplete }: { onScanComplete?: (n: number) => void }) {
+function SanityCheckSection({ onScanComplete }: { onScanComplete?: (n: number) => void }) {
   const [state, setState] = useState<ScanState>(() => {
     const persisted = readPersistedScan();
     return persisted ? { status: 'ok', data: persisted } : { status: 'idle' };
@@ -552,8 +655,7 @@ function GapSection({ onScanComplete }: { onScanComplete?: (n: number) => void }
   };
 
   useEffect(() => {
-    if (state.status !== 'ok') return;
-    if (!copied) return;
+    if (state.status !== 'ok' || !copied) return;
     const t = setTimeout(() => setCopied(false), 2200);
     return () => clearTimeout(t);
   }, [copied, state.status]);
@@ -564,7 +666,7 @@ function GapSection({ onScanComplete }: { onScanComplete?: (n: number) => void }
       await navigator.clipboard.writeText(state.data.prompt);
       setCopied(true);
     } catch {
-      const pre = document.getElementById('r12-plan-prompt-pre');
+      const pre = document.getElementById('plan2-prompt-pre');
       if (pre) {
         const range = document.createRange();
         range.selectNodeContents(pre);
@@ -575,67 +677,60 @@ function GapSection({ onScanComplete }: { onScanComplete?: (n: number) => void }
     }
   };
 
+  const total = state.status === 'ok' ? state.data.totalGaps : null;
+
   return (
-    <section className="r12-cockpit-section r12-cockpit-gap-section">
-      <div className="r12-cockpit-gap-head">
-        <h3 className="r12-cockpit-h">
-          Gaps (sanity check)
-          {state.status === 'ok' && state.data.totalGaps > 0 && (
-            <span className="r12-cockpit-gap-badge">{state.data.totalGaps}</span>
-          )}
-        </h3>
+    <section className="plan2-section">
+      <div className="plan2-sec-head">
+        <span className="plan2-step">3</span>
+        <h2 className="plan2-sec-title">
+          Sanity-check estimates
+          {total != null && total > 0 && <span className="plan2-badge">{total}</span>}
+        </h2>
         <button
-          className="r12-cockpit-act r12-cockpit-act-scan"
+          className="plan2-scan"
           onClick={runScan}
           disabled={state.status === 'loading'}
         >
           {state.status === 'loading' ? 'Scanning…' : 'Scan for gaps'}
         </button>
       </div>
-      <p className="r12-cockpit-gap-intro">
-        Find sprint items that don't have an estimate yet. The dashboard discovers them; the
-        conversation in Claude Code fills them in.
+      <p className="plan2-gap-intro">
+        Sprint items missing an estimate. The dashboard finds them; the conversation in Claude Code fills them in.
       </p>
 
       {state.status === 'error' && (
-        <div className="r12-plan-error" role="alert">
-          Couldn't load the gap list — {state.error}. <button onClick={runScan}>Try again</button>
+        <div className="plan2-error" role="alert">
+          Couldn't load the gap list — {state.error}.
+          <button onClick={runScan}>Try again</button>
         </div>
       )}
 
       {state.status === 'ok' && state.data.totalGaps === 0 && (
-        <div className="r12-plan-empty">
-          Every Task and Story in the current sprint has its planning fields filled in. Nothing to do here.
-          <button className="r12-plan-clear-inline" onClick={onClear}>Clear scan</button>
+        <div className="plan2-empty">
+          Every Task and Story in the current sprint has its planning fields filled in.
+          <button className="plan2-prompt-btn" onClick={onClear} style={{ marginLeft: 12 }}>Clear scan</button>
         </div>
       )}
 
       {state.status === 'ok' && state.data.totalGaps > 0 && (
         <>
-          <div className="r12-plan-actions">
-            <span className="r12-plan-count">
-              {state.data.totalGaps} {state.data.totalGaps === 1 ? 'item' : 'items'} need effort
-            </span>
-          </div>
-
-          <GapList gaps={state.data.gaps} />
-
-          <section className="r12-plan-prompt-panel" aria-label="Generated prompt for Claude Code">
-            <header className="r12-plan-prompt-head">
-              <span className="r12-plan-prompt-cap">Prompt for Claude Code</span>
-              <div className="r12-plan-prompt-actions">
-                <button className="r12-plan-copy" onClick={onCopy}>
+          <GapGroups gaps={state.data.gaps} />
+          <section className="plan2-prompt" aria-label="Generated prompt for Claude Code">
+            <header className="plan2-prompt-head">
+              <span className="plan2-prompt-cap">Prompt for Claude Code</span>
+              <div className="plan2-prompt-actions">
+                <button className="plan2-prompt-btn is-primary" onClick={onCopy}>
                   {copied ? 'Copied ✓' : 'Copy'}
                 </button>
-                <button className="r12-plan-clear" onClick={onClear} title="Clear the saved scan — next scan will start fresh">
+                <button className="plan2-prompt-btn" onClick={onClear} title="Clear the saved scan — next scan starts fresh">
                   Clear
                 </button>
               </div>
             </header>
-            <pre id="r12-plan-prompt-pre" className="r12-plan-prompt">{state.data.prompt}</pre>
-            <p className="r12-plan-prompt-hint">
-              This panel stays here until you clear it — copy the prompt, hand it to a chat,
-              come back later to verify.
+            <pre id="plan2-prompt-pre" className="plan2-prompt-pre">{state.data.prompt}</pre>
+            <p className="plan2-prompt-hint">
+              Stays here until you clear it — copy the prompt, hand it over, come back to verify.
             </p>
           </section>
         </>
@@ -644,45 +739,113 @@ function GapSection({ onScanComplete }: { onScanComplete?: (n: number) => void }
   );
 }
 
-function GapList({ gaps }: { gaps: ApiPlanningGap[] }) {
-  const groups = new Map<string, { label: string; gaps: ApiPlanningGap[] }>();
+function GapGroups({ gaps }: { gaps: ApiPlanningGap[] }) {
+  const groups = new Map<string, { label: string; featureId: number | null; gaps: ApiPlanningGap[] }>();
   for (const g of gaps) {
-    const key = g.kind === 'story'
-      ? (g.feature?.displayName ?? 'Stories (no feature)')
-      : (g.parent?.displayName ?? 'Tasks (no parent story)');
-    const bucket = groups.get(key) ?? { label: key, gaps: [] };
+    const featureId = g.kind === 'story' ? g.feature?.workItemId ?? null : g.parent?.workItemId ?? null;
+    const label = g.kind === 'story'
+      ? (g.feature?.title ?? 'Stories (no feature)')
+      : (g.parent?.title ?? 'Tasks (no parent story)');
+    const key = `${label}#${featureId ?? 'none'}`;
+    const bucket = groups.get(key) ?? { label, featureId, gaps: [] };
     bucket.gaps.push(g);
     groups.set(key, bucket);
   }
   return (
-    <div className="r12-plan-groups">
+    <>
       {[...groups.values()].map(group => (
-        <section className="r12-plan-group" key={group.label}>
-          <h3 className="r12-plan-group-h" dangerouslySetInnerHTML={{ __html: linkifyDisplayName(group.label) }} />
-          <ul className="r12-plan-gaps">
+        <div className="plan2-gap-group" key={`${group.label}-${group.featureId ?? 'none'}`}>
+          <h3 className="plan2-gap-group-h">
+            {group.label}
+            {group.featureId != null && <> <span className="id">#{group.featureId}</span></>}
+          </h3>
+          <ul className="plan2-gaps">
             {group.gaps.map(g => (
-              <li className="r12-plan-gap" key={`${g.kind}-${g.workItemId}`}>
-                <div className="r12-plan-gap-head">
-                  <span className={`r12-plan-kind r12-plan-kind-${g.kind}`}>{g.kind}</span>
-                  <span className="r12-plan-gap-name" dangerouslySetInnerHTML={{ __html: linkifyDisplayName(g.displayName) }} />
+              <li className="plan2-gap" key={`${g.kind}-${g.workItemId}`}>
+                <div className="plan2-gap-top">
+                  <span className={`plan2-gap-kind k-${g.kind}`}>{g.kind}</span>
+                  <span className="plan2-gap-name">
+                    {g.title} <span className="id">#{g.workItemId}</span>
+                  </span>
                 </div>
-                <div className="r12-plan-gap-missing">
-                  Missing: {g.missing.join(', ')}
+                <div className="plan2-gap-missing">
+                  Missing <b>{g.missing.join(', ')}</b>
                 </div>
-                <div className={`r12-plan-anchor ${g.anchor.isColdStart ? 'is-cold' : ''}`}>
+                <div className={`plan2-gap-anchor ${g.anchor.isColdStart ? 'is-cold' : ''}`}>
                   {g.anchor.summary}
                 </div>
               </li>
             ))}
           </ul>
-        </section>
+        </div>
       ))}
+    </>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Small helpers                                                              */
+/* -------------------------------------------------------------------------- */
+
+function SectionHead({ step, title, note }: { step: number; title: string; note?: React.ReactNode }) {
+  return (
+    <div className="plan2-sec-head">
+      <span className="plan2-step">{step}</span>
+      <h2 className="plan2-sec-title">{title}</h2>
+      {note && <span className="plan2-sec-note">{note}</span>}
     </div>
   );
 }
 
-function linkifyDisplayName(s: string): string {
-  let out = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  out = out.replace(/\(#(\d+)\)/g, '<span class="r12-id">#$1</span>');
-  return out;
+function StateChip({ state }: { state: string }) {
+  return <span className="plan2-state">{state}</span>;
+}
+
+function KindBadge({ kind }: { kind: 'story' | 'task' | 'bug' }) {
+  if (kind === 'task') {
+    return (
+      <span className="plan2-kind k-task" title="Task">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+          <rect x="2.5" y="2.5" width="9" height="9" rx="2" />
+          <path d="M4.6 7.2l1.6 1.6 3-3.4" />
+        </svg>
+        Task
+      </span>
+    );
+  }
+  if (kind === 'bug') {
+    return (
+      <span className="plan2-kind k-bug" title="Bug">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+          <ellipse cx="7" cy="7.8" rx="2.8" ry="3.2" />
+          <line x1="7" y1="4.6" x2="7" y2="7" />
+          <line x1="4.3" y1="3.6" x2="5.4" y2="5" />
+          <line x1="9.7" y1="3.6" x2="8.6" y2="5" />
+          <line x1="3.9" y1="7.4" x2="2.4" y2="7" />
+          <line x1="10.1" y1="7.4" x2="11.6" y2="7" />
+          <line x1="3.9" y1="9.4" x2="2.6" y2="10.4" />
+          <line x1="10.1" y1="9.4" x2="11.4" y2="10.4" />
+        </svg>
+        Bug
+      </span>
+    );
+  }
+  return (
+    <span className="plan2-kind k-story" title="User Story">
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+        <rect x="2.2" y="2.5" width="9.6" height="9" rx="1.5" />
+        <line x1="4.4" y1="5.4" x2="9.6" y2="5.4" />
+        <line x1="4.4" y1="7.6" x2="8.2" y2="7.6" />
+      </svg>
+      Story
+    </span>
+  );
+}
+
+function classifyState(state: string): 'going' | 'waiting' | 'done' | 'blocked' {
+  const s = state.toLowerCase();
+  if (s === 'blocked' || s === 'on hold') return 'blocked';
+  if (['active', 'in progress', 'doing', 'committed'].includes(s)) return 'going';
+  if (['done', 'closed', 'resolved', 'completed', 'removed'].includes(s)) return 'done';
+  return 'waiting';
 }
