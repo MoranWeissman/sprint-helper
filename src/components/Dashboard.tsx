@@ -620,19 +620,38 @@ function StandupEntries({
       {entries.map(e => (
         <li key={e.workItemId} className={`r21-standup-item is-${e.state}`}>
           <div className="r21-standup-item-head">
+            <span className="r21-standup-item-kind">Story</span>
             <span className="r21-standup-item-title">
-              {e.parentStoryTitle && (
-                <span className="r21-standup-item-parent">{e.parentStoryTitle}</span>
-              )}
               {extractTitleFromDisplayName(e.displayName)}
             </span>
             <StandupStateBadge state={e.state} minutes={e.minutesInWindow} />
           </div>
           {e.summary && <p className="r21-standup-item-summary">{e.summary}</p>}
+          {e.tasks.length > 0 && (
+            <ul className="r21-standup-tasks">
+              {e.tasks.map(t => (
+                <li key={t.workItemId} className={`r21-standup-task is-${standupTaskStateClass(t.adoState)}`}>
+                  <span className={`r21-standup-task-state state-${standupTaskStateClass(t.adoState)}`}>
+                    {t.adoState}
+                  </span>
+                  <span className="r21-standup-task-title">{t.title}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </li>
       ))}
     </ul>
   );
+}
+
+/** Map ADO state to the state-class language the rest of the UI uses. */
+function standupTaskStateClass(adoState: string): 'going' | 'waiting' | 'blocked' | 'done' {
+  const s = adoState.toLowerCase();
+  if (s === 'blocked' || s === 'on hold') return 'blocked';
+  if (s === 'closed' || s === 'done' || s === 'resolved' || s === 'completed' || s === 'removed') return 'done';
+  if (s === 'active' || s === 'in progress' || s === 'doing' || s === 'committed') return 'going';
+  return 'waiting';
 }
 
 function StandupStateBadge({ state }: { state: 'live' | 'paused' | 'closed'; minutes: number | null }) {

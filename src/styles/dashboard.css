@@ -4136,3 +4136,97 @@ html, body {
   100% { box-shadow: 0 0 0 1px var(--accent-deep) inset, 0 0 0 0 transparent; }
 }
 .r21-daily-card.r22-flash { animation: r22-flash 1.4s ease-out; }
+
+/* ==========================================================================
+   R22b — Standup story rollup (2026-06-04)
+   Each entry in Yesterday / Today is now a STORY (Tasks roll up to their
+   parent). Rendered as: a small "Story" chip + the story title + state
+   badge, the AI-written summary, then a nested list of task chips for the
+   tasks that had session activity in the window.
+   ========================================================================== */
+
+.r21-standup-item-kind {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: color-mix(in oklch, var(--accent) 18%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent);
+  white-space: nowrap;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.r21-standup-tasks {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--line-hair);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.r21-standup-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-1);
+  line-height: 1.4;
+}
+
+.r21-standup-task-state {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex: none;
+}
+.r21-standup-task-state.state-going {
+  color: var(--st-going);
+  background: color-mix(in oklch, var(--st-going) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--st-going) 35%, transparent);
+}
+.r21-standup-task-state.state-waiting {
+  color: var(--st-waiting);
+  background: color-mix(in oklch, var(--st-waiting) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--st-waiting) 35%, transparent);
+}
+.r21-standup-task-state.state-blocked {
+  color: var(--ev-blocker);
+  background: color-mix(in oklch, var(--ev-blocker) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--ev-blocker) 35%, transparent);
+}
+.r21-standup-task-state.state-done {
+  color: var(--st-done);
+  background: color-mix(in oklch, var(--st-done) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--st-done) 35%, transparent);
+}
+
+.r21-standup-task-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Title head: chip + title + badge inline. */
+.r21-standup-item-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.r21-standup-item-head .r21-standup-item-title {
+  flex: 1;
+  min-width: 0;
+}

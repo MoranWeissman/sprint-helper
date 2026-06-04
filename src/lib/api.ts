@@ -146,14 +146,23 @@ export interface ApiUpcomingCeremony {
   isSuggested: boolean;
 }
 
+export interface ApiStandupTask {
+  workItemId: number;
+  title: string;
+  /** Raw ADO state ("Active" / "Blocked" / "Done" / etc.). */
+  adoState: string;
+}
+
 export interface ApiStandupEntry {
+  /** The story this row is about. (Sessions on Tasks roll up to their parent Story.) */
   workItemId: number;
   /** Pre-formatted `**title** (#id)` ready to echo. */
   displayName: string;
-  parentStoryTitle: string | null;
   summary: string | null;
   minutesInWindow: number | null;
   state: 'live' | 'paused' | 'closed';
+  /** Tasks under this story that had session activity in the window. */
+  tasks: ApiStandupTask[];
 }
 
 export interface ApiStandupBlock {

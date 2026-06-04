@@ -10,22 +10,30 @@
  */
 import { getDb } from './db';
 
+export interface StandupTask {
+  workItemId: number;
+  title: string;
+  /** Raw ADO state ("Active" / "Blocked" / "Done" / etc.) — UI maps to a chip. */
+  adoState: string;
+}
+
 export interface StandupEntry {
+  /** The story this row is about. (Sessions on Tasks roll up to their parent Story.) */
   workItemId: number;
   /** Pre-formatted `**title** (#id)` ready to echo. */
   displayName: string;
-  /** Parent story title (no id), for at-a-glance context. */
-  parentStoryTitle: string | null;
   /** First-sentence summary of the latest progress event in window. Null when there are no progress events. */
   summary: string | null;
   /**
-   * Total minutes the session(s) for this task were open within the window.
+   * Total minutes the session(s) under this story were open within the window.
    * Pulled from session start/end timestamps, capped at window duration to
-   * avoid counting ghost-time. Null when the session is still live.
+   * avoid counting ghost-time. Null when any session is still live.
    */
   minutesInWindow: number | null;
-  /** State for visual cue. */
+  /** Aggregated state for visual cue (live wins, then paused, then closed). */
   state: 'live' | 'paused' | 'closed';
+  /** Tasks under this story that had session activity in the window. Empty when the session was on the story itself. */
+  tasks: StandupTask[];
 }
 
 export interface StandupBlock {
@@ -129,17 +137,61 @@ function minutesInWindow(sessions: SessionRow[], startISO: string, endISO: strin
 
 interface BuildOpts {
   /**
-   * Used to look up the title, parent story, and work-item type for each id.
-   * Type lets the standup skip Feature/Epic entries — sessions on those are
-   * always a data mistake (sessions belong on Tasks, occasionally Stories),
-   * and Moran doesn't want them appearing in his Yesterday/Today read.
+   * Look-up for each work-item id touched by a session. `parentId` lets the
+   * standup roll Tasks up to their parent Story so each row in the card is a
+   * Story (the unit Moran talks about), not a Task. `type` lets the standup
+   * skip Feature/Epic entries — sessions on those are always a data mistake.
    */
-  taskMeta: Map<number, { title: string; parentTitle: string | null; type: string }>;
+  taskMeta: Map<number, { title: string; parentId: number | null; parentTitle: string | null; type: string; state: string }>;
   /** Override "now" for tests; defaults to the current clock. */
   now?: Date;
 }
 
 const STANDUP_SKIP_TYPES = new Set(['feature', 'epic']);
+const STANDUP_STORY_LEVEL_TYPES = new Set(['user story', 'story', 'bug']);
+
+/**
+ * Decide which story id a session rolls up to. Tasks roll up to their parent;
+ * Stories/Bugs are themselves the row. Features/Epics are dropped (sessions on
+ * those are data mistakes — Moran doesn't speak about them in the standup).
+ * Returns null when the session item should be excluded entirely.
+ */
+function rollUpToStory(
+  sessionItemId: number,
+  taskMeta: BuildOpts['taskMeta'],
+): { storyId: number; storyTitle: string; sessionItemType: 'story' | 'task' } | null {
+  const meta = taskMeta.get(sessionItemId);
+  // Unknown item (not in current sprint payload): treat the session item as
+  // its own row so we don't silently drop data Moran logged against it.
+  if (!meta) {
+    return { storyId: sessionItemId, storyTitle: `#${sessionItemId}`, sessionItemType: 'story' };
+  }
+  const t = meta.type.toLowerCase();
+  if (STANDUP_SKIP_TYPES.has(t)) return null;
+  if (t === 'task') {
+    if (meta.parentId != null) {
+      const parentMeta = taskMeta.get(meta.parentId);
+      // Parent is itself a Feature/Epic (rare) — fall back to the Task as the
+      // row rather than skip the work entirely.
+      if (parentMeta && STANDUP_SKIP_TYPES.has(parentMeta.type.toLowerCase())) {
+        return { storyId: sessionItemId, storyTitle: meta.title, sessionItemType: 'task' };
+      }
+      return {
+        storyId: meta.parentId,
+        storyTitle: parentMeta?.title ?? meta.parentTitle ?? `#${meta.parentId}`,
+        sessionItemType: 'task',
+      };
+    }
+    // Task with no parent — render the task itself as the row.
+    return { storyId: sessionItemId, storyTitle: meta.title, sessionItemType: 'task' };
+  }
+  // Story / Bug / anything else story-level: the item itself is the row.
+  return {
+    storyId: sessionItemId,
+    storyTitle: meta.title,
+    sessionItemType: STANDUP_STORY_LEVEL_TYPES.has(t) ? 'story' : 'story',
+  };
+}
 
 function entriesForWindow(
   startISO: string,
@@ -150,52 +202,89 @@ function entriesForWindow(
   const sessions = sessionsTouchingWindow(startISO, endISO);
   if (sessions.length === 0) return [];
 
-  // Bucket sessions per work item.
-  const byItem = new Map<number, SessionRow[]>();
-  for (const s of sessions) {
-    const arr = byItem.get(s.work_item_id) ?? [];
-    arr.push(s);
-    byItem.set(s.work_item_id, arr);
+  interface StoryBucket {
+    storyId: number;
+    storyTitle: string;
+    sessions: SessionRow[];
+    /** Distinct task ids (only Tasks, not the story itself) that had sessions. */
+    taskItemIds: Set<number>;
+    /** Every session item id (Task or Story) that fed into this bucket — used to pull latest progress. */
+    sessionItemIds: Set<number>;
   }
 
-  const progressByItem = latestProgressByItem(Array.from(byItem.keys()), startISO, endISO);
+  const buckets = new Map<number, StoryBucket>();
+  for (const s of sessions) {
+    const roll = rollUpToStory(s.work_item_id, opts.taskMeta);
+    if (!roll) continue;
+    let bucket = buckets.get(roll.storyId);
+    if (!bucket) {
+      bucket = {
+        storyId: roll.storyId,
+        storyTitle: roll.storyTitle,
+        sessions: [],
+        taskItemIds: new Set(),
+        sessionItemIds: new Set(),
+      };
+      buckets.set(roll.storyId, bucket);
+    }
+    bucket.sessions.push(s);
+    bucket.sessionItemIds.add(s.work_item_id);
+    if (roll.sessionItemType === 'task' && s.work_item_id !== roll.storyId) {
+      bucket.taskItemIds.add(s.work_item_id);
+    }
+  }
+
+  if (buckets.size === 0) return [];
+
+  // Pull latest progress event per session item id across the window, then
+  // pick the newest one per bucket — that's "what got done on this story."
+  const allItemIds = Array.from(
+    new Set([...buckets.values()].flatMap(b => Array.from(b.sessionItemIds))),
+  );
+  const progressByItem = latestProgressByItem(allItemIds, startISO, endISO);
 
   const entries: StandupEntry[] = [];
-  for (const [workItemId, rows] of byItem) {
-    const meta = opts.taskMeta.get(workItemId);
-    if (meta && STANDUP_SKIP_TYPES.has(meta.type.toLowerCase())) continue;
-    const title = meta?.title ?? `#${workItemId}`;
-    // Only Tasks carry a meaningful parent line — the parent of a Task is a
-    // Story (the context Moran is talking about). A Story's parent is a
-    // Feature, a Bug's parent is usually a Feature too — neither belongs on
-    // the standup card, per his 2026-06-04 read.
-    const parentStoryTitle =
-      meta && meta.type.toLowerCase() === 'task' ? (meta.parentTitle ?? null) : null;
-
-    const hasOpen = rows.some(r => r.ended_at == null);
-    const allClosed = rows.every(r => r.ended_at != null);
+  for (const bucket of buckets.values()) {
+    const hasOpen = bucket.sessions.some(r => r.ended_at == null);
+    const allClosed = bucket.sessions.every(r => r.ended_at != null);
     const state: StandupEntry['state'] = hasOpen ? 'live' : allClosed ? 'closed' : 'paused';
+    const minutes = hasOpen ? null : minutesInWindow(bucket.sessions, startISO, endISO, nowMs);
 
-    const minutes = hasOpen ? null : minutesInWindow(rows, startISO, endISO, nowMs);
-    const progressEvent = progressByItem.get(workItemId);
-    const summary = progressEvent ? firstSentence(progressEvent.text) : null;
+    // Newest progress text across any session item in the bucket.
+    let latest: ProgressEventRow | null = null;
+    for (const itemId of bucket.sessionItemIds) {
+      const pe = progressByItem.get(itemId);
+      if (!pe) continue;
+      if (!latest || pe.created_at > latest.created_at) latest = pe;
+    }
+    const summary = latest ? firstSentence(latest.text) : null;
+
+    // Tasks list for the row — what got worked under this story in the window.
+    const tasks: StandupTask[] = [];
+    for (const taskId of bucket.taskItemIds) {
+      const meta = opts.taskMeta.get(taskId);
+      tasks.push({
+        workItemId: taskId,
+        title: meta?.title ?? `#${taskId}`,
+        adoState: meta?.state ?? 'Active',
+      });
+    }
+    // Stable order: title alphabetic — keeps day-to-day reads consistent.
+    tasks.sort((a, b) => a.title.localeCompare(b.title));
 
     entries.push({
-      workItemId,
-      displayName: `**${title}** (#${workItemId})`,
-      parentStoryTitle,
+      workItemId: bucket.storyId,
+      displayName: `**${bucket.storyTitle}** (#${bucket.storyId})`,
       summary,
       minutesInWindow: minutes,
       state,
+      tasks,
     });
   }
 
-  // Live items first, then by most-recent session start (newest last touched).
-  entries.sort((a, b) => {
-    if (a.state === 'live' && b.state !== 'live') return -1;
-    if (b.state === 'live' && a.state !== 'live') return 1;
-    return 0;
-  });
+  // Live first, then paused, then closed.
+  const stateOrder: Record<StandupEntry['state'], number> = { live: 0, paused: 1, closed: 2 };
+  entries.sort((a, b) => stateOrder[a.state] - stateOrder[b.state]);
 
   return entries;
 }

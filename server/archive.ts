@@ -367,8 +367,10 @@ export async function mirrorStandupForToday(): Promise<{
         // Session-open duration is a poor proxy for work time (overnight
         // sessions inflate it). Skip it; the summary captures what got done.
         lines.push(`- ${e.displayName}`);
-        if (e.parentStoryTitle) lines.push(`  - Under: _${e.parentStoryTitle}_`);
         if (e.summary) lines.push(`  - ${e.summary}`);
+        for (const t of e.tasks) {
+          lines.push(`    - [${t.adoState}] ${t.title} (#${t.workItemId})`);
+        }
       }
     }
     lines.push('');
@@ -381,8 +383,10 @@ export async function mirrorStandupForToday(): Promise<{
       for (const e of standup.today) {
         const tag = e.state === 'live' ? ' _(live)_' : '';
         lines.push(`- ${e.displayName}${tag}`);
-        if (e.parentStoryTitle) lines.push(`  - Under: _${e.parentStoryTitle}_`);
         if (e.summary) lines.push(`  - ${e.summary}`);
+        for (const t of e.tasks) {
+          lines.push(`    - [${t.adoState}] ${t.title} (#${t.workItemId})`);
+        }
       }
     }
     lines.push('');
