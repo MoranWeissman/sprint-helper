@@ -43,6 +43,7 @@ export interface ApiOutlookCapacity {
   sprintStart: string;
   sprintEnd: string;
   workingDays: number;
+  workingDaysRemaining: number;
   workdayHours: number;
   workingHoursTotal: number;
   meetingHours: { busy: number; tentative: number; oof: number; weighted: number };

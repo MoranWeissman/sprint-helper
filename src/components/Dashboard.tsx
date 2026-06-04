@@ -1107,8 +1107,14 @@ function RailSprintTime({
   const working = Math.round(capacity.workingHoursTotal);
   const available = Math.round(capacity.availableHours);
   const hasCalendar = capacity.hasUrl && !capacity.fetchError;
-  const daysLeft = Math.max(0, (totalDays || 0) - (today - 1));
-  const pctLeft = totalDays > 0 ? Math.max(0, Math.min(100, Math.round((daysLeft / totalDays) * 100))) : 0;
+  // Working days are Sun-Thu in Moran's setup, so calendar days left
+  // overcount — use the workingDaysRemaining the server computes.
+  const workingDaysTotal = capacity.workingDays;
+  const workingDaysLeft = capacity.workingDaysRemaining;
+  const pctLeft =
+    workingDaysTotal > 0
+      ? Math.max(0, Math.min(100, Math.round((workingDaysLeft / workingDaysTotal) * 100)))
+      : 0;
 
   return (
     <section className="r22-rail-card r22-rail-sprint-time" aria-label="Sprint time">
@@ -1126,11 +1132,11 @@ function RailSprintTime({
         <i style={{ width: `${pctLeft}%` }} />
       </div>
       <p className="caption">
-        {daysLeft <= 0
+        {workingDaysLeft <= 0
           ? 'Last day of the sprint'
-          : daysLeft === 1
-            ? '1 day left in the sprint'
-            : `${daysLeft} days left in the sprint`}
+          : workingDaysLeft === 1
+            ? '1 working day left in the sprint'
+            : `${workingDaysLeft} working days left in the sprint`}
       </p>
       {live && focalTitle ? (
         <button type="button" className="live" onClick={jumpToLive} title="Jump to the story you're working on">

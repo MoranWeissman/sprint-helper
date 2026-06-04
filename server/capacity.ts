@@ -30,6 +30,12 @@ export interface Capacity {
   sprintStart: string;
   sprintEnd: string;
   workingDays: number;
+  /**
+   * Working days from today (inclusive, if today is a workday) through
+   * sprintEnd. 0 once the sprint is over. Use this for "days left" reads on
+   * the dashboard — counts Sun-Thu, ignores Fri + Sat.
+   */
+  workingDaysRemaining: number;
   workdayHours: number;
   workingHoursTotal: number;
   meetingHours: {
@@ -54,6 +60,8 @@ export interface ComputeCapacityOptions {
   workdayHours?: number;
   workdayStartHour?: number;
   workdayEndHour?: number;
+  /** "Now" for the workingDaysRemaining count. Defaults to new Date(). */
+  now?: Date;
 }
 
 export async function computeCapacity(opts: ComputeCapacityOptions): Promise<Capacity> {
@@ -61,14 +69,22 @@ export async function computeCapacity(opts: ComputeCapacityOptions): Promise<Cap
   const workdayHours = opts.workdayHours ?? getWorkdayHours();
   const workdayStart = opts.workdayStartHour ?? DEFAULT_WORKDAY_START;
   const workdayEnd = opts.workdayEndHour ?? DEFAULT_WORKDAY_END;
+  const now = opts.now ?? new Date();
 
   const workingDays = countWorkingDays(opts.sprintStart, opts.sprintEnd, workdaySet);
   const workingHoursTotal = workingDays * workdayHours;
+
+  // Remaining working days = count from today (clamped into the sprint
+  // window) through sprintEnd. If today is past sprintEnd, this is 0.
+  const remainingStart = now > opts.sprintStart ? now : opts.sprintStart;
+  const workingDaysRemaining =
+    now > opts.sprintEnd ? 0 : countWorkingDays(remainingStart, opts.sprintEnd, workdaySet);
 
   const baseResult: Capacity = {
     sprintStart: opts.sprintStart.toISOString(),
     sprintEnd: opts.sprintEnd.toISOString(),
     workingDays,
+    workingDaysRemaining,
     workdayHours,
     workingHoursTotal,
     meetingHours: { busy: 0, tentative: 0, oof: 0, weighted: 0 },
