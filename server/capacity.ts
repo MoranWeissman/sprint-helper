@@ -3,9 +3,10 @@
  *
  * Given a sprint window, computes:
  *   working_hours_total  = working_days × workday_hours
- *   meeting_hours        = BUSY + (TENTATIVE × 0.5) + OOF, clipped to the
- *                          working window (8:00–18:00 on working days),
- *                          so an all-day meeting doesn't steal 24 hours.
+ *   meeting_hours        = BUSY + OOF, clipped to the working window
+ *                          (8:00–18:00 on working days) so an all-day
+ *                          meeting doesn't steal 24 hours. TENTATIVE is
+ *                          ignored entirely — see TENTATIVE_WEIGHT below.
  *   available_hours      = working_hours_total - meeting_hours
  *   difference           = planned_hours - available_hours
  *
