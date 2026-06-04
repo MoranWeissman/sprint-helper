@@ -165,7 +165,12 @@ function entriesForWindow(
     const meta = opts.taskMeta.get(workItemId);
     if (meta && STANDUP_SKIP_TYPES.has(meta.type.toLowerCase())) continue;
     const title = meta?.title ?? `#${workItemId}`;
-    const parentStoryTitle = meta?.parentTitle ?? null;
+    // Only Tasks carry a meaningful parent line — the parent of a Task is a
+    // Story (the context Moran is talking about). A Story's parent is a
+    // Feature, a Bug's parent is usually a Feature too — neither belongs on
+    // the standup card, per his 2026-06-04 read.
+    const parentStoryTitle =
+      meta && meta.type.toLowerCase() === 'task' ? (meta.parentTitle ?? null) : null;
 
     const hasOpen = rows.some(r => r.ended_at == null);
     const allClosed = rows.every(r => r.ended_at != null);
