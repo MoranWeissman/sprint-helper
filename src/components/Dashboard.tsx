@@ -769,10 +769,6 @@ function R21Focus({
   const startedAt = task.activeSession ? fmtClockISO(task.activeSession.startedAt) : '';
   const remaining = task.remainingWork != null ? `${Math.round(task.remainingWork)}h` : '—';
   const completed = task.completedWork != null ? `${Math.round(task.completedWork)}h` : '—';
-  // Story view shows STORY-level rolled-up activity (across all child tasks).
-  // Drill-in view shows per-task activity. This keeps the bottom feed
-  // useful even when individual tasks haven't logged yet.
-  const events = story ? story.recentActivity : task.recentActivity;
   const taskBlocked = isBlockedState(task.state) || (task.type === 'Bug' && isBlocked(task.tags));
   const parentBlocked = parent
     ? isBlockedState(parent.state) || (parent.type === 'Bug' && isBlocked(task.parentTags))
@@ -890,22 +886,6 @@ function R21Focus({
           <span className="arr">→</span>
         </button>
       )}
-
-      <div className="r21-feed">
-        <div className="r21-feed-head">
-          <span className="r21-feed-title">Recent activity</span>
-          <span className="r21-feed-meta">
-            {events.length} {events.length === 1 ? 'entry' : 'entries'}{startedAt ? ` · since ${startedAt}` : ''}
-          </span>
-        </div>
-        <div className="r21-feed-list">
-          {events.length === 0 ? (
-            <div className="r21-feed-empty">Nothing logged yet. Claude Code will note things here as you work.</div>
-          ) : (
-            events.map(e => <ActivityEntry key={e.id} event={e} />)
-          )}
-        </div>
-      </div>
     </div>
   );
 }
