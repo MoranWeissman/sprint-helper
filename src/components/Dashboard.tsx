@@ -87,6 +87,24 @@ function DashboardLive({
   const daysRemaining = sprintCtx ? Math.max(0, sprintCtx.totalDays - today + 1) : 0;
   const railDays = sprintCtx ? sprintDays(sprintCtx, now) : [];
 
+  // Side-panel collapse state — persisted to localStorage so the choice
+  // survives refresh. Each panel collapses independently; collapsing both
+  // gives the main column the full width.
+  const [sideCollapsed, setSideCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('sh.side.collapsed') === '1';
+  });
+  const [railCollapsed, setRailCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('sh.rail.collapsed') === '1';
+  });
+  useEffect(() => {
+    window.localStorage.setItem('sh.side.collapsed', sideCollapsed ? '1' : '0');
+  }, [sideCollapsed]);
+  useEffect(() => {
+    window.localStorage.setItem('sh.rail.collapsed', railCollapsed ? '1' : '0');
+  }, [railCollapsed]);
+
   const stories = data.userStories;
   // "My stories" surfaces shouldn't include parent groups that are actually
   // Features or Epics — those happen when tasks are linked directly to a
@@ -182,6 +200,8 @@ function DashboardLive({
           hasLive={liveItems.length > 0}
           onPickDaily={() => setShowBoard(true)}
           onPickFocus={() => setShowBoard(false)}
+          collapsed={sideCollapsed}
+          onToggleCollapsed={() => setSideCollapsed(v => !v)}
         />
       )}
 
@@ -266,6 +286,8 @@ function DashboardLive({
               live={liveItems.length > 0}
               focalTitle={focalTask?.title}
               onRefresh={onRefresh}
+              railCollapsed={railCollapsed}
+              onToggleRailCollapsed={() => setRailCollapsed(v => !v)}
             />
           )}
         </div>
@@ -479,6 +501,8 @@ function R21Sidebar({
   hasLive,
   onPickDaily,
   onPickFocus,
+  collapsed,
+  onToggleCollapsed,
 }: {
   dateLabel: string;
   greeting: string;
@@ -495,9 +519,20 @@ function R21Sidebar({
   hasLive: boolean;
   onPickDaily: () => void;
   onPickFocus: () => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
   return (
-    <div className="r21-sidewrap">
+    <div className={`r21-sidewrap ${collapsed ? 'is-collapsed' : ''}`}>
+      <button
+        type="button"
+        className="r21-sidewrap-toggle"
+        onClick={onToggleCollapsed}
+        title={collapsed ? 'Show the side panel' : 'Hide the side panel'}
+        aria-label={collapsed ? 'Show the side panel' : 'Hide the side panel'}
+      >
+        {collapsed ? '›' : '‹'}
+      </button>
       <aside className="r21-side">
         <div className="r21-side-date">{dateLabel}</div>
         <h1 className="r21-side-greet">{greeting}, <b>{userName}</b></h1>
@@ -807,6 +842,8 @@ function DailyView({
   live,
   focalTitle,
   onRefresh,
+  railCollapsed,
+  onToggleRailCollapsed,
 }: {
   stories: ApiUserStoryGroup[];
   sprintName: string;
@@ -822,6 +859,8 @@ function DailyView({
   live: boolean;
   focalTitle?: string;
   onRefresh: () => void;
+  railCollapsed: boolean;
+  onToggleRailCollapsed: () => void;
 }) {
   // The stories column is the scroller for the "Live on…" jump button in
   // the rail. Capture it via ref so RailRemaining can scroll the right
@@ -995,20 +1034,33 @@ function DailyView({
       )}
     </div>
 
-    <aside className="r22-rail" aria-label="At a glance">
-      <RailRemaining
-        remainingHours={capacity.remainingHours}
-        plannedHours={capacity.totalEstimateHours || outlookCapacity?.workingHoursTotal || 0}
-        today={today}
-        totalDays={totalDays}
-        goingCount={goingCount}
-        waitingCount={waitingCount}
-        live={live}
-        focalTitle={focalTitle}
-        scrollerRef={storiesColRef}
-      />
-      <RailNotes notes={helperNotes} onRefresh={onRefresh} />
-      <RailCapacity capacity={outlookCapacity} completedHours={capacity.completedHours} />
+    <aside className={`r22-rail ${railCollapsed ? 'is-collapsed' : ''}`} aria-label="At a glance">
+      <button
+        type="button"
+        className="r22-rail-toggle"
+        onClick={onToggleRailCollapsed}
+        title={railCollapsed ? 'Show the side panel' : 'Hide the side panel'}
+        aria-label={railCollapsed ? 'Show the side panel' : 'Hide the side panel'}
+      >
+        {railCollapsed ? '‹' : '›'}
+      </button>
+      {!railCollapsed && (
+        <>
+          <RailRemaining
+            remainingHours={capacity.remainingHours}
+            plannedHours={capacity.totalEstimateHours || outlookCapacity?.workingHoursTotal || 0}
+            today={today}
+            totalDays={totalDays}
+            goingCount={goingCount}
+            waitingCount={waitingCount}
+            live={live}
+            focalTitle={focalTitle}
+            scrollerRef={storiesColRef}
+          />
+          <RailNotes notes={helperNotes} onRefresh={onRefresh} />
+          <RailCapacity capacity={outlookCapacity} completedHours={capacity.completedHours} />
+        </>
+      )}
     </aside>
     </>
   );

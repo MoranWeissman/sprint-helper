@@ -4230,3 +4230,107 @@ html, body {
   flex: 1;
   min-width: 0;
 }
+
+/* ==========================================================================
+   R22c — Collapsible side panels (2026-06-04)
+   Left sidebar (Greeting + Up next + sprint strip) and right rail
+   (Remaining / Notes / Capacity) each get a chevron at their inner edge.
+   Click to collapse to a 32px strip; click the same chevron to expand.
+   State persists in localStorage so a refresh keeps the choice.
+   ========================================================================== */
+
+/* Left sidebar */
+.r21-sidewrap { position: relative; }
+.r21-sidewrap.is-collapsed { width: 32px; min-width: 32px; }
+.r21-sidewrap.is-collapsed .r21-side {
+  display: none;
+}
+
+.r21-sidewrap-toggle {
+  position: absolute;
+  top: 60px;
+  right: -1px;
+  z-index: 8;
+  width: 22px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-soft);
+  border-left: 0;
+  border-radius: 0 7px 7px 0;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 14px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  padding: 0;
+  transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
+}
+.r21-sidewrap.is-collapsed .r21-sidewrap-toggle {
+  top: 60px;
+  right: auto;
+  left: 5px;
+  border-radius: 7px;
+  border-left: 1px solid var(--line-soft);
+}
+.r21-sidewrap-toggle:hover {
+  color: var(--accent);
+  border-color: color-mix(in oklch, var(--accent) 50%, var(--line-soft));
+  background: color-mix(in oklch, var(--accent) 6%, var(--surface-2));
+}
+.r21-sidewrap-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Right rail (Daily v2) */
+.r22-rail { position: relative; }
+.r22-rail.is-collapsed {
+  width: 32px;
+  padding: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--line-strong);
+}
+
+.r22-rail-toggle {
+  position: absolute;
+  top: 60px;
+  left: -1px;
+  z-index: 8;
+  width: 22px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-soft);
+  border-right: 0;
+  border-radius: 7px 0 0 7px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 14px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  padding: 0;
+  transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
+}
+.r22-rail.is-collapsed .r22-rail-toggle {
+  top: 60px;
+  left: 5px;
+  border-radius: 7px;
+  border-right: 1px solid var(--line-soft);
+}
+.r22-rail-toggle:hover {
+  color: var(--accent);
+  border-color: color-mix(in oklch, var(--accent) 50%, var(--line-soft));
+  background: color-mix(in oklch, var(--accent) 6%, var(--surface-2));
+}
+.r22-rail-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* When the right rail is collapsed, the narrow strip drops the rail's normal
+   side padding so the toggle button is centered in the 32px column. */
+.r21-app[data-density="generous"] .r22-rail.is-collapsed {
+  padding: 0;
+  display: block;
+}

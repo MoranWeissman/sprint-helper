@@ -156,10 +156,17 @@ export function logEvent({
   sessionId,
   type,
   text,
+  standupSummary,
 }: {
   sessionId: string;
   type: SessionEventType;
   text: string;
+  /**
+   * Optional 1-2 sentence blurb specifically for the standup card — what
+   * Moran reads on Yesterday/Today rows. Lets the AI write a concise
+   * read-this-tomorrow version separate from the long-form `text`.
+   */
+  standupSummary?: string;
 }): SessionEvent | null {
   const db = getDb();
   const session = db
@@ -170,10 +177,10 @@ export function logEvent({
   const createdAt = new Date().toISOString();
   const info = db
     .prepare(
-      `INSERT INTO session_events (session_id, work_item_id, type, text, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO session_events (session_id, work_item_id, type, text, created_at, standup_summary)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     )
-    .run(sessionId, session.work_item_id, type, text, createdAt);
+    .run(sessionId, session.work_item_id, type, text, createdAt, standupSummary ?? null);
   return {
     id: Number(info.lastInsertRowid),
     sessionId,

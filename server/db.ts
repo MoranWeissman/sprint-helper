@@ -112,6 +112,17 @@ function migrate(db: DB) {
     CREATE INDEX IF NOT EXISTS idx_sh_created_kind
       ON sh_created_items(kind);
   `);
+
+  // Idempotent ADD COLUMN for session_events.standup_summary (R22, 2026-06-04).
+  // Optional AI-written 1-2 sentence read-this-tomorrow blurb for the standup
+  // card. Long-form progress text stays in `text`; this is the concise version
+  // Moran reads on his Yesterday/Today rows.
+  const hasStandupSummary = db
+    .prepare("SELECT 1 FROM pragma_table_info('session_events') WHERE name = 'standup_summary'")
+    .get();
+  if (!hasStandupSummary) {
+    db.exec('ALTER TABLE session_events ADD COLUMN standup_summary TEXT');
+  }
 }
 
 /** For tests or graceful shutdown. */

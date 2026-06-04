@@ -57,15 +57,39 @@ interface SessionRow {
 interface ProgressEventRow {
   work_item_id: number;
   text: string;
+  standup_summary: string | null;
   created_at: string;
 }
 
-/** First sentence of a progress text, truncated to ~110 chars. */
-function firstSentence(text: string): string {
-  const trimmed = text.trim();
-  const m = trimmed.match(/^[^.!?]+[.!?]/);
-  const s = (m ? m[0] : trimmed).trim();
-  return s.length > 110 ? s.slice(0, 107).trimEnd() + '…' : s;
+/**
+ * Pick the standup blurb for a progress event:
+ *  - If the AI wrote a `standup_summary` (preferred), use it verbatim.
+ *  - Otherwise fall back to the first ~280 chars of the long-form text,
+ *    rounded down to the last sentence boundary so it doesn't end mid-word.
+ *
+ * Why this matters: Moran reads these the next morning. "Paused, blocked."
+ * alone is useless context; ~3 sentences of why-and-where gets him back
+ * on the page without thinking.
+ */
+function blurbFor(row: ProgressEventRow): string {
+  if (row.standup_summary && row.standup_summary.trim().length > 0) {
+    return row.standup_summary.trim();
+  }
+  const trimmed = row.text.trim();
+  if (trimmed.length <= 280) return trimmed;
+  // Walk sentence boundaries until we'd exceed the cap, then stop at the
+  // boundary right before. Sentence terminators: . ! ?
+  const re = /[.!?]\s+/g;
+  let cut = -1;
+  for (let m: RegExpExecArray | null; (m = re.exec(trimmed)); ) {
+    const end = m.index + 1; // include the punctuation
+    if (end > 280) break;
+    cut = end;
+  }
+  if (cut > 0) return trimmed.slice(0, cut).trim();
+  // No sentence boundary inside the cap (a single long sentence) — hard cut
+  // with an ellipsis.
+  return trimmed.slice(0, 277).trimEnd() + '…';
 }
 
 function startOfLocalDay(d: Date): Date {
@@ -102,7 +126,7 @@ function latestProgressByItem(
   const placeholders = workItemIds.map(() => '?').join(',');
   const rows = getDb()
     .prepare<(number | string)[], ProgressEventRow>(
-      `SELECT work_item_id, text, created_at
+      `SELECT work_item_id, text, standup_summary, created_at
          FROM session_events
         WHERE type = 'progress'
           AND work_item_id IN (${placeholders})
@@ -257,7 +281,7 @@ function entriesForWindow(
       if (!pe) continue;
       if (!latest || pe.created_at > latest.created_at) latest = pe;
     }
-    const summary = latest ? firstSentence(latest.text) : null;
+    const summary = latest ? blurbFor(latest) : null;
 
     // Tasks list for the row — what got worked under this story in the window.
     const tasks: StandupTask[] = [];

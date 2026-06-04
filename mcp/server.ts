@@ -718,6 +718,36 @@ DO NOT write a session_log for:
   - Routine commits with no narrative value — though most real
     commits ARE worth logging, so when in doubt, log.
 
+STANDUP BLURB — what Moran reads tomorrow:
+Every \`progress\` and \`blocker\` event MUST also include
+\`standupSummary\`: a 1-2 sentence read-this-tomorrow version of the
+entry, capped at about 200 characters. The long \`text\` is the
+archive; \`standupSummary\` is the friendly summary that lands on his
+Yesterday/Today card in the dashboard. He reads it the morning
+after; without it he has to think about why he was blocked, which
+defeats the whole point of sprint-helper.
+
+Write \`standupSummary\` so it answers, in plain English, ONE of:
+  - "what got done" (for \`progress\`)
+  - "why I'm stuck and who unblocks it" (for \`blocker\`)
+
+Plain English rules apply: no banned vocabulary, names before
+numbers, no acronyms Moran doesn't already use. Example:
+
+  text:           "Paused, blocked. Ready-to-migrate proven e2e on
+                  one cluster (sh-srvc-prod-eks: hello-world +
+                  Datadog + ESO). Only remaining gate is fleet
+                  connectivity, blocked on Yosef's egress for 5
+                  clusters. Resume when egress opens to confirm
+                  hello-world green everywhere."
+  standupSummary: "Critical-path proven end-to-end on sh-srvc-prod-eks
+                  (hello-world + Datadog + ESO). Now blocked on
+                  Yosef's network egress for 5 remaining clusters."
+
+If you skip \`standupSummary\` the dashboard falls back to the first
+~280 characters of \`text\`, which usually reads as a half-thought.
+Always include it.
+
 BODY CONTENT — TASK-RELATED ONLY:
 The activity log is the long-term archive of the WORK. Not the chat,
 not the tool, not the discussion between you and the user. Before
@@ -907,9 +937,19 @@ CAPACITY (Moran's real desk time after meetings):
 
 KEEPING MORAN'S NOTES (his dashboard's "helper's notes" space):
   This is where you talk TO Moran about his sprint, in plain casual English.
-  - Keep a living summary current with \`helper_note_set_summary\`: 1-3 sentences
-    on how the sprint is really going and what today is good for. Rewrite it when
-    the picture changes (e.g. at the start of work, after closing a task).
+  - Keep the living summary FRESH via \`helper_note_set_summary\`: 1-3 sentences
+    on how the sprint is really going and what today is good for. The summary
+    sits at the top of his notes card; if it goes stale, the card stops feeling
+    alive. Call \`helper_notes_get\` first to read the current summary + its
+    timestamp; if either is missing OR the timestamp is more than ~24 hours
+    old, REWRITE it before you return to whatever you were doing. Triggers:
+    every \`session_start\` AFTER a stale-summary read, every \`session_end\`,
+    AND any moment the sprint picture shifts (a task closes, a blocker lands
+    or clears, the day's plan changes). If you only ever call
+    \`helper_note_add\` (and never \`helper_note_set_summary\`), the paragraph
+    Moran reads at the top of the card gets older every day while individual
+    notes accumulate underneath — exactly the failure mode he flagged
+    2026-06-04.
   - Drop a nudge with \`helper_note_add\` when you notice something worth his
     attention: an estimate that looks too small for the real work, tasks with no
     movement for days, a light calendar day that's good for deep work. One thought
@@ -1713,6 +1753,13 @@ server.registerTool(
       sessionId: z.string().describe('Session id returned by session_start.'),
       type: z.enum(['focus', 'progress', 'blocker', 'decision', 'note']),
       text: z.string().min(1),
+      standupSummary: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "1-2 sentence read-this-tomorrow blurb for the standup card. ALWAYS include this on `progress` and `blocker` events — it's what Moran sees on his Yesterday/Today rows when he opens the dashboard. Treat it as the answer to 'what got done / what's stuck, in plain English, in 200 chars or less.' If you skip it, the dashboard falls back to truncating the long-form `text`, which usually reads as a half-thought.",
+        ),
       remainingHoursAfter: z
         .number()
         .gt(0)
@@ -1722,7 +1769,7 @@ server.registerTool(
         ),
     },
   },
-  async ({ sessionId, type, text, remainingHoursAfter }) => {
+  async ({ sessionId, type, text, standupSummary, remainingHoursAfter }) => {
     if (!isSessionEventType(type)) return errorResult(`Unknown event type: ${type}`);
     if (remainingHoursAfter != null && remainingHoursAfter <= 0) {
       // Schema's `.gt(0)` already rejects 0, but keep the defensive guard
@@ -1731,7 +1778,7 @@ server.registerTool(
         `remainingHoursAfter must be > 0. If the task is done, call session_end with done=true instead — that's the only path that pushes CompletedWork and closes the task properly. Setting RemainingWork to 0 via session_log leaves the task in a broken state (Remaining=0, session still open, CompletedWork not pushed).`,
       );
     }
-    const event = logEvent({ sessionId, type, text });
+    const event = logEvent({ sessionId, type, text, standupSummary });
     if (!event) return errorResult(`Session not found: ${sessionId}`);
     void mirrorTaskFile(event.workItemId); // background — keep the archive file fresh
 
