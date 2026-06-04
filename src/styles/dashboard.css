@@ -3873,8 +3873,7 @@ html, body {
 /* (4) Micro-labels stop shouting. Section captions keep their authority. */
 .r22-rail .r21-daily-num .cap,
 .r22-rail .r21-daily-task-num .cap,
-.r22-rail .r21-num .cap,
-.r22-rail-cap-num .l { text-transform: none; letter-spacing: 0.01em; }
+.r22-rail .r21-num .cap { text-transform: none; letter-spacing: 0.01em; }
 
 /* (5e) Pills never break a word. */
 .r21-daily-kind, .r21-daily-state,
@@ -3933,69 +3932,63 @@ html, body {
   white-space: nowrap;
 }
 
-/* Remaining hero card. */
-.r22-rail-remaining .hero {
-  display: flex; align-items: baseline; gap: 5px; margin-top: -2px;
+/* Sprint time card — single home for working-hours / available / time-progress. */
+.r22-rail-sprint-time .hero {
+  display: flex; align-items: baseline; gap: 6px; margin-top: -2px; flex-wrap: wrap;
 }
-.r22-rail-remaining .hero .num {
+.r22-rail-sprint-time .hero .num {
   font-size: 54px; font-weight: 300; letter-spacing: -0.035em;
   color: var(--ink-0); line-height: 0.85;
   font-family: var(--font-mono); font-feature-settings: "tnum" 1;
 }
-.r22-rail-remaining .hero .unit {
+.r22-rail-sprint-time .hero .unit {
   font-size: 20px; color: var(--ink-3); font-weight: 400;
 }
-.r22-rail-remaining .hero .of {
-  font-size: 12px; letter-spacing: 0;
-  color: var(--ink-3); align-self: flex-end; margin-bottom: 4px; margin-left: auto;
+.r22-rail-sprint-time .hero .suffix {
+  font-size: 12px; color: var(--ink-3);
+  align-self: flex-end; margin-bottom: 5px; margin-left: 6px;
 }
-.r22-rail-remaining .bar {
+.r22-rail-sprint-time .of-line {
+  margin: 0; font-size: 12px; color: var(--ink-3);
+}
+.r22-rail-sprint-time .bar {
   height: 4px; border-radius: 3px; background: var(--bg-3); overflow: hidden;
 }
-.r22-rail-remaining .bar > i {
+.r22-rail-sprint-time .bar > i {
   display: block; height: 100%; border-radius: 3px;
   background: linear-gradient(90deg, var(--accent-deep), var(--accent));
 }
-.r22-rail-remaining .stats { display: flex; gap: 10px; }
-.r22-rail-remaining .stat {
-  flex: 1; display: flex; flex-direction: column; gap: 4px;
-  padding: 11px 12px;
-  background: var(--bg-1); border: 1px solid var(--line-hair); border-radius: 11px;
+.r22-rail-sprint-time .caption {
+  margin: 0; font-size: 12px; color: var(--ink-2);
 }
-.r22-rail-remaining .stat .n {
-  font-size: 20px; font-family: var(--font-mono); font-feature-settings: "tnum" 1;
-  color: var(--ink-0); line-height: 1;
+.r22-rail-sprint-time .empty {
+  margin: 0; font-size: 13px; color: var(--ink-3); line-height: 1.5;
 }
-.r22-rail-remaining .stat .l {
-  font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3);
-}
-.r22-rail-remaining .stat.is-going .n   { color: var(--st-going); }
-.r22-rail-remaining .stat.is-waiting .n { color: var(--st-waiting); }
-.r22-rail-remaining .live {
+.r22-rail-sprint-time .live {
   appearance: none; font: inherit; text-align: left; width: 100%;
   display: flex; align-items: center; gap: 9px;
   padding: 12px 2px 2px; border: 0;
   border-top: 1px solid var(--line-hair); background: none;
   font-size: 13px; color: var(--ink-2); cursor: pointer;
 }
-.r22-rail-remaining .live .dot {
+.r22-rail-sprint-time .live .dot {
   width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
   box-shadow: 0 0 8px var(--accent); flex: none;
 }
-.r22-rail-remaining .live b {
+.r22-rail-sprint-time .live b {
   color: var(--ink-1); font-weight: 500;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
 }
-.r22-rail-remaining .live .arr {
+.r22-rail-sprint-time .live .arr {
   margin-left: auto; color: var(--ink-3); font-family: var(--font-mono); flex: none;
 }
-.r22-rail-remaining .live:hover b   { color: var(--accent); }
-.r22-rail-remaining .live:hover .arr{ color: var(--accent); }
-.r22-rail-remaining .live.is-quiet {
+.r22-rail-sprint-time .live:hover b   { color: var(--accent); }
+.r22-rail-sprint-time .live:hover .arr{ color: var(--accent); }
+.r22-rail-sprint-time .live.is-quiet {
   cursor: default;
   color: var(--ink-3);
 }
-.r22-rail-remaining .live.is-quiet .dot {
+.r22-rail-sprint-time .live.is-quiet .dot {
   background: var(--ink-4); box-shadow: none;
 }
 
@@ -4034,57 +4027,6 @@ html, body {
 }
 .r22-rail-notes .error {
   margin: 0; font-size: 12px; color: var(--ev-blocker);
-}
-
-/* Capacity card. */
-.r22-rail-capacity .badge {
-  font-size: 11px; font-weight: 600; letter-spacing: 0.03em;
-  padding: 3px 9px; border-radius: 999px; white-space: nowrap;
-}
-.r22-rail-capacity .badge.is-over {
-  color: var(--ev-blocker);
-  background: color-mix(in oklch, var(--ev-blocker) 14%, transparent);
-  border: 1px solid color-mix(in oklch, var(--ev-blocker) 35%, transparent);
-}
-.r22-rail-capacity .badge.is-under,
-.r22-rail-capacity .badge.is-on-track {
-  color: var(--st-going);
-  background: color-mix(in oklch, var(--st-going) 14%, transparent);
-  border: 1px solid color-mix(in oklch, var(--st-going) 35%, transparent);
-}
-.r22-rail-capacity .bar {
-  height: 7px; border-radius: 4px; background: var(--bg-3); overflow: hidden; position: relative;
-}
-.r22-rail-capacity .bar > i { display: block; height: 100%; border-radius: 4px; }
-.r22-rail-capacity .bar > i.is-over {
-  background: linear-gradient(90deg, var(--accent-deep), var(--ev-blocker));
-}
-.r22-rail-capacity .bar > i.is-ok {
-  background: linear-gradient(90deg, var(--accent-deep), var(--accent));
-}
-.r22-rail-capacity .legend {
-  display: flex; justify-content: space-between; font-size: 11px;
-  color: var(--ink-3); margin-top: -4px;
-}
-.r22-rail-capacity .legend .v { color: var(--ink-1); font-family: var(--font-mono); }
-.r22-rail-cap-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
-  padding-top: 12px; border-top: 1px solid var(--line-hair);
-}
-.r22-rail-cap-num {
-  display: flex; flex-direction: column; gap: 4px;
-}
-.r22-rail-cap-num .l {
-  font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--ink-3); display: inline-flex; align-items: center; gap: 5px;
-}
-.r22-rail-cap-num .n {
-  font-size: 23px; font-family: var(--font-mono); font-feature-settings: "tnum" 1;
-  color: var(--ink-1); line-height: 1;
-}
-.r22-rail-cap-num.is-key .n { color: var(--ink-0); }
-.r22-rail-capacity .empty {
-  margin: 0; font-size: 13px; color: var(--ink-2); line-height: 1.55;
 }
 
 /* Narrow: no room for two sidebars — body scrolls as one, context drops below stories. */

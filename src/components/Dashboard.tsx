@@ -275,14 +275,11 @@ function DashboardLive({
               stories={stories}
               sprintName={sprintLabel}
               onOpenItem={openItem}
-              capacity={data.capacity}
               outlookCapacity={data.outlookCapacity}
               helperNotes={data.helperNotes}
               standup={data.standup}
               today={today}
               totalDays={sprintCtx?.totalDays ?? 0}
-              goingCount={inProgress.length}
-              waitingCount={upNext.length}
               live={liveItems.length > 0}
               focalTitle={focalTask?.title}
               onRefresh={onRefresh}
@@ -831,14 +828,11 @@ function DailyView({
   stories,
   sprintName,
   onOpenItem,
-  capacity,
   outlookCapacity,
   helperNotes,
   standup,
   today,
   totalDays,
-  goingCount,
-  waitingCount,
   live,
   focalTitle,
   onRefresh,
@@ -848,14 +842,11 @@ function DailyView({
   stories: ApiUserStoryGroup[];
   sprintName: string;
   onOpenItem: (id: string) => void;
-  capacity: ApiPayload['capacity'];
   outlookCapacity: ApiOutlookCapacity | null;
   helperNotes: ApiHelperNotes;
   standup: ApiPayload['standup'];
   today: number;
   totalDays: number;
-  goingCount: number;
-  waitingCount: number;
   live: boolean;
   focalTitle?: string;
   onRefresh: () => void;
@@ -863,7 +854,7 @@ function DailyView({
   onToggleRailCollapsed: () => void;
 }) {
   // The stories column is the scroller for the "Live on…" jump button in
-  // the rail. Capture it via ref so RailRemaining can scroll the right
+  // the rail. Capture it via ref so RailSprintTime can scroll the right
   // element + flash the live card.
   const storiesColRef = useRef<HTMLDivElement>(null);
 
@@ -1046,19 +1037,15 @@ function DailyView({
       </button>
       {!railCollapsed && (
         <>
-          <RailRemaining
-            remainingHours={capacity.remainingHours}
-            plannedHours={capacity.totalEstimateHours || outlookCapacity?.workingHoursTotal || 0}
+          <RailSprintTime
+            capacity={outlookCapacity}
             today={today}
             totalDays={totalDays}
-            goingCount={goingCount}
-            waitingCount={waitingCount}
             live={live}
             focalTitle={focalTitle}
             scrollerRef={storiesColRef}
           />
           <RailNotes notes={helperNotes} onRefresh={onRefresh} />
-          <RailCapacity capacity={outlookCapacity} completedHours={capacity.completedHours} />
         </>
       )}
     </aside>
@@ -1070,38 +1057,26 @@ function DailyView({
 /*  Daily v2 rail cards (R22)                                                 */
 /* -------------------------------------------------------------------------- */
 
-function RailRemaining({
-  remainingHours,
-  plannedHours,
+function RailSprintTime({
+  capacity,
   today,
   totalDays,
-  goingCount,
-  waitingCount,
   live,
   focalTitle,
   scrollerRef,
 }: {
-  remainingHours: number;
-  plannedHours: number;
+  capacity: ApiOutlookCapacity | null;
   today: number;
   totalDays: number;
-  goingCount: number;
-  waitingCount: number;
   live: boolean;
   focalTitle?: string;
   scrollerRef: React.RefObject<HTMLDivElement>;
 }) {
-  const remaining = Math.round(remainingHours);
-  const planned = Math.round(plannedHours);
-  const pct = planned > 0 ? Math.min(100, Math.round((remaining / planned) * 100)) : 0;
-
   function jumpToLive() {
     const scroller = scrollerRef.current;
     if (!scroller) return;
     const card = scroller.querySelector('.r21-daily-card.is-live') as HTMLElement | null;
     if (!card) return;
-    // If the live card sits in a collapsed feature header, open the feature
-    // first. The feature head responds to a synthetic click.
     const section = card.closest('.r21-daily-feature');
     if (section && section.classList.contains('is-collapsed')) {
       const head = section.querySelector('.r21-daily-feature-head') as HTMLElement | null;
@@ -1112,36 +1087,51 @@ function RailRemaining({
               + scroller.scrollTop - 28;
     scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
     card.classList.remove('r22-flash');
-    // Force a reflow so the animation restarts each click.
     void card.offsetWidth;
     card.classList.add('r22-flash');
     setTimeout(() => card.classList.remove('r22-flash'), 1600);
   }
 
+  if (!capacity) {
+    return (
+      <section className="r22-rail-card r22-rail-sprint-time" aria-label="Sprint time">
+        <div className="r22-rail-card-head">
+          <span className="r22-rail-card-label">Sprint time</span>
+          <span className="r22-rail-card-meta">day {today} / {totalDays || '—'}</span>
+        </div>
+        <p className="empty">Capacity data not available right now.</p>
+      </section>
+    );
+  }
+
+  const working = Math.round(capacity.workingHoursTotal);
+  const available = Math.round(capacity.availableHours);
+  const hasCalendar = capacity.hasUrl && !capacity.fetchError;
+  const daysLeft = Math.max(0, (totalDays || 0) - (today - 1));
+  const pctLeft = totalDays > 0 ? Math.max(0, Math.min(100, Math.round((daysLeft / totalDays) * 100))) : 0;
+
   return (
-    <section className="r22-rail-card r22-rail-remaining" aria-label="Remaining hours">
+    <section className="r22-rail-card r22-rail-sprint-time" aria-label="Sprint time">
       <div className="r22-rail-card-head">
-        <span className="r22-rail-card-label">Remaining</span>
+        <span className="r22-rail-card-label">Sprint time</span>
         <span className="r22-rail-card-meta">day {today} / {totalDays || '—'}</span>
       </div>
       <div className="hero">
-        <span className="num">{remaining}</span>
+        <span className="num">{available}</span>
         <span className="unit">h</span>
-        {planned > 0 && <span className="of">of {planned}h</span>}
+        <span className="suffix">{hasCalendar ? 'after meetings' : 'available'}</span>
       </div>
-      {planned > 0 && (
-        <div className="bar" aria-hidden="true"><i style={{ width: `${pct}%` }} /></div>
-      )}
-      <div className="stats">
-        <div className="stat is-going">
-          <span className="n">{goingCount}</span>
-          <span className="l">going</span>
-        </div>
-        <div className="stat is-waiting">
-          <span className="n">{waitingCount}</span>
-          <span className="l">waiting</span>
-        </div>
+      <p className="of-line">of {working}h working this sprint</p>
+      <div className="bar" aria-hidden="true">
+        <i style={{ width: `${pctLeft}%` }} />
       </div>
+      <p className="caption">
+        {daysLeft <= 0
+          ? 'Last day of the sprint'
+          : daysLeft === 1
+            ? '1 day left in the sprint'
+            : `${daysLeft} days left in the sprint`}
+      </p>
       {live && focalTitle ? (
         <button type="button" className="live" onClick={jumpToLive} title="Jump to the story you're working on">
           <span className="dot" aria-hidden="true" />
@@ -1221,100 +1211,6 @@ function RailNotes({
         </>
       )}
       {error && <p className="error">{error}</p>}
-    </section>
-  );
-}
-
-function RailCapacity({ capacity, completedHours }: { capacity: ApiOutlookCapacity | null; completedHours: number }) {
-  if (!capacity) return null;
-
-  if (!capacity.hasUrl) {
-    return (
-      <section className="r22-rail-card r22-rail-capacity" aria-label="Sprint capacity">
-        <div className="r22-rail-card-head">
-          <span className="r22-rail-card-label">Capacity</span>
-          <span className="r22-rail-card-meta">no calendar</span>
-        </div>
-        <p className="empty">
-          Connect your Outlook calendar to see hours available after meetings.
-        </p>
-      </section>
-    );
-  }
-
-  if (capacity.fetchError) {
-    return (
-      <section className="r22-rail-card r22-rail-capacity" aria-label="Sprint capacity">
-        <div className="r22-rail-card-head">
-          <span className="r22-rail-card-label">Capacity</span>
-          <span className="r22-rail-card-meta">calendar error</span>
-        </div>
-        <p className="empty">
-          Calendar fetch failed — check the published Outlook URL is still valid.
-        </p>
-      </section>
-    );
-  }
-
-  const working = Math.round(capacity.workingHoursTotal);
-  const available = Math.round(capacity.availableHours);
-  const planned = Math.round(capacity.plannedHours);
-  const completed = Math.round(completedHours);
-  const diff = capacity.difference;
-  const absDiff = Math.round(Math.abs(diff));
-
-  let state: 'over' | 'under' | 'on-track' = 'on-track';
-  let phrase = 'on track';
-  if (diff >= 8) {
-    state = 'over';
-    phrase = `${absDiff}h over`;
-  } else if (diff <= -8) {
-    state = 'under';
-    phrase = `${absDiff}h of room left`;
-  } else if (Math.abs(diff) >= 1) {
-    phrase = diff > 0 ? `${absDiff}h over` : `${absDiff}h under`;
-  }
-
-  const barPct = working > 0 ? Math.min(100, Math.round((planned / working) * 100)) : 0;
-  const barClass = state === 'over' ? 'is-over' : 'is-ok';
-
-  return (
-    <section className="r22-rail-card r22-rail-capacity" aria-label="Sprint capacity">
-      <div className="r22-rail-card-head">
-        <span className="r22-rail-card-label">Capacity</span>
-        <span className={`badge is-${state}`}>{phrase}</span>
-      </div>
-      <div className="bar" aria-hidden="true"><i className={barClass} style={{ width: `${barPct}%` }} /></div>
-      <div className="legend">
-        <span>planned <span className="v">{planned}h</span></span>
-        <span>available <span className="v">{available}h</span></span>
-      </div>
-      <div className="r22-rail-cap-grid">
-        <div className="r22-rail-cap-num is-key">
-          <span className="l">
-            available
-            <span
-              className="r21-capacity-info"
-              data-tip="Calculated time after meetings from Outlook."
-              aria-label="Calculated time after meetings from Outlook"
-              role="tooltip"
-            >ⓘ</span>
-          </span>
-          <span className="n">{available}h</span>
-        </div>
-        <div className="r22-rail-cap-num is-key">
-          <span className="l">planned</span>
-          <span className="n">{planned}h</span>
-        </div>
-        <div className="r22-rail-cap-num">
-          <span className="l">total</span>
-          <span className="n">{working}h</span>
-        </div>
-        <div className="r22-rail-cap-num">
-          <span className="l">completed</span>
-          <span className="n">{completed}h</span>
-        </div>
-      </div>
     </section>
   );
 }
