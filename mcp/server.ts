@@ -44,9 +44,12 @@ import {
 import {
   endSession,
   isSessionEventType,
+  listActiveSessions,
+  listEventsForSession,
   logEvent,
   startSession,
 } from '../server/sessions.js';
+import { getSetting, setSetting } from '../server/timers.js';
 import * as timerService from '../server/timer-service.js';
 import { getWorkItem, addWorkItemComment } from '../server/ado.js';
 import { markSHCreated } from '../server/sh-created.js';
@@ -1854,6 +1857,10 @@ server.registerTool(
     }
     try {
       await setRemaining(event.workItemId, remainingHoursAfter);
+      // Mark that this session burned down RemainingWork at least once, so
+      // session_end can tell whether the board went stale (Rule 2). Keyed by
+      // session so it can't leak across sessions on the same task.
+      setSetting(`remaining_touched_${sessionId}`, event.createdAt);
       return jsonResult({
         event,
         remainingWork: {
@@ -1877,6 +1884,10 @@ server.registerTool(
   },
 );
 
+// How long a session can run with nothing logged before session_end requires
+// a catch-up note (Rule 1). Matches the stale-log nudge window. Tune here.
+const SESSION_LOG_REQUIRED_AFTER_MINUTES = 45;
+
 server.registerTool(
   'session_end',
   {
@@ -1895,14 +1906,56 @@ server.registerTool(
         .gt(0)
         .optional()
         .describe('REQUIRED when done=true. The CompletedWork value to push to Azure DevOps, derived from the burndown formula (OriginalEstimate − new RemainingWork, adjusted if the task overran the estimate). Must match the number Moran confirmed in chat. Without this, CompletedWork would stay at its historical value (usually 0) — bad signal for the delivery manager.'),
+      remainingHoursAfter: z
+        .number()
+        .gt(0)
+        .optional()
+        .describe("For the PAUSE path (done omitted/false). The current honest estimate of hours LEFT on the task. Pass this when you're stopping mid-task and the remaining work has changed since you last burned it down — sprint-helper writes RemainingWork to Azure DevOps so the board doesn't go stale. If you logged progress this session but never updated RemainingWork, session_end will REQUIRE this before it closes. Pass the same number you already have if it genuinely hasn't moved. Ignored when done=true (that path drives RemainingWork to 0)."),
     },
   },
-  async ({ sessionId, summary, done, completedHoursAfter }) => {
+  async ({ sessionId, summary, done, completedHoursAfter, remainingHoursAfter }) => {
     if (done && completedHoursAfter === undefined) {
       return errorResult(
         'completedHoursAfter is required when done=true. Propose the number using the burndown formula (CompletedWork = OriginalEstimate − new RemainingWork, adjusted for overrun), confirm with Moran in chat, then pass it as completedHoursAfter. Closing a task without an explicit Completed value leaves CompletedWork at its historical value on Azure DevOps — usually 0 — which is the wrong signal for the delivery manager.',
       );
     }
+
+    // ---- Pre-close speed bumps (run BEFORE the session is closed) ----
+    // The session is still open here, so we can read what happened during it.
+    // If a check fails we return early and the session stays open, so the AI
+    // can fix the gap and call session_end again.
+    const openSession = listActiveSessions().find((s) => s.id === sessionId);
+    if (openSession) {
+      const events = listEventsForSession(sessionId);
+      const hadProgress = events.some((e) => e.type === 'progress');
+      const hadSubstantiveLog = events.some(
+        (e) => e.type === 'progress' || e.type === 'blocker' || e.type === 'decision',
+      );
+      const minutesOpen = (Date.now() - new Date(openSession.startedAt).getTime()) / 60000;
+      const haveSummary = summary != null && summary.trim() !== '';
+
+      // Rule 1 (catch-up log): a session that ran a real stretch but recorded
+      // nothing about what happened shouldn't close silently. Satisfiable by a
+      // session_log progress/blocker/decision entry OR a non-empty summary here.
+      if (minutesOpen >= SESSION_LOG_REQUIRED_AFTER_MINUTES && !hadSubstantiveLog && !haveSummary) {
+        return errorResult(
+          `This session has been open about ${Math.round(minutesOpen)} minutes but nothing was logged about what happened. Before closing, either call session_log with a 'progress' entry describing what got done, or pass a one-line \`summary\` to session_end. (This catches the case where sub-agents did the work and it never got written down.)`,
+        );
+      }
+
+      // Rule 2 (keep RemainingWork honest): if progress landed but the burndown
+      // was never touched this session, the board still shows the old estimate.
+      // Satisfiable by passing remainingHoursAfter (the current honest number,
+      // or the same value if it truly hasn't moved). Only on the pause path —
+      // done=true drives RemainingWork to 0 explicitly below.
+      const remainingTouched = getSetting(`remaining_touched_${sessionId}`) != null;
+      if (!done && hadProgress && !remainingTouched && remainingHoursAfter == null) {
+        return errorResult(
+          "You logged progress this session but never updated the remaining hours, so Azure DevOps still shows the old estimate. Pass `remainingHoursAfter` with the current honest number of hours left (or the same value if it genuinely hasn't moved) and call session_end again. If the task is actually finished, use done=true with completedHoursAfter instead.",
+        );
+      }
+    }
+
     const session = endSession({ sessionId, summary });
     if (!session) return errorResult(`Session not found: ${sessionId}`);
     // Ending a session is the single most cache-invalidating event we have —
@@ -1932,8 +1985,18 @@ server.registerTool(
           newState,
         });
       }
-      // Pause-only path. Stop the local timer, no ADO writes.
+      // Pause-only path. Stop the local timer. The only ADO write here is the
+      // optional RemainingWork refresh (Rule 2) when the caller passed it.
       const timer = timerService.pause(session.workItemId);
+      if (remainingHoursAfter != null) {
+        await setRemaining(session.workItemId, remainingHoursAfter);
+        return jsonResult({
+          session,
+          done: false,
+          timer,
+          remainingHoursPushed: remainingHoursAfter,
+        });
+      }
       return jsonResult({ session, done: false, timer });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
