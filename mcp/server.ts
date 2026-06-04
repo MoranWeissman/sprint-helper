@@ -719,6 +719,16 @@ DO write a session_log when:
   - You finished something worth remembering tomorrow — a commit
     (include the commit subject + sha7), a shipped sub-piece, a
     completed sub-task. Use \`type: 'progress'\`.
+  - **A batch of sub-agents you dispatched returned with results.**
+    Even if YOU didn't touch code yourself, the work happened — the
+    subagent implementer wrote code, the reviewer reviewed it, etc.
+    Their return IS a checkpoint. Log a \`progress\` entry naming
+    what the batch produced (e.g. "spec + quality review passed
+    for Task N: stale-remaining nudge"). This is the most common
+    miss — the agent's own narrative didn't change, so the trigger
+    feels weak; fire it anyway. Moran flagged this 2026-06-04 after
+    catching a session where four agents ran and not one log entry
+    landed until he asked about it.
   - You hit a real blocker — waiting on someone's PR, an external
     dependency, a credential you can't get. Use \`type: 'blocker'\`.
   - You made a non-obvious decision — picked one approach over
@@ -731,6 +741,26 @@ DO write a session_log when:
   - You burned RemainingWork down meaningfully — pass both
     \`text\` and \`remainingHoursAfter\` so ADO updates atomically
     (see EFFORT → AS WORK PROGRESSES).
+
+THE SUB-AGENT TRAP — read this section if you delegate work:
+The single most common way checkpoint logging breaks is when the
+main agent dispatches sub-agents (implementer / spec-reviewer /
+code-quality-reviewer / Explore / etc.) and then carries on after
+their results land. Three patterns to refuse:
+
+  - "I didn't write the code, so it doesn't feel like progress."
+    WRONG. The agent batch's work IS the progress. Log it.
+  - "I'll consolidate at \`session_end\`."
+    WRONG. session_end summary doesn't include per-batch narrative.
+    The standup card reads the per-event entries, not the summary.
+  - "The subagent already produced a summary, that's good enough."
+    WRONG. Subagent summaries don't reach the session_events
+    table. Only \`session_log\` does.
+
+The discipline: after EVERY parallel subagent batch completes,
+before moving to the next task, call session_log({ type:
+'progress', text: '<what the batch produced>', standupSummary:
+'<one-liner Moran reads tomorrow>' }). No exceptions.
 
 DO NOT write a session_log for:
   - Every file edit, every grep, every tool call.
