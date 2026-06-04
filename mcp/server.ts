@@ -1801,7 +1801,7 @@ server.registerTool(
         .min(1)
         .optional()
         .describe(
-          "1-2 sentence read-this-tomorrow blurb for the standup card. ALWAYS include this on `progress` and `blocker` events — it's what Moran sees on his Yesterday/Today rows when he opens the dashboard. Treat it as the answer to 'what got done / what's stuck, in plain English, in 200 chars or less.' If you skip it, the dashboard falls back to truncating the long-form `text`, which usually reads as a half-thought.",
+          "1-2 sentence read-this-tomorrow blurb for the standup card. REQUIRED on `progress` and `blocker` events — the tool refuses those without it. It's what Moran sees on his Yesterday/Today rows when he opens the dashboard. Treat it as the answer to 'what got done / what's stuck, in plain English, in 200 chars or less.' Optional on `focus`, `decision`, and `note` events, which don't surface on the standup card.",
         ),
       remainingHoursAfter: z
         .number()
@@ -1814,6 +1814,17 @@ server.registerTool(
   },
   async ({ sessionId, type, text, standupSummary, remainingHoursAfter }) => {
     if (!isSessionEventType(type)) return errorResult(`Unknown event type: ${type}`);
+    // Speed bump (not just a sign): a 'progress' or 'blocker' event is what
+    // feeds Moran's standup card, so the friendly one-liner is mandatory for
+    // those two types. Refuse the call rather than letting the dashboard fall
+    // back to truncating the long-form text into a half-thought. 'focus',
+    // 'decision', and 'note' don't surface on the standup card, so they stay
+    // free to omit it.
+    if ((type === 'progress' || type === 'blocker') && (standupSummary == null || standupSummary.trim() === '')) {
+      return errorResult(
+        `standupSummary is required for '${type}' events — it's the 1-2 sentence read-this-tomorrow line Moran sees on his standup card. Add a plain-English summary of ${type === 'progress' ? 'what got done' : "what's stuck and who unblocks it"} and call again.`,
+      );
+    }
     if (remainingHoursAfter != null && remainingHoursAfter <= 0) {
       // Schema's `.gt(0)` already rejects 0, but keep the defensive guard
       // in case the schema gets loosened or a caller bypasses it.
