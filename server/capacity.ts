@@ -16,13 +16,14 @@
 import { listBusyInWindow, getCalendarUrl, type BusyInterval } from './calendar';
 import { getWorkdayHours } from './story-points';
 
-// Moran-specific defaults (2026-06-01): TENTATIVE meetings ignored entirely
-// (he doesn't count "maybes" against capacity), Mon-Fri. The workday length
-// is read from settings via getWorkdayHours() so effort math and capacity
-// math share one source of truth.
+// Moran-specific defaults: TENTATIVE meetings ignored entirely (he doesn't
+// count "maybes" against capacity), Sun-Thu (Israeli workweek — Friday +
+// Saturday are off; set 2026-06-04). The workday length is read from
+// settings via getWorkdayHours() so effort math and capacity math share
+// one source of truth.
 const DEFAULT_WORKDAY_START = 8;  // 08:00 local
 const DEFAULT_WORKDAY_END = 18;   // 18:00 local
-const DEFAULT_WORKING_DAYS = new Set([1, 2, 3, 4, 5]); // Mon-Fri
+const DEFAULT_WORKING_DAYS = new Set([0, 1, 2, 3, 4]); // Sun-Thu
 const TENTATIVE_WEIGHT = 0;
 
 export interface Capacity {
@@ -48,7 +49,7 @@ export interface ComputeCapacityOptions {
   sprintStart: Date;
   sprintEnd: Date;
   plannedHours: number;
-  /** Defaults: Mon-Fri, 8h/day, 08:00–18:00. */
+  /** Defaults: Sun-Thu (Israeli workweek), 8h/day, 08:00–18:00. */
   workingDays?: Set<number>;
   workdayHours?: number;
   workdayStartHour?: number;
