@@ -6,12 +6,10 @@
  * a GET-then-PATCH race is vanishingly unlikely in practice. If the PATCH
  * fails, the caller queues a pending_changes row for retry.
  */
-import { execFile } from 'node:child_process';
 import { loadAdoConfig } from './config';
+import { getAdoClient } from './ado-client';
 import { getSetting, setSetting } from './timers';
 import { deriveStoryPoints, getWorkdayHours } from './story-points';
-
-const ADO_RESOURCE = '499b84ac-1321-427f-aa17-267ca6975798';
 
 /**
  * State buckets the UI exposes (waiting / going / done) → ordered list of
@@ -51,8 +49,7 @@ async function fetchEffortFields(id: number): Promise<AdoWorkItemSlim> {
     'System.Tags',
   ].join(',');
   const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitems/${id}?fields=${encodeURIComponent(fields)}&api-version=7.1`;
-  const { stdout } = await azExec(['rest', '--method', 'GET', '--uri', uri, '--resource', ADO_RESOURCE]);
-  return JSON.parse(stdout) as AdoWorkItemSlim;
+  return getAdoClient().rest<AdoWorkItemSlim>({ method: 'GET', uri });
 }
 
 /** Parse ADO's "tag1; tag2; tag3" string into a clean lowercased Set. */
@@ -518,19 +515,7 @@ export async function createTask(input: CreateTaskInput): Promise<CreatedTask> {
   }
 
   const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitems/$Task?api-version=7.1`;
-  const { stdout } = await azStdin(
-    [
-      'rest',
-      '--method', 'POST',
-      '--uri', uri,
-      '--resource', ADO_RESOURCE,
-      '--headers', 'Content-Type=application/json-patch+json',
-      '--body', '@-',
-    ],
-    JSON.stringify(patch),
-  );
-
-  const created = JSON.parse(stdout) as {
+  const created = await getAdoClient().rest<{
     id: number;
     fields: {
       'System.Title': string;
@@ -539,7 +524,7 @@ export async function createTask(input: CreateTaskInput): Promise<CreatedTask> {
     };
     url: string;
     _links?: { html?: { href?: string } };
-  };
+  }>({ method: 'POST', uri, body: patch, contentKind: 'json-patch' });
 
   return {
     id: created.id,
@@ -624,19 +609,7 @@ export async function createStory(input: CreateStoryInput): Promise<CreatedStory
   }
 
   const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitems/$User%20Story?api-version=7.1`;
-  const { stdout } = await azStdin(
-    [
-      'rest',
-      '--method', 'POST',
-      '--uri', uri,
-      '--resource', ADO_RESOURCE,
-      '--headers', 'Content-Type=application/json-patch+json',
-      '--body', '@-',
-    ],
-    JSON.stringify(patch),
-  );
-
-  const created = JSON.parse(stdout) as {
+  const created = await getAdoClient().rest<{
     id: number;
     fields: {
       'System.Title': string;
@@ -645,7 +618,7 @@ export async function createStory(input: CreateStoryInput): Promise<CreatedStory
     };
     url: string;
     _links?: { html?: { href?: string } };
-  };
+  }>({ method: 'POST', uri, body: patch, contentKind: 'json-patch' });
 
   return {
     id: created.id,
@@ -664,8 +637,7 @@ async function getCurrentIterationPath(): Promise<string | null> {
   const cfg = await loadAdoConfig();
   const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/${encodeURIComponent(cfg.team)}/_apis/work/teamsettings/iterations?$timeframe=current&api-version=7.1`;
   try {
-    const { stdout } = await azExec(['rest', '--method', 'GET', '--uri', uri, '--resource', ADO_RESOURCE]);
-    const parsed = JSON.parse(stdout) as { value?: Array<{ path: string }> };
+    const parsed = await getAdoClient().rest<{ value?: Array<{ path: string }> }>({ method: 'GET', uri });
     return parsed.value?.[0]?.path ?? null;
   } catch {
     return null;
@@ -704,8 +676,7 @@ export async function reparent(
   const cfg = await loadAdoConfig();
   // Read current relations.
   const readUri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitems/${childId}?$expand=relations&api-version=7.1`;
-  const { stdout } = await azExec(['rest', '--method', 'GET', '--uri', readUri, '--resource', ADO_RESOURCE]);
-  const w = JSON.parse(stdout) as { relations?: Array<{ rel: string; url: string }> };
+  const w = await getAdoClient().rest<{ relations?: Array<{ rel: string; url: string }> }>({ method: 'GET', uri: readUri });
   const relations = w.relations ?? [];
 
   const parentIndices: number[] = [];
@@ -746,62 +717,9 @@ export async function reparent(
 async function patchWorkItem(id: number, patch: Array<Record<string, unknown>>): Promise<void> {
   const cfg = await loadAdoConfig();
   const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitems/${id}?api-version=7.1`;
-  const body = JSON.stringify(patch);
-  await azStdin(
-    [
-      'rest',
-      '--method', 'PATCH',
-      '--uri', uri,
-      '--resource', ADO_RESOURCE,
-      '--headers', 'Content-Type=application/json-patch+json',
-      '--body', '@-',
-    ],
-    body,
-  );
+  await getAdoClient().rest({ method: 'PATCH', uri, body: patch, contentKind: 'json-patch' });
 }
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
-}
-
-/* ---- exec helpers (mirror server/ado.ts patterns) ---- */
-
-function azExec(args: string[]): Promise<{ stdout: string }> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      'az',
-      [...args, '-o', 'json'],
-      { maxBuffer: 16 * 1024 * 1024 },
-      (err, stdout, stderr) => {
-        if (err) reject(enrich(stderr, args));
-        else resolve({ stdout: String(stdout) });
-      },
-    );
-  });
-}
-
-function azStdin(args: string[], input: string): Promise<{ stdout: string }> {
-  return new Promise((resolve, reject) => {
-    const child = execFile(
-      'az',
-      args,
-      { maxBuffer: 16 * 1024 * 1024 },
-      (err, stdout, stderr) => {
-        if (err) reject(enrich(stderr, args));
-        else resolve({ stdout: String(stdout) });
-      },
-    );
-    child.stdin?.write(input);
-    child.stdin?.end();
-  });
-}
-
-function enrich(stderr: string | Buffer | undefined, args: string[]): Error {
-  const text = String(stderr ?? '');
-  const msg = text.includes('not logged in')
-    ? 'sprint-helper needs you to run `az login` first.'
-    : `az command failed: ${text || 'unknown error'}`;
-  const err = new Error(msg);
-  (err as unknown as { command: string }).command = `az ${args.join(' ')}`;
-  return err;
 }
