@@ -414,24 +414,41 @@ function buildCeremonyBlock(
  * still shows up). Stories are sorted: those with in-progress tasks first,
  * then by descending in-progress count.
  */
-function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): UserStoryGroup[] {
+export function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): UserStoryGroup[] {
   // Index projected items by id for easy lookup with effort numbers.
   const byId = new Map(projected.map(p => [p.id, p]));
 
-  // Bucket by parent id (or by self id if no parent — i.e. orphan items).
-  const buckets = new Map<string, { parent: ParentInfo; tasks: DashboardWorkItem[] }>();
+  // A bucket = one story row. `header` is the story/bug/feature item itself
+  // (when it's in the payload), `tasks` are its child Tasks. Keeping them
+  // separate is what stops a User Story being filed as a "task" under its
+  // Feature — only Tasks roll up; everything else heads its own row.
+  interface Bucket {
+    parent: ParentInfo;
+    /** True once parent came from the item itself (richer) vs synthesized from a child task. */
+    parentResolved: boolean;
+    /** The story/bug item itself, if present in the payload (drives its own session/activity). */
+    header: DashboardWorkItem | null;
+    tasks: DashboardWorkItem[];
+  }
+  const buckets = new Map<string, Bucket>();
 
   for (const raw of rawItems) {
     const projectedItem = byId.get(String(raw.id));
     if (!projectedItem) continue;
 
-    let parent: ParentInfo;
-    if (raw.parentId && raw.parentTitle) {
+    const typeLower = raw.type.toLowerCase();
+    const hasParent = !!(raw.parentId && raw.parentTitle);
+    // Only a Task rolls up under its parent story. A User Story / Bug / Feature
+    // is its own row even when it has a parent (the parent is its Feature, not
+    // a story it belongs to).
+    const rollsUpToParent = typeLower === 'task' && hasParent;
+
+    if (rollsUpToParent) {
       const parentTypeLower = (raw.parentType ?? '').toLowerCase();
       // If the parent IS a Feature/Epic, treat the parent itself as the feature.
       // Otherwise, the feature is the grandparent (if any).
       const feature = FEATURE_LIKE_TYPES.has(parentTypeLower)
-        ? { id: String(raw.parentId), title: raw.parentTitle, type: raw.parentType ?? 'Feature' }
+        ? { id: String(raw.parentId), title: raw.parentTitle!, type: raw.parentType ?? 'Feature' }
         : raw.grandparentId
           ? {
               id: String(raw.grandparentId),
@@ -439,9 +456,9 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
               type: raw.grandparentType ?? 'Feature',
             }
           : undefined;
-      parent = {
+      const parent: ParentInfo = {
         id: String(raw.parentId),
-        title: raw.parentTitle,
+        title: raw.parentTitle!,
         type: raw.parentType ?? 'User Story',
         state: raw.parentState ?? '',
         url: raw.parentUrl ?? '',
@@ -454,13 +471,20 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
         feature,
         tags: raw.parentTags,
       };
+      const existing = buckets.get(parent.id);
+      if (existing) existing.tasks.push(projectedItem);
+      else buckets.set(parent.id, { parent, parentResolved: false, header: null, tasks: [projectedItem] });
     } else {
-      // No parent — treat the item itself as its own "story".
-      const typeLower = raw.type.toLowerCase();
+      // The item heads its own row. If it's itself a Feature it heads a feature
+      // section; otherwise its feature is its parent (so stories still group
+      // under features in the daily view).
+      const parentTypeLower = (raw.parentType ?? '').toLowerCase();
       const feature = FEATURE_LIKE_TYPES.has(typeLower)
         ? { id: String(raw.id), title: raw.title, type: raw.type }
-        : undefined;
-      parent = {
+        : hasParent && FEATURE_LIKE_TYPES.has(parentTypeLower)
+          ? { id: String(raw.parentId), title: raw.parentTitle!, type: raw.parentType ?? 'Feature' }
+          : undefined;
+      const parent: ParentInfo = {
         id: String(raw.id),
         title: raw.title,
         type: raw.type,
@@ -475,10 +499,20 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
         feature,
         tags: raw.tags,
       };
+      const existing = buckets.get(parent.id);
+      if (existing) {
+        // A child task created this bucket first; now fill in the real header.
+        existing.parent = parent;
+        existing.parentResolved = true;
+        existing.header = projectedItem;
+      } else if (typeLower === 'task') {
+        // Orphan Task (no parent): it IS the row's single task, like before.
+        buckets.set(parent.id, { parent, parentResolved: true, header: null, tasks: [projectedItem] });
+      } else {
+        // Story / Bug / Feature: the header, not a task under itself.
+        buckets.set(parent.id, { parent, parentResolved: true, header: projectedItem, tasks: [] });
+      }
     }
-    const key = parent.id;
-    if (!buckets.has(key)) buckets.set(key, { parent, tasks: [] });
-    buckets.get(key)!.tasks.push(projectedItem);
   }
 
   // Roll up effort + counts per bucket. Local-uncaptured time is added
@@ -487,7 +521,7 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
   // over TASK-type children only — Story / Feature / Epic children carry
   // rollup numbers that double-count if added in (see capacity reducer
   // above).
-  const groups: UserStoryGroup[] = Array.from(buckets.values()).map(({ parent, tasks }) => {
+  const groups: UserStoryGroup[] = Array.from(buckets.values()).map(({ parent, header, tasks }) => {
     const taskOnly = tasks.filter(t => t.type === 'Task');
     const totalEstimateHours = taskOnly.reduce((s, t) => s + (t.originalEstimate ?? 0), 0);
     const completedHours = taskOnly.reduce(
@@ -503,12 +537,15 @@ function groupByParent(rawItems: WorkItem[], projected: DashboardWorkItem[]): Us
       upNext: tasks.filter(t => !ACTIVE_STATES.has(t.state) && !DONE_STATES.has(t.state)).length,
       done: tasks.filter(t => DONE_STATES.has(t.state)).length,
     };
-    // Roll up activity: merge per-task events, sort by recency, cap at 5.
-    const recentActivity = tasks
+    // Session + activity also reflect work logged on the story itself (the
+    // header), not just its child tasks — so a session opened directly on a
+    // story still marks it live and shows in its feed.
+    const signalItems = header ? [header, ...tasks] : tasks;
+    const recentActivity = signalItems
       .flatMap(t => t.recentActivity)
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
       .slice(0, 5);
-    const hasActiveSession = tasks.some(t => t.activeSession != null);
+    const hasActiveSession = signalItems.some(t => t.activeSession != null);
     return {
       id: parent.id,
       title: parent.title,

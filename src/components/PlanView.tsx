@@ -389,7 +389,7 @@ function CloseOutStoryRow({
         aria-expanded={isExpanded}
       >
         <span className="plan2-chevron" aria-hidden="true">▸</span>
-        <KindBadge kind="story" />
+        <KindBadge kind={kindFromType(story.type)} />
         <StateChip state={story.state} />
         <span className="plan2-title">
           <span className="t">{story.title}</span>
@@ -461,7 +461,7 @@ function CloseOutTaskRow({
   const remMissing = task.remainingWork == null;
   return (
     <li className={`plan2-subrow plan2-row is-${stateClass}`}>
-      <KindBadge kind="task" />
+      <KindBadge kind={kindFromType(task.type)} />
       <StateChip state={task.state} />
       <button
         type="button"
@@ -878,6 +878,14 @@ function KindBadge({ kind }: { kind: 'story' | 'task' | 'bug' }) {
       Story
     </span>
   );
+}
+
+/** Map a raw Azure work-item type to the badge kind. */
+function kindFromType(type: string): 'story' | 'task' | 'bug' {
+  const t = type.toLowerCase();
+  if (t === 'task') return 'task';
+  if (t === 'bug') return 'bug';
+  return 'story';
 }
 
 function classifyState(state: string): 'going' | 'waiting' | 'done' | 'blocked' {

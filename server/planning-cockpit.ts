@@ -24,6 +24,8 @@ import {
 } from './ado';
 
 const DONE_STATES = new Set(['Done', 'Closed', 'Resolved', 'Completed', 'Removed']);
+// Features / Epics aren't "stories to close out" — they're containers. Skip them.
+const FEATURE_LIKE_TYPES = new Set(['feature', 'epic']);
 
 function displayNameFor(id: number | string, title: string): string {
   return `**${title}** (#${id})`;
@@ -50,6 +52,8 @@ export interface CockpitOpenStory {
   id: number;
   title: string;
   displayName: string;
+  /** Real work-item type (User Story / Bug / …) so the UI badges it correctly. */
+  type: string;
   state: string;
   totalEstimateHours: number;
   completedHours: number;
@@ -120,6 +124,7 @@ export async function buildCockpitPayload(): Promise<CockpitPayload> {
   const openStories: CockpitOpenStory[] = [];
   for (const g of payload.userStories) {
     if (DONE_STATES.has(g.state)) continue;
+    if (FEATURE_LIKE_TYPES.has(g.type.toLowerCase())) continue; // not a close-out story
     const openTasks: CockpitOpenTask[] = g.tasks
       .filter(t => !DONE_STATES.has(t.state))
       .map(t => ({
@@ -139,6 +144,7 @@ export async function buildCockpitPayload(): Promise<CockpitPayload> {
       id: Number(g.id),
       title: g.title,
       displayName: displayNameFor(Number(g.id), g.title),
+      type: g.type,
       state: g.state,
       totalEstimateHours: g.totalEstimateHours,
       completedHours: g.completedHours,

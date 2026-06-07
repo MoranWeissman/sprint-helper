@@ -532,6 +532,7 @@ export interface ApiCockpitOpenStory {
   id: number;
   title: string;
   displayName: string;
+  type: string;
   state: string;
   totalEstimateHours: number;
   completedHours: number;
