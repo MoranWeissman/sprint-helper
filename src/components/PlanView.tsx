@@ -156,6 +156,7 @@ export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
         cockpit={cockpit}
         pulledHours={pulledHoursThisSession}
         capHours={nextSprintCap}
+        onRefresh={() => { void refreshCockpit(); }}
       />
 
       {actionError && (
@@ -195,10 +196,12 @@ function PlanHeader({
   cockpit,
   pulledHours,
   capHours,
+  onRefresh,
 }: {
   cockpit: CockpitState;
   pulledHours: number;
   capHours: number;
+  onRefresh: () => void;
 }) {
   const current = cockpit.status === 'ok' ? cockpit.data.currentSprint : null;
   const next = cockpit.status === 'ok' ? cockpit.data.nextSprint : null;
@@ -233,7 +236,12 @@ function PlanHeader({
   return (
     <div className="plan2-head">
       <div className="plan2-head-title">
-        <span className="plan2-cap">{titleCap}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <span className="plan2-cap">{titleCap}</span>
+          <button className="ember-sync" onClick={onRefresh} title="Refresh the plan from Azure DevOps">
+            <span className="ember-sync-icon">↻</span>
+          </button>
+        </div>
         <h1 className="plan2-h">Plan the next sprint</h1>
         <p className="plan2-sub">{subText}</p>
       </div>

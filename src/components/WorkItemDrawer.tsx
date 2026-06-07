@@ -24,7 +24,7 @@ interface WorkItemDrawerProps {
 }
 
 export function WorkItemDrawer({ itemId, onClose, onNavigate }: WorkItemDrawerProps) {
-  const state = useWorkItem(itemId);
+  const { state, refresh } = useWorkItem(itemId);
 
   // Close on Esc
   useEffect(() => {
@@ -53,9 +53,14 @@ export function WorkItemDrawer({ itemId, onClose, onNavigate }: WorkItemDrawerPr
             &nbsp;·&nbsp;
             <Mono>#{itemId}</Mono>
           </span>
-          <button className="ember-drawer-close" onClick={onClose} aria-label="Close (Esc)">
-            ✕
-          </button>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button className="ember-sync" onClick={refresh} title="Refresh from Azure DevOps">
+              <span className="ember-sync-icon">↻</span>
+            </button>
+            <button className="ember-drawer-close" onClick={onClose} aria-label="Close (Esc)">
+              ✕
+            </button>
+          </span>
         </header>
 
         <div className="ember-drawer-body">

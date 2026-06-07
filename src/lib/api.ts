@@ -250,6 +250,10 @@ export type FetchState =
   | { status: 'ok'; data: ApiPayload }
   | { status: 'error'; error: string; command?: string };
 
+// How often the live board re-fetches on its own. Tuned for "feels live"
+// without hammering: the read is served from the server's cache.
+const DASHBOARD_AUTO_REFRESH_MS = 15_000;
+
 export function useDashboardData(sprintName?: string): { state: FetchState; refresh: () => void } {
   const [state, setState] = useState<FetchState>({ status: 'loading' });
   const [nonce, setNonce] = useState(0);
@@ -298,6 +302,30 @@ export function useDashboardData(sprintName?: string): { state: FetchState; refr
       if (retryTimer) clearTimeout(retryTimer);
     };
   }, [nonce, sprintName]);
+
+  // Quiet auto-refresh so the live board (Daily + Focus) keeps itself current
+  // without a manual reload. Reads the server's short-lived cache, so it's
+  // cheap. Pauses while the tab is hidden, and refreshes once on return so a
+  // tab you come back to is never stale.
+  useEffect(() => {
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      setNonce(n => n + 1);
+    };
+    const id = setInterval(tick, DASHBOARD_AUTO_REFRESH_MS);
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && !document.hidden) setNonce(n => n + 1);
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisible);
+    }
+    return () => {
+      clearInterval(id);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisible);
+      }
+    };
+  }, []);
 
   return { state, refresh: () => setNonce(n => n + 1) };
 }
@@ -360,15 +388,18 @@ export type WorkItemFetchState =
   | { status: 'ok'; data: ApiWorkItemDetailResponse }
   | { status: 'error'; error: string };
 
-export function useWorkItem(id: string | null): WorkItemFetchState {
+export function useWorkItem(id: string | null): { state: WorkItemFetchState; refresh: () => void } {
   const [state, setState] = useState<WorkItemFetchState>({ status: 'idle' });
+  const [nonce, setNonce] = useState(0);
   useEffect(() => {
     if (!id) {
       setState({ status: 'idle' });
       return;
     }
     let cancelled = false;
-    setState({ status: 'loading' });
+    // Keep the rendered item while a refresh is in flight; only show the
+    // loading shell on first open or after an error.
+    setState(prev => (prev.status === 'ok' ? prev : { status: 'loading' }));
     fetch(`/api/workitem/${encodeURIComponent(id)}`, { cache: 'no-store' })
       .then(async r => {
         const body = await r.json();
@@ -383,8 +414,8 @@ export function useWorkItem(id: string | null): WorkItemFetchState {
     return () => {
       cancelled = true;
     };
-  }, [id]);
-  return state;
+  }, [id, nonce]);
+  return { state, refresh: () => setNonce(n => n + 1) };
 }
 
 /** Friendly first-name extracted from an email (jane.doe@x → "Jane"). */

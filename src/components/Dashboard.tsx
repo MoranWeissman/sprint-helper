@@ -255,10 +255,16 @@ function DashboardLive({
                 <span><span className="v">{clock}</span></span>
               </span>
             </div>
-            <button className="r21-escape" onClick={() => setShowBoard(true)} title="Show the whole board — your work keeps logging">
-              <span><span className="v">{Math.max(0, storyOnlyAll.length - 1)}</span> more in sprint</span>
-              <span className="arr">↗</span>
-            </button>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button className="ember-sync" onClick={onRefresh} title="Refresh from Azure DevOps">
+                <Dot size={5} color="var(--accent)" />
+                <span className="dim-small">live</span>&nbsp;<span className="ember-sync-icon">↻</span>
+              </button>
+              <button className="r21-escape" onClick={() => setShowBoard(true)} title="Show the whole board — your work keeps logging">
+                <span><span className="v">{Math.max(0, storyOnlyAll.length - 1)}</span> more in sprint</span>
+                <span className="arr">↗</span>
+              </button>
+            </span>
           </div>
         </div>
 
