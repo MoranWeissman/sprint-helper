@@ -374,6 +374,64 @@ export async function ensureActive(workItemId: number): Promise<{
   return { flipped: true, fromState, toState };
 }
 
+/** Work item types that represent a "story" — the level a task rolls up to. */
+const STORY_LEVEL_TYPES = new Set([
+  'user story',
+  'story',
+  'product backlog item',
+  'requirement',
+  'bug',
+  'issue',
+]);
+
+/** Light read of just the fields we need (parent link, type, state). */
+async function readFields(id: number, fields: string[]): Promise<Record<string, unknown>> {
+  const cfg = await loadAdoConfig();
+  const list = fields.join(',');
+  const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitems/${id}?fields=${encodeURIComponent(list)}&api-version=7.1`;
+  const w = await getAdoClient().rest<{ fields: Record<string, unknown> }>({ method: 'GET', uri });
+  return w.fields ?? {};
+}
+
+/**
+ * Starting work on a task inside a story should pull the STORY into "going"
+ * too — otherwise the board reads the story as untouched ("New") while its
+ * tasks are clearly in flight, which is just confusing.
+ *
+ * Only cascades upward from a Task to its parent Story (waiting → going). No-op
+ * when: the item isn't a Task, it has no parent, the parent isn't a story-level
+ * type (never auto-activate a Feature/Epic), or the parent is already
+ * active/done. Best-effort — any read/write failure returns null rather than
+ * derailing session_start.
+ */
+export async function ensureParentStoryActive(childId: number): Promise<{
+  flipped: boolean;
+  parentId: number;
+  fromState: string;
+  toState: string;
+} | null> {
+  try {
+    const child = await readFields(childId, ['System.Parent', 'System.WorkItemType']);
+    const childType = String(child['System.WorkItemType'] ?? '').toLowerCase();
+    if (childType !== 'task') return null; // only tasks cascade up to their story
+    const parentRaw = child['System.Parent'];
+    const parentId = typeof parentRaw === 'number' ? parentRaw : null;
+    if (parentId == null) return null;
+
+    const parent = await readFields(parentId, ['System.WorkItemType', 'System.State']);
+    const parentType = String(parent['System.WorkItemType'] ?? '').toLowerCase();
+    if (!STORY_LEVEL_TYPES.has(parentType)) return null; // never auto-activate Feature/Epic
+    const fromState = String(parent['System.State'] ?? '');
+    if (!WAITING_STATES_LOWER.has(fromState.toLowerCase())) {
+      return { flipped: false, parentId, fromState, toState: fromState };
+    }
+    const toState = await setStateBucket(parentId, 'going');
+    return { flipped: true, parentId, fromState, toState };
+  } catch {
+    return null;
+  }
+}
+
 export async function setEstimate(workItemId: number, hours: number): Promise<void> {
   await patchWorkItem(workItemId, [
     { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.OriginalEstimate', value: round2(hours) },

@@ -4268,6 +4268,40 @@ html, body {
   min-width: 0;
 }
 
+/* When the story has active tasks, its head is the open/close control. */
+button.r21-standup-item-head.is-toggle {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+button.r21-standup-item-head.is-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.r21-standup-item-caret {
+  flex: none;
+  width: 12px;
+  color: var(--ink-3);
+  font-size: 11px;
+  transition: color 120ms ease;
+}
+button.r21-standup-item-head.is-toggle:hover .r21-standup-item-caret { color: var(--accent); }
+button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: var(--ink-0); }
+
+/* Small "N active" hint on the right of the row. */
+.r21-standup-item-count {
+  flex: none;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--ink-3);
+}
+
 /* ==========================================================================
    R22c — Collapsible side panels (2026-06-04)
    Left sidebar (Greeting + Up next + sprint strip) and right rail

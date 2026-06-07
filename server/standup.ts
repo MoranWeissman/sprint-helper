@@ -30,8 +30,15 @@ export interface StandupEntry {
    * avoid counting ghost-time. Null when any session is still live.
    */
   minutesInWindow: number | null;
-  /** Aggregated state for visual cue (live wins, then paused, then closed). */
+  /** Aggregated session state for visual cue (live wins, then paused, then closed). */
   state: 'live' | 'paused' | 'closed';
+  /**
+   * The story's real Azure DevOps state ("New" / "Active" / "Done" / etc.).
+   * Drives the status pill, so the recap reads the same as the stories list
+   * instead of guessing from the (often partial) worked-task list. Empty when
+   * the story isn't in the current sprint payload.
+   */
+  storyState: string;
   /** Tasks under this story that had session activity in the window. Empty when the session was on the story itself. */
   tasks: StandupTask[];
 }
@@ -302,6 +309,7 @@ function entriesForWindow(
       summary,
       minutesInWindow: minutes,
       state,
+      storyState: opts.taskMeta.get(bucket.storyId)?.state ?? '',
       tasks,
     });
   }

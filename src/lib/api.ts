@@ -168,6 +168,8 @@ export interface ApiStandupEntry {
   summary: string | null;
   minutesInWindow: number | null;
   state: 'live' | 'paused' | 'closed';
+  /** The story's real Azure DevOps state — drives the status pill. */
+  storyState?: string;
   /** Tasks under this story that had session activity in the window. */
   tasks: ApiStandupTask[];
 }

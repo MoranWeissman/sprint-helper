@@ -57,6 +57,7 @@ import {
   createStory,
   createTask,
   ensureActive,
+  ensureParentStoryActive,
   isBlockedState,
   reparent,
   setCompletedWork,
@@ -532,6 +533,12 @@ silent (no prompt) — that's the design Moran approved.
   - The return payload includes \`stateFlip: { flipped, fromState, toState }\`.
     If \`flipped\` is true, mention it casually in your reply ("I also flipped
     #1234 from New to Active in ADO so it matches reality").
+  - PARENT STORY CASCADE: when the session item is a Task, its parent Story is
+    also flipped waiting → going (working a task means the story is in flight —
+    leaving the story on New is just confusing). The payload includes
+    \`parentStoryFlip: { flipped, parentId, fromState, toState }\` only when the
+    parent actually flipped. Mention it the same casual way. Features/Epics are
+    never auto-activated this way.
   - If \`stateFlip.error\` is set, the flip failed (rare). Tell Moran the
     session is still open + tracking time, but he may want to flip it
     manually. Don't retry automatically.
@@ -563,9 +570,11 @@ approved 2026-06-01.
   - When focus shifts from one task to another within the same session,
     optionally drop a \`session_log\` "focus" event mentioning the new task
     so his activity feed shows the movement.
-  - The story (parent) flips automatically at session_start. Child tasks
-    flip as you encounter them. There's no cascade — flipping the story
-    doesn't flip children, and flipping one child doesn't flip siblings.
+  - The story (parent) flips to going automatically: at session_start if you
+    open the session on the story, OR via the parent-story cascade when you open
+    it on a task under the story. Child tasks flip as you encounter them. The
+    only cascade is task → parent story; flipping the story doesn't flip
+    children, and flipping one child doesn't flip siblings.
 
 EFFORT — propose estimates, don't just ask. Then burn down, then close.
 The POM delivery manager watches Azure DevOps planning fields to track
@@ -1742,7 +1751,7 @@ server.registerTool(
   {
     title: 'Start a Claude Code session',
     description:
-      "Open a session against a work item. Tells sprint-helper that Moran is now working on this item with you. Returns a sessionId you'll pass to later session_log / session_end calls. Idempotent — returns the existing session if one is already open. AUTO-FLIPS the work item state from any 'waiting' state (New / To Do / Proposed) to 'going' (Active / In Progress) in Azure DevOps, since opening a session IS the act of starting work. No prompt — that's the design Moran approved. Reports `stateFlip` so you can mention the flip in your reply.",
+      "Open a session against a work item. Tells sprint-helper that Moran is now working on this item with you. Returns a sessionId you'll pass to later session_log / session_end calls. Idempotent — returns the existing session if one is already open. AUTO-FLIPS the work item state from any 'waiting' state (New / To Do / Proposed) to 'going' (Active / In Progress) in Azure DevOps, since opening a session IS the act of starting work. When the item is a Task, its parent Story is flipped to 'going' too (a task in flight means the story is in flight) — reported as `parentStoryFlip`. No prompt — that's the design Moran approved. Reports `stateFlip` (and `parentStoryFlip` when the story flipped) so you can mention it in your reply.",
     inputSchema: {
       workItemId: workItemIdSchema,
       client: z
@@ -1780,12 +1789,23 @@ server.registerTool(
       };
     }
 
+    // Cascade up: starting a task pulls its parent story into "going" too, so
+    // the board never shows a story as untouched while its tasks are in flight.
+    // Best-effort — null when there's nothing to flip (not a task, no parent,
+    // parent already active, or parent is a Feature/Epic).
+    const parentStoryFlip = await ensureParentStoryActive(workItemId);
+
     // R10a: opening a session on a Blocked item is the moment to question
     // whether the block still applies. Surface a nudge so the assistant
     // raises it with Moran instead of silently building on a stale block.
     const blockNudge = buildBlockNudge(await readBlockState(workItemId));
 
-    return jsonResult({ session, stateFlip, ...(blockNudge ? { blockNudge } : {}) });
+    return jsonResult({
+      session,
+      stateFlip,
+      ...(parentStoryFlip?.flipped ? { parentStoryFlip } : {}),
+      ...(blockNudge ? { blockNudge } : {}),
+    });
   },
 );
 

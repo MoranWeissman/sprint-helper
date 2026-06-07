@@ -668,30 +668,78 @@ function StandupEntries({
   return (
     <ul className="r21-standup-list">
       {entries.map(e => (
-        <li key={e.workItemId} className={`r21-standup-item is-${e.state}`}>
-          <div className="r21-standup-item-head">
-            <span className="r21-standup-item-kind">Story</span>
-            <span className="r21-standup-item-title">
-              {extractTitleFromDisplayName(e.displayName)}
-            </span>
-            <StandupStateBadge state={e.state} minutes={e.minutesInWindow} />
-          </div>
-          {e.summary && <p className="r21-standup-item-summary">{e.summary}</p>}
-          {e.tasks.length > 0 && (
-            <ul className="r21-standup-tasks">
-              {e.tasks.map(t => (
-                <li key={t.workItemId} className={`r21-standup-task is-${standupTaskStateClass(t.adoState)}`}>
-                  <span className={`r21-standup-task-state state-${standupTaskStateClass(t.adoState)}`}>
-                    {t.adoState}
-                  </span>
-                  <span className="r21-standup-task-title">{t.title}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </li>
+        <StandupEntry key={e.workItemId} entry={e} />
       ))}
     </ul>
+  );
+}
+
+/**
+ * One story row in the today / previous-day recap. Collapsed by default: the
+ * story title + summary read at a glance, and the active tasks under it drop
+ * down when you click the row. Done/closed tasks are left out — this section
+ * is for the work still in play, not a finished-list.
+ */
+function StandupEntry({ entry: e }: { entry: ApiPayload['standup']['yesterday'][number] }) {
+  const activeTasks = e.tasks.filter(t => standupTaskStateClass(t.adoState) !== 'done');
+  const hasTasks = activeTasks.length > 0;
+  // Status comes from the story's real Azure state so the recap agrees with the
+  // stories list — not guessed from the worked-task list (which is empty when
+  // the session was logged on the story itself). Older cached payloads without
+  // storyState fall back to going, since a recapped story is one being worked.
+  const status: 'going' | 'waiting' | 'blocked' | 'done' = e.storyState
+    ? classifyAdoState(e.storyState)
+    : 'going';
+  const [open, setOpen] = useState(false);
+
+  const headInner = (
+    <>
+      <span className="r21-standup-item-kind">Story</span>
+      <span className="r21-standup-item-title">
+        {extractTitleFromDisplayName(e.displayName)}
+      </span>
+      {hasTasks && (
+        <span className="r21-standup-item-count">
+          {activeTasks.length} active
+        </span>
+      )}
+      <span className={`r21-standup-task-state state-${status}`}>{status}</span>
+      <StandupStateBadge state={e.state} minutes={e.minutesInWindow} />
+    </>
+  );
+
+  return (
+    <li className={`r21-standup-item is-${e.state}`}>
+      {hasTasks ? (
+        <button
+          type="button"
+          className="r21-standup-item-head is-toggle"
+          onClick={() => setOpen(o => !o)}
+          aria-expanded={open}
+          title={open ? 'Hide tasks' : `Show ${activeTasks.length} active task${activeTasks.length === 1 ? '' : 's'}`}
+        >
+          <span className="r21-standup-item-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
+          {headInner}
+        </button>
+      ) : (
+        <div className="r21-standup-item-head">{headInner}</div>
+      )}
+
+      {e.summary && <p className="r21-standup-item-summary">{e.summary}</p>}
+
+      {open && hasTasks && (
+        <ul className="r21-standup-tasks">
+          {activeTasks.map(t => (
+            <li key={t.workItemId} className={`r21-standup-task is-${standupTaskStateClass(t.adoState)}`}>
+              <span className={`r21-standup-task-state state-${standupTaskStateClass(t.adoState)}`}>
+                {t.adoState}
+              </span>
+              <span className="r21-standup-task-title">{t.title}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 
@@ -1087,7 +1135,7 @@ function DailyView({
       <div className="r21-daily-head">
         <div>
           <span className="r21-daily-cap">DAILY · {sprintName}</span>
-          <h1 className="r21-daily-title">Your stories &amp; tasks</h1>
+          <h1 className="r21-daily-title">Your stories</h1>
         </div>
         <div className="r21-daily-head-actions">
           {stories.length > 0 && (
