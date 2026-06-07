@@ -4567,9 +4567,18 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 .plan2-subrow .plan2-title .t { font-size: 13.5px; color: var(--ink-1); font-weight: 400; }
 .plan2-subrow-empty { font-size: 13px; color: var(--ink-4); font-style: italic; padding: 8px 4px; }
 
-/* ---- BACKLOG level sub-headers ---- */
-.plan2-level { display: flex; align-items: center; gap: 8px; margin: 16px 0 8px; }
-.plan2-level:first-child { margin-top: 4px; }
+/* ---- BACKLOG level sub-headers (collapsible) ---- */
+.plan2-level {
+  display: flex; align-items: center; gap: 8px; margin: 16px 0 8px;
+  width: 100%; background: none; border: 0; padding: 4px 0; cursor: pointer;
+  text-align: left; font: inherit; color: inherit;
+}
+.plan2-level:hover .plan2-level-name { color: var(--ink-2); }
+.plan2-level:hover .plan2-chevron { color: var(--ink-2); }
+.plan2-level-group:first-child .plan2-level { margin-top: 4px; }
+/* chevron points down (rotated) when the group is open, right when collapsed */
+.plan2-level .plan2-chevron { transform: rotate(90deg); }
+.plan2-level-group.is-collapsed .plan2-level .plan2-chevron { transform: rotate(0deg); }
 .plan2-level-name { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
 .plan2-level-line { flex: 1; height: 1px; background: var(--line-hair); }
 .plan2-level-count { font-size: 11px; color: var(--ink-4); font-family: var(--font-mono); }

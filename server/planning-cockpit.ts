@@ -24,6 +24,9 @@ import {
 } from './ado';
 
 const DONE_STATES = new Set(['Done', 'Closed', 'Resolved', 'Completed', 'Removed']);
+// States that mean "this story isn't going to happen" — never offer them to pull.
+// Belt-and-suspenders alongside the WIQL exclusion in listMyOpenStoriesNotInSprint.
+const DEAD_STATES = new Set(['done', 'closed', 'resolved', 'completed', 'removed', 'canceled', 'cancelled', 'cut']);
 // Features / Epics aren't "stories to close out" — they're containers. Skip them.
 const FEATURE_LIKE_TYPES = new Set(['feature', 'epic']);
 
@@ -261,6 +264,8 @@ async function collectBacklogStories(
 
   const out: CockpitBacklogStory[] = [];
   for (const w of items) {
+    // Skip stories that are done / canceled — you can't pull a dead story.
+    if (DEAD_STATES.has(w.state.trim().toLowerCase())) continue;
     const level = classifyIterationLevel(w.iterationPath);
     // Items in OTHER specific sprints (past or future) aren't backlog
     // candidates — they're scheduled work for a different sprint.

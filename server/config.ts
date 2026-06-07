@@ -83,14 +83,43 @@ async function azDefault(key: 'organization' | 'project'): Promise<string | unde
 
 async function resolveTeam(): Promise<string | undefined> {
   if (process.env.SH_ADO_TEAM) return process.env.SH_ADO_TEAM;
+  let stdout: string;
   try {
-    const { stdout } = await exec('az', ['devops', 'team', 'list', '--query', '[].name', '-o', 'tsv']);
-    const teams = stdout.split('\n').map(s => s.trim()).filter(Boolean);
-    if (teams.length === 1) return teams[0];
-    return undefined;
-  } catch {
-    return undefined;
+    ({ stdout } = await exec('az', ['devops', 'team', 'list', '--query', '[].name', '-o', 'tsv']));
+  } catch (err) {
+    // The `az` call itself failed. This is almost never a team-setup problem —
+    // it's a broken sign-in (expired or corrupted az token cache). Say so, so
+    // it isn't misread as "you have the wrong number of teams". The read paths
+    // can keep working long after this breaks (the token was still valid then),
+    // which is exactly when this surfaces mid-session.
+    throw new Error(
+      `Can't reach Azure DevOps to find your team — ${azErrorHint(err)}. This is a sign-in problem, not a team-setup problem. Fix it by re-running: az login`,
+    );
   }
+  const teams = stdout.split('\n').map(s => s.trim()).filter(Boolean);
+  if (teams.length === 1) return teams[0];
+  if (teams.length === 0) {
+    throw new Error('No teams came back for this Azure DevOps project. Set SH_ADO_TEAM (or the "ado_team" setting) to the team name new items should use.');
+  }
+  throw new Error(
+    `This Azure DevOps project has ${teams.length} teams (${teams.join(', ')}). Set SH_ADO_TEAM (or the "ado_team" setting) to the one you plan with.`,
+  );
+}
+
+/**
+ * Turn a raw `az` failure into one short, human line — never the whole Python
+ * traceback. Recognizes the two failure modes that actually happen here.
+ */
+function azErrorHint(err: unknown): string {
+  const e = err as { stderr?: string; message?: string };
+  const raw = (e.stderr || e.message || String(err)).trim();
+  if (/Extra data|JSONDecodeError|token_cache|msal/i.test(raw)) {
+    return 'the local az sign-in cache looks corrupted';
+  }
+  if (/az login|refresh token|expired|AADSTS|credential|reauth/i.test(raw)) {
+    return 'your az sign-in has expired';
+  }
+  return `az failed: ${raw.split('\n')[0].slice(0, 160)}`;
 }
 
 async function resolveUser(): Promise<string | undefined> {

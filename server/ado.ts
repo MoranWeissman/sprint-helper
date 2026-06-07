@@ -445,7 +445,7 @@ export async function listMyOpenStoriesNotInSprint(currentSprintPath: string): P
     `SELECT ${fieldList} FROM WorkItems`,
     `WHERE [System.AssignedTo] = @Me`,
     `  AND [System.WorkItemType] = 'User Story'`,
-    `  AND [System.State] NOT IN ('Done', 'Closed', 'Resolved', 'Completed', 'Removed')`,
+    `  AND [System.State] NOT IN ('Done', 'Closed', 'Resolved', 'Completed', 'Removed', 'Canceled', 'Cancelled', 'Cut')`,
     `  AND [System.IterationPath] <> '${escapeWiql(currentSprintPath)}'`,
     'ORDER BY [System.IterationPath], [System.ChangedDate] DESC',
   ].join(' ');

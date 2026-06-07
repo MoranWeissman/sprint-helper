@@ -31,6 +31,21 @@ interface PlanViewProps {
 }
 
 const LS_KEY = 'sh.plan.lastScan';
+const LS_BACKLOG_COLLAPSED = 'sh.plan.backlogCollapsed';
+
+function readCollapsedLevels(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_BACKLOG_COLLAPSED);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw) as string[];
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+function writeCollapsedLevels(levels: Set<string>): void {
+  try { localStorage.setItem(LS_BACKLOG_COLLAPSED, JSON.stringify([...levels])); } catch { /* ignore */ }
+}
 
 function readPersistedScan(): ApiPlanningGapsResponse | null {
   try {
@@ -538,6 +553,16 @@ function PullBacklogSection({
   onPullStory: (story: ApiCockpitBacklogStory, nextSprintPath: string) => Promise<void>;
   onOpenItem?: (id: string) => void;
 }) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedLevels());
+  const toggleLevel = (level: string) =>
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(level)) next.delete(level);
+      else next.add(level);
+      writeCollapsedLevels(next);
+      return next;
+    });
+
   if (cockpit.status !== 'ok') return null;
   const { nextSprint, backlogStories } = cockpit.data;
   const nextName = nextSprint?.name ?? 'next sprint';
@@ -552,36 +577,47 @@ function PullBacklogSection({
   }
 
   const groups = [
-    { level: 'backlog' as const, label: 'Backlog', stories: backlogStories.filter(s => s.level === 'backlog') },
-    { level: 'quarter' as const, label: 'Quarter', stories: backlogStories.filter(s => s.level === 'quarter') },
-    { level: 'year' as const, label: 'Year', stories: backlogStories.filter(s => s.level === 'year') },
+    { level: 'backlog' as const, label: 'Unscheduled', stories: backlogStories.filter(s => s.level === 'backlog') },
+    { level: 'quarter' as const, label: 'Quarter shelf', stories: backlogStories.filter(s => s.level === 'quarter') },
+    { level: 'year' as const, label: 'Year shelf', stories: backlogStories.filter(s => s.level === 'year') },
   ].filter(g => g.stories.length > 0);
 
   return (
     <section className="plan2-section">
       <SectionHead step={2} title={`Pull into ${nextName}`} note="meter updates as you pull" />
-      {groups.map(group => (
-        <div key={group.level}>
-          <div className="plan2-level">
-            <span className="plan2-level-name">{group.label}</span>
-            <span className="plan2-level-line" />
-            <span className="plan2-level-count">{group.stories.length}</span>
+      {groups.map(group => {
+        const isCollapsed = collapsed.has(group.level);
+        return (
+          <div key={group.level} className={`plan2-level-group ${isCollapsed ? 'is-collapsed' : ''}`}>
+            <button
+              type="button"
+              className="plan2-level"
+              onClick={() => toggleLevel(group.level)}
+              aria-expanded={!isCollapsed}
+            >
+              <span className="plan2-chevron" aria-hidden="true">▸</span>
+              <span className="plan2-level-name">{group.label}</span>
+              <span className="plan2-level-line" />
+              <span className="plan2-level-count">{group.stories.length}</span>
+            </button>
+            {!isCollapsed && (
+              <ul className="plan2-rows">
+                {group.stories.map(story => (
+                  <PullBacklogRow
+                    key={story.id}
+                    story={story}
+                    busy={actingOn === story.id}
+                    nextSprintPath={nextSprint?.path ?? null}
+                    nextSprintName={nextSprint?.name ?? null}
+                    onPull={onPullStory}
+                    onOpenItem={onOpenItem}
+                  />
+                ))}
+              </ul>
+            )}
           </div>
-          <ul className="plan2-rows">
-            {group.stories.map(story => (
-              <PullBacklogRow
-                key={story.id}
-                story={story}
-                busy={actingOn === story.id}
-                nextSprintPath={nextSprint?.path ?? null}
-                nextSprintName={nextSprint?.name ?? null}
-                onPull={onPullStory}
-                onOpenItem={onOpenItem}
-              />
-            ))}
-          </ul>
-        </div>
-      ))}
+        );
+      })}
     </section>
   );
 }
