@@ -629,16 +629,19 @@ function StandupCard({ standup }: { standup: ApiPayload['standup'] }) {
 
   const yDate = formatStandupDate(standup.yesterdayDate);
   const tDate = formatStandupDate(standup.todayDate);
+  // When the last working day isn't literally yesterday (e.g. Sunday looking
+  // back to Thursday across the weekend), "Yesterday" is a lie — name the day.
+  const priorLabel = priorColumnLabel(standup.yesterdayDate, standup.todayDate);
 
   return (
-    <section className="r21-standup" aria-label="Yesterday and today">
+    <section className="r21-standup" aria-label="Recent work">
       <div className="r21-standup-cols">
         <div className="r21-standup-col">
           <h3 className="r21-standup-col-h">
-            <span>Yesterday</span>
+            <span>{priorLabel}</span>
             <span className="r21-standup-col-meta">{yDate}</span>
           </h3>
-          <StandupEntries entries={yesterday} emptyHint="Nothing logged yesterday." />
+          <StandupEntries entries={yesterday} emptyHint={`Nothing logged ${priorLabel === 'Yesterday' ? 'yesterday' : `on ${priorLabel}`}.`} />
         </div>
         <div className="r21-standup-col">
           <h3 className="r21-standup-col-h">
@@ -726,6 +729,24 @@ function formatStandupDate(iso: string): string {
     month: 'short',
     day: 'numeric',
   });
+}
+
+/**
+ * Label for the prior-work column. "Yesterday" only when it really is the
+ * calendar day before today; otherwise the weekday name (e.g. "Thursday"),
+ * so a Sunday standup reaching back over the weekend reads honestly.
+ */
+function priorColumnLabel(yesterdayISO: string, todayISO: string): string {
+  const py = yesterdayISO.split('-').map(Number);
+  const pt = todayISO.split('-').map(Number);
+  if (py.length === 3 && pt.length === 3 && py.every(Boolean) && pt.every(Boolean)) {
+    const yDate = new Date(py[0], py[1] - 1, py[2]);
+    const tDate = new Date(pt[0], pt[1] - 1, pt[2]);
+    const diffDays = Math.round((tDate.getTime() - yDate.getTime()) / 86_400_000);
+    if (diffDays === 1) return 'Yesterday';
+    return yDate.toLocaleDateString(undefined, { weekday: 'long' });
+  }
+  return 'Yesterday';
 }
 
 
