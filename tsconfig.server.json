@@ -17,5 +17,6 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["server", "mcp"]
+  "include": ["server", "mcp"],
+  "exclude": ["**/*.test.ts"]
 }

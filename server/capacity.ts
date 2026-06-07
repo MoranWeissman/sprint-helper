@@ -24,7 +24,7 @@ import { getWorkdayHours } from './story-points';
 // one source of truth.
 const DEFAULT_WORKDAY_START = 8;  // 08:00 local
 const DEFAULT_WORKDAY_END = 18;   // 18:00 local
-const DEFAULT_WORKING_DAYS = new Set([0, 1, 2, 3, 4]); // Sun-Thu
+export const DEFAULT_WORKING_DAYS = new Set([0, 1, 2, 3, 4]); // Sun-Thu
 const TENTATIVE_WEIGHT = 0;
 
 export interface Capacity {
@@ -159,7 +159,7 @@ export async function computeCapacity(opts: ComputeCapacityOptions): Promise<Cap
   };
 }
 
-function countWorkingDays(start: Date, end: Date, workdaySet: Set<number>): number {
+export function countWorkingDays(start: Date, end: Date, workdaySet: Set<number>): number {
   let n = 0;
   const cursor = new Date(start);
   cursor.setHours(0, 0, 0, 0);
@@ -176,7 +176,7 @@ function countWorkingDays(start: Date, end: Date, workdaySet: Set<number>): numb
  * Intersect an event with the working window (workdayStart..workdayEnd local)
  * across only working days. Returns total intersected minutes.
  */
-function clipToWorkingHours(
+export function clipToWorkingHours(
   start: Date,
   end: Date,
   workdaySet: Set<number>,

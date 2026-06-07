@@ -320,7 +320,7 @@ function entriesForWindow(
 const STANDUP_WORKING_DAYS = new Set([0, 1, 2, 3, 4]);
 
 /** Start-of-day of the most recent working day strictly before `todayStart`. */
-function previousWorkingDayStart(todayStart: Date): Date {
+export function previousWorkingDayStart(todayStart: Date): Date {
   const d = new Date(todayStart);
   do {
     d.setDate(d.getDate() - 1);
