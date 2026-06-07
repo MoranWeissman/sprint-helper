@@ -6,6 +6,7 @@ import {
   markWorkItemDone,
   moveWorkItemToIteration,
   type ApiCockpitBacklogStory,
+  type ApiCockpitCapacity,
   type ApiCockpitOpenStory,
   type ApiCockpitOpenTask,
   type ApiCockpitPayload,
@@ -104,8 +105,14 @@ export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
     if (cockpit.status !== 'ok') return 0;
     const ns = cockpit.data.nextSprint;
     if (!ns) return 0;
+    // Prefer real desk time after Outlook meetings; fall back to raw working
+    // hours only if capacity didn't compute.
+    const cap = cockpit.data.nextSprintCapacity;
+    if (cap) return Math.round(cap.availableHours);
     return workingDaysBetween(ns.startDate, ns.finishDate) * WORKDAY_HOURS;
   }, [cockpit]);
+
+  const nextCapacity = cockpit.status === 'ok' ? cockpit.data.nextSprintCapacity : null;
 
   const onMoveTask = async (task: ApiCockpitOpenTask, nextSprintPath: string) => {
     setActingOn(task.id);
@@ -156,6 +163,7 @@ export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
         cockpit={cockpit}
         pulledHours={pulledHoursThisSession}
         capHours={nextSprintCap}
+        capacity={nextCapacity}
         onRefresh={() => { void refreshCockpit(); }}
       />
 
@@ -196,11 +204,13 @@ function PlanHeader({
   cockpit,
   pulledHours,
   capHours,
+  capacity,
   onRefresh,
 }: {
   cockpit: CockpitState;
   pulledHours: number;
   capHours: number;
+  capacity: ApiCockpitCapacity | null;
   onRefresh: () => void;
 }) {
   const current = cockpit.status === 'ok' ? cockpit.data.currentSprint : null;
@@ -257,7 +267,17 @@ function PlanHeader({
         </div>
         <div className="plan2-meter-foot">
           <span>pulled <span className="n big">{pulled}h</span></span>
-          <span>of <span className="n">{cap}h</span> available</span>
+          <span>
+            of <span className="n">{cap}h</span> available
+            {capacity && capacity.hasUrl && capacity.meetingHours > 0 && (
+              <span className="dim-small">
+                &nbsp;· {Math.round(capacity.workingHoursTotal)}h − {Math.round(capacity.meetingHours)}h meetings
+              </span>
+            )}
+            {capacity && !capacity.hasUrl && (
+              <span className="dim-small">&nbsp;· connect Outlook to subtract meetings</span>
+            )}
+          </span>
         </div>
       </div>
     </div>

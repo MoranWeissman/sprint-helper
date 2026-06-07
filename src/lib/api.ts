@@ -555,9 +555,17 @@ export interface ApiCockpitBacklogStory {
   feature?: { id: number; title: string; displayName: string };
 }
 
+export interface ApiCockpitCapacity {
+  workingHoursTotal: number;
+  availableHours: number;
+  meetingHours: number;
+  hasUrl: boolean;
+}
+
 export interface ApiCockpitPayload {
   currentSprint: ApiCockpitIteration | null;
   nextSprint: ApiCockpitIteration | null;
+  nextSprintCapacity: ApiCockpitCapacity | null;
   openStories: ApiCockpitOpenStory[];
   backlogStories: ApiCockpitBacklogStory[];
 }

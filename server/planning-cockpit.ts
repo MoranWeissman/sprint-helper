@@ -14,6 +14,7 @@
  * mark-done) live separately and reuse server/writes.ts.
  */
 import { buildDashboardCached } from './dashboard-cache';
+import { computeCapacity } from './capacity';
 import {
   getCurrentIteration,
   listAllIterations,
@@ -78,9 +79,25 @@ export interface CockpitBacklogStory {
   feature?: { id: number; title: string; displayName: string };
 }
 
+/**
+ * Real desk time for the next sprint, after Outlook meetings — what the Plan
+ * meter measures "pulled work" against. null when there's no next sprint.
+ */
+export interface CockpitCapacity {
+  /** working_days × workday_hours for the next sprint window (before meetings). */
+  workingHoursTotal: number;
+  /** workingHoursTotal minus meetings from Outlook (busy + OOF; tentative ignored). */
+  availableHours: number;
+  /** Meeting hours subtracted (0 when no calendar is connected). */
+  meetingHours: number;
+  /** False when no Outlook calendar URL is configured — then available == working hours. */
+  hasUrl: boolean;
+}
+
 export interface CockpitPayload {
   currentSprint: CockpitIteration | null;
   nextSprint: CockpitIteration | null;
+  nextSprintCapacity: CockpitCapacity | null;
   openStories: CockpitOpenStory[];
   backlogStories: CockpitBacklogStory[];
 }
@@ -148,7 +165,24 @@ export async function buildCockpitPayload(): Promise<CockpitPayload> {
   // otherwise loop iterations.
   const backlogStories: CockpitBacklogStory[] = await collectBacklogStories(currentIteration);
 
-  return { currentSprint, nextSprint, openStories, backlogStories };
+  // Real desk time for the next sprint, after Outlook meetings — so the Plan
+  // meter measures against hours Moran actually has, not raw working hours.
+  let nextSprintCapacity: CockpitCapacity | null = null;
+  if (nextSprint) {
+    const cap = await computeCapacity({
+      sprintStart: new Date(nextSprint.startDate),
+      sprintEnd: new Date(nextSprint.finishDate),
+      plannedHours: 0,
+    });
+    nextSprintCapacity = {
+      workingHoursTotal: cap.workingHoursTotal,
+      availableHours: cap.availableHours,
+      meetingHours: cap.meetingHours.weighted,
+      hasUrl: cap.hasUrl,
+    };
+  }
+
+  return { currentSprint, nextSprint, nextSprintCapacity, openStories, backlogStories };
 }
 
 function toCockpitIteration(it: Iteration): CockpitIteration {
