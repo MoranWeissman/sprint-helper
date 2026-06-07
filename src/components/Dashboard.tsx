@@ -1279,8 +1279,10 @@ function RailSprintTime({
     );
   }
 
-  const working = Math.round(capacity.workingHoursTotal);
   const available = Math.round(capacity.availableHours);
+  // Headline = real desk time STILL AHEAD, so it counts down through the
+  // sprint. The whole-sprint figure becomes the context line under it.
+  const availableLeft = Math.round(capacity.availableHoursRemaining);
   const hasCalendar = capacity.hasUrl && !capacity.fetchError;
   // Working days are Sun-Thu in Moran's setup, so calendar days left
   // overcount — use the workingDaysRemaining the server computes.
@@ -1298,11 +1300,11 @@ function RailSprintTime({
         <span className="r22-rail-card-meta">day {today} / {totalDays || '—'}</span>
       </div>
       <div className="hero">
-        <span className="num">{available}</span>
+        <span className="num">{availableLeft}</span>
         <span className="unit">h</span>
-        <span className="suffix">{hasCalendar ? 'after meetings' : 'available'}</span>
+        <span className="suffix">{hasCalendar ? 'left after meetings' : 'left'}</span>
       </div>
-      <p className="of-line">of {working}h working this sprint</p>
+      <p className="of-line">of {available}h {hasCalendar ? 'after meetings' : 'available'} this sprint</p>
       <div className="bar" aria-hidden="true">
         <i style={{ width: `${pctLeft}%` }} />
       </div>

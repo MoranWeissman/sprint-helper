@@ -46,8 +46,12 @@ export interface ApiOutlookCapacity {
   workingDaysRemaining: number;
   workdayHours: number;
   workingHoursTotal: number;
+  /** Working hours left from today on (workingDaysRemaining × workdayHours). */
+  workingHoursRemaining: number;
   meetingHours: { busy: number; tentative: number; oof: number; weighted: number };
   availableHours: number;
+  /** Real desk time still ahead — counts down as the sprint progresses. */
+  availableHoursRemaining: number;
   plannedHours: number;
   /** plannedHours - availableHours. Positive = planned over capacity. */
   difference: number;
