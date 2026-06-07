@@ -31,6 +31,7 @@ import {
   type SessionEvent,
 } from './sessions';
 import {
+  getLocalLoggedMap,
   getPendingChangesCount,
   getRunningStartsMap,
   getUncapturedSecondsMap,
@@ -65,6 +66,13 @@ export interface DashboardWorkItem {
    * unsynced entries + any currently-running session's elapsed at fetch time).
    */
   localUncapturedSeconds: number;
+  /**
+   * Total seconds the timer actually ran on this item across ALL sittings
+   * (running + paused + synced). This is the "LOGGED" value — real session
+   * time — and unlike localUncapturedSeconds it does NOT drop a sitting once
+   * it's paused. Kept separate from capacity math so it can't reinflate it.
+   */
+  localLoggedSeconds: number;
   /** ISO timestamp of the running session's start, if a timer is currently running. */
   runningSince?: string;
   /**
@@ -247,6 +255,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
 
   // Pull local timer state. Each map is keyed by numeric work item id.
   const uncaptured = getUncapturedSecondsMap();
+  const localLogged = getLocalLoggedMap();
   const running = getRunningStartsMap();
   const shCreatedIds = getSHCreatedIdSet();
 
@@ -261,7 +270,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
   const done: DashboardWorkItem[] = [];
 
   for (const w of items) {
-    const projected = projectWorkItem(w, uncaptured, running, activeSessions, recentEvents, sessionCounts);
+    const projected = projectWorkItem(w, uncaptured, localLogged, running, activeSessions, recentEvents, sessionCounts);
     if (shCreatedIds.has(w.id)) projected.wasSHCreated = true;
     if (DONE_STATES.has(w.state)) done.push(projected);
     else if (ACTIVE_STATES.has(w.state)) inProgress.push(projected);
@@ -555,6 +564,7 @@ const FEATURE_LIKE_TYPES = new Set(['feature', 'epic']);
 function projectWorkItem(
   w: WorkItem,
   uncaptured: Map<number, number>,
+  localLogged: Map<number, number>,
   running: Map<number, string>,
   activeSessions: Map<number, Session>,
   recentEvents: Map<number, SessionEvent[]>,
@@ -586,6 +596,7 @@ function projectWorkItem(
     descriptionPreview: htmlPreview(w.description),
     area: lastPathSegment(w.areaPath),
     localUncapturedSeconds: uncaptured.get(w.id) ?? 0,
+    localLoggedSeconds: localLogged.get(w.id) ?? 0,
     runningSince: running.get(w.id),
     activeSession: session ? { id: session.id, startedAt: session.startedAt } : undefined,
     recentActivity: recentEvents.get(w.id) ?? [],

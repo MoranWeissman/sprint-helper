@@ -71,6 +71,8 @@ export interface ApiWorkItem {
   area?: string;
   /** Seconds tracked locally that ADO doesn't know about yet. */
   localUncapturedSeconds: number;
+  /** Total seconds the timer ran across ALL sittings — the "LOGGED" value. */
+  localLoggedSeconds: number;
   /** ISO timestamp of the currently-running timer's start, if any. */
   runningSince?: string;
   /** Live Claude Code session against this item, if one is open right now. */

@@ -764,7 +764,7 @@ function R21Focus({
   }
 
   const parent = task.parent;
-  const loggedSec = Math.round((task.completedWork ?? 0) * 3600) + task.localUncapturedSeconds;
+  const loggedSec = task.localLoggedSeconds;
   const logged = fmtHM(loggedSec, 0);
   const startedAt = task.activeSession ? fmtEventStamp(task.activeSession.startedAt) : '';
   const remaining = task.remainingWork != null ? `${Math.round(task.remainingWork)}h` : '—';
@@ -901,7 +901,7 @@ function FocusTaskDrill({
   onBack: () => void;
   onOpenItem: (id: string) => void;
 }) {
-  const loggedSec = Math.round((task.completedWork ?? 0) * 3600) + task.localUncapturedSeconds;
+  const loggedSec = task.localLoggedSeconds;
   const logged = fmtHM(loggedSec, 0);
   const startedAt = task.activeSession ? fmtEventStamp(task.activeSession.startedAt) : '';
   const remaining = task.remainingWork != null ? `${Math.round(task.remainingWork)}h` : '—';
