@@ -51,7 +51,7 @@ import {
 } from '../server/sessions.js';
 import { getSetting, setSetting } from '../server/timers.js';
 import * as timerService from '../server/timer-service.js';
-import { getWorkItem, addWorkItemComment } from '../server/ado.js';
+import { getWorkItem, addWorkItemComment, getCurrentIteration } from '../server/ado.js';
 import { markSHCreated } from '../server/sh-created.js';
 import {
   createStory,
@@ -567,6 +567,14 @@ approved 2026-06-01.
     the ONLY path that closes a task properly (pushes Completed Work and
     zeros Remaining Work in one move). \`workitem_edit\` cannot close
     tasks; the schema rejects \`state: 'done'\` outright.
+  - CLOSING A STORY is separate from closing a task. A story carries no hours
+    of its own (they live on its tasks), so it doesn't go through session_end —
+    use \`story_close({ workItemId: <story id> })\`. It only closes User
+    Stories / Bugs in the current sprint, and refuses if the story still has
+    open child tasks. When session_end closes a task and that was the story's
+    LAST open task, the response includes \`storyCloseSuggestion\` — surface it:
+    "that was the last task under **<story>** (#<id>) — close the story too?"
+    and call \`story_close\` once Moran says yes.
   - When focus shifts from one task to another within the same session,
     optionally drop a \`session_log\` "focus" event mentioning the new task
     so his activity feed shows the movement.
@@ -1387,6 +1395,84 @@ server.registerTool(
   },
 );
 
+/** ADO states that mean "finished", lowercased — used by the story-close guards. */
+const DONE_STATE_NAMES = new Set(['done', 'closed', 'resolved', 'completed', 'removed']);
+function isDoneStateName(state: string): boolean {
+  return DONE_STATE_NAMES.has(state.trim().toLowerCase());
+}
+
+/**
+ * After a task closes, check whether its parent story is now fully done (all
+ * children closed) but the story itself is still open. Returns a suggestion the
+ * AI can raise with Moran ("its last task is done — close the story?"), or null.
+ */
+async function maybeSuggestStoryClose(
+  taskId: number,
+): Promise<{ workItemId: number; displayName: string } | null> {
+  try {
+    const task = await getWorkItem(taskId);
+    const parentId = task.parent?.id;
+    if (parentId == null) return null;
+    const story = await getWorkItem(parentId);
+    const stype = story.type.toLowerCase();
+    if (stype === 'task' || stype === 'feature' || stype === 'epic') return null;
+    if (isDoneStateName(story.state)) return null;
+    if (story.children.some(c => !isDoneStateName(c.state))) return null;
+    return { workItemId: story.id, displayName: displayNameFor(story.id, story.title) };
+  } catch {
+    return null;
+  }
+}
+
+server.registerTool(
+  'story_close',
+  {
+    title: 'Close a story',
+    description:
+      "Close a User Story or Bug (move it to the team's Done/Closed state) once its work is finished. STORIES ONLY — close Tasks via session_end({done:true, completedHoursAfter}), which captures the hours; a story has no hours of its own (they live on its tasks), so it closes directly here. Guards (all enforced server-side): refuses Tasks, Features and Epics; refuses items not in the current sprint; refuses to close a story that still has open (not-done) child tasks — close or move those first. Use this to close out a story whose tasks are all done.",
+    inputSchema: {
+      workItemId: workItemIdSchema,
+    },
+  },
+  async ({ workItemId }) => {
+    try {
+      const d = await getWorkItem(workItemId);
+      const typeLower = d.type.toLowerCase();
+      if (typeLower === 'task') {
+        return errorResult(
+          `#${workItemId} is a Task. Close tasks with session_end({done:true, completedHoursAfter}) so the hours land on Azure DevOps — story_close is for stories only.`,
+        );
+      }
+      if (typeLower === 'feature' || typeLower === 'epic') {
+        return errorResult(`#${workItemId} is a ${d.type}. story_close is for User Stories / Bugs, not containers.`);
+      }
+      // Current-sprint guard (compare the trailing sprint segment of each path).
+      const current = await getCurrentIteration();
+      const itemSprint = d.iterationPath.split('\\').pop() ?? d.iterationPath;
+      const currentSprint = current ? current.path.split('\\').pop() ?? current.name : null;
+      if (currentSprint && itemSprint !== currentSprint) {
+        return errorResult(
+          `#${workItemId} is in "${itemSprint}", not the current sprint ("${currentSprint}"). story_close only closes stories in the current sprint.`,
+        );
+      }
+      // Don't close over unfinished work.
+      const openChildren = d.children.filter(c => !isDoneStateName(c.state));
+      if (openChildren.length > 0) {
+        const names = openChildren.map(c => displayNameFor(c.id, c.title)).join(', ');
+        return errorResult(
+          `#${workItemId} still has open tasks: ${names}. Close or move those to the next sprint first, then close the story.`,
+        );
+      }
+      const toState = await setStateBucket(workItemId, 'done');
+      invalidateDashboardCache();
+      void mirrorSprintSummary();
+      return jsonResult({ closed: { id: d.id, displayName: displayNameFor(d.id, d.title), toState } });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
 server.registerTool(
   'workitem_get',
   {
@@ -1997,12 +2083,16 @@ server.registerTool(
         await setCompletedWork(session.workItemId, completedHoursAfter!);
         await setRemaining(session.workItemId, 0);
         const newState = await setStateBucket(session.workItemId, 'done');
+        // If this was the story's last open task, suggest closing the story too
+        // (story_close) so a finished story doesn't linger on New/Active.
+        const storyCloseSuggestion = await maybeSuggestStoryClose(session.workItemId);
         return jsonResult({
           session,
           done: true,
           completedHoursPushed: completedHoursAfter,
           remainingHoursPushed: 0,
           newState,
+          ...(storyCloseSuggestion ? { storyCloseSuggestion } : {}),
         });
       }
       // Pause-only path. Stop the local timer. The only ADO write here is the
