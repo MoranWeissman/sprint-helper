@@ -313,13 +313,30 @@ function entriesForWindow(
   return entries;
 }
 
+// Working days for "yesterday" = the last day Moran actually worked, not the
+// literal calendar yesterday. Sun-Thu (Israeli workweek); Fri+Sat are skipped
+// so a Sunday standup shows Thursday's work, not an empty Saturday. Mirrors
+// capacity's DEFAULT_WORKING_DAYS — both move to per-user settings later.
+const STANDUP_WORKING_DAYS = new Set([0, 1, 2, 3, 4]);
+
+/** Start-of-day of the most recent working day strictly before `todayStart`. */
+function previousWorkingDayStart(todayStart: Date): Date {
+  const d = new Date(todayStart);
+  do {
+    d.setDate(d.getDate() - 1);
+  } while (!STANDUP_WORKING_DAYS.has(d.getDay()));
+  return d;
+}
+
 export function buildStandup(opts: BuildOpts): StandupBlock {
   const now = opts.now ?? new Date();
   const todayStart = startOfLocalDay(now);
   const tomorrowStart = new Date(todayStart);
   tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-  const yesterdayStart = new Date(todayStart);
-  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+  // "Yesterday" = since the last working day. On a Sunday this reaches back to
+  // Thursday and the empty Fri+Sat are folded in (harmless — they have no
+  // activity), so the column shows the real last working day.
+  const yesterdayStart = previousWorkingDayStart(todayStart);
 
   const yesterdayISO = todayStart.toISOString();
   const yesterday = entriesForWindow(
