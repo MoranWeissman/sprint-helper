@@ -434,7 +434,7 @@ function ActivityEntry({ event }: { event: ApiSessionEvent }) {
         aria-expanded={hasMore ? open : undefined}
         data-toggleable={hasMore ? 'true' : 'false'}
       >
-        <span className="r21-ev-time">{fmtClockISO(event.createdAt)}</span>
+        <span className="r21-ev-time">{fmtEventStamp(event.createdAt)}</span>
         <span className="r21-ev-type">{EVENT_LABELS[event.type] ?? event.type}</span>
         <span className="r21-ev-summary">{summary}</span>
         {hasMore && <span className="r21-ev-chev">{open ? '▾' : '▸'}</span>}
@@ -760,7 +760,7 @@ function R21Focus({
   const parent = task.parent;
   const loggedSec = Math.round((task.completedWork ?? 0) * 3600) + task.localUncapturedSeconds;
   const logged = fmtHM(loggedSec, 0);
-  const startedAt = task.activeSession ? fmtClockISO(task.activeSession.startedAt) : '';
+  const startedAt = task.activeSession ? fmtEventStamp(task.activeSession.startedAt) : '';
   const remaining = task.remainingWork != null ? `${Math.round(task.remainingWork)}h` : '—';
   const completed = task.completedWork != null ? `${Math.round(task.completedWork)}h` : '—';
   const taskBlocked = isBlockedState(task.state) || (task.type === 'Bug' && isBlocked(task.tags));
@@ -897,7 +897,7 @@ function FocusTaskDrill({
 }) {
   const loggedSec = Math.round((task.completedWork ?? 0) * 3600) + task.localUncapturedSeconds;
   const logged = fmtHM(loggedSec, 0);
-  const startedAt = task.activeSession ? fmtClockISO(task.activeSession.startedAt) : '';
+  const startedAt = task.activeSession ? fmtEventStamp(task.activeSession.startedAt) : '';
   const remaining = task.remainingWork != null ? `${Math.round(task.remainingWork)}h` : '—';
   const completed = task.completedWork != null ? `${Math.round(task.completedWork)}h` : '—';
   const events = task.recentActivity;
@@ -1612,6 +1612,25 @@ function fmtClockISO(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * Like fmtClockISO, but prepends the date when the timestamp isn't from today.
+ * Same-day entries stay clean (`14:32`); older ones read `Jun 5 · 14:32` so a
+ * task whose activity spans several days isn't ambiguous.
+ */
+function fmtEventStamp(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) return time;
+  const date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return `${date} · ${time}`;
 }
 
 function relUntil(min: number): string {
