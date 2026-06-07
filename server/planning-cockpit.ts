@@ -203,6 +203,16 @@ function toCockpitIteration(it: Iteration): CockpitIteration {
   };
 }
 
+/**
+ * The next sprint after the current one — the one a planning session is
+ * building. Shared so the gap scan can target the sprint being planned
+ * rather than the one being closed.
+ */
+export async function resolveNextSprint(): Promise<CockpitIteration | null> {
+  const [current, all] = await Promise.all([getCurrentIteration(), listAllIterations().catch(() => [])]);
+  return pickNextSprint(current, all);
+}
+
 function pickNextSprint(current: Iteration | null, all: Iteration[]): CockpitIteration | null {
   if (!current) return null;
   // Iterations are already sorted by startDate ascending in listAllIterations.

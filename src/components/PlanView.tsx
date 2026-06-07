@@ -782,7 +782,7 @@ function SanityCheckSection({ onScanComplete }: { onScanComplete?: (n: number) =
 
       {state.status === 'ok' && state.data.totalGaps === 0 && (
         <div className="plan2-empty">
-          Every Task and Story in the current sprint has its planning fields filled in.
+          Every Task and Story in the sprint you're planning has its planning fields filled in.
           <button className="plan2-prompt-btn" onClick={onClear} style={{ marginLeft: 12 }}>Clear scan</button>
         </div>
       )}

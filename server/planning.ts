@@ -10,6 +10,7 @@
  * No ADO writes. No mutations anywhere — pure read + compute + format.
  */
 import { buildDashboardCached } from './dashboard-cache';
+import { resolveNextSprint } from './planning-cockpit';
 import { buildEstimateAnchor } from './estimate-anchor';
 import type {
   UserStoryGroup,
@@ -169,14 +170,22 @@ function round2(n: number): number {
 }
 
 /**
- * Find planning gaps across the current sprint. Tasks count as a gap when
- * OriginalEstimate OR RemainingWork is missing. Stories count when Effort
- * is missing — Story Points derive from Effort, so they're never an
- * independent gap. Features and Epics are not flagged (planning fields
- * are optional on them in Moran's tenant, decision 2026-06-03).
+ * Find planning gaps in the sprint being planned. By default that's the NEXT
+ * sprint — planning is about the sprint you're building, not the one you're
+ * closing — falling back to the current sprint when there's no next one yet.
+ * Pass `sprintName` to scan a specific sprint instead.
+ *
+ * Tasks count as a gap when OriginalEstimate OR RemainingWork is missing.
+ * Stories count when Effort is missing — Story Points derive from Effort, so
+ * they're never an independent gap. Features and Epics are not flagged
+ * (planning fields are optional on them in Moran's tenant, decision 2026-06-03).
  */
-export async function findGaps(): Promise<PlanningGapsResult> {
-  const { payload } = await buildDashboardCached();
+export async function findGaps(opts: { sprintName?: string } = {}): Promise<PlanningGapsResult> {
+  // Resolve which sprint to scan: caller's pick, else the next sprint, else
+  // let buildDashboard fall back to the current one.
+  const targetName = opts.sprintName ?? (await resolveNextSprint())?.name;
+  const { payload } = await buildDashboardCached(targetName ? { sprintName: targetName } : {});
+  const sprintLabel = payload.sprint?.name ?? null;
   const gaps: PlanningGap[] = [];
 
   if (!payload.sprint) {
@@ -184,7 +193,7 @@ export async function findGaps(): Promise<PlanningGapsResult> {
       fetchedAt: new Date().toISOString(),
       totalGaps: 0,
       gaps: [],
-      prompt: 'No active sprint — nothing to plan.',
+      prompt: 'No sprint to plan yet — schedule the next sprint in Azure DevOps first.',
     };
   }
 
@@ -269,7 +278,7 @@ export async function findGaps(): Promise<PlanningGapsResult> {
     });
   });
 
-  const prompt = assemblePlanningPrompt(gaps);
+  const prompt = assemblePlanningPrompt(gaps, sprintLabel);
 
   return {
     fetchedAt: new Date().toISOString(),
@@ -284,9 +293,10 @@ export async function findGaps(): Promise<PlanningGapsResult> {
  * `displayName` verbatim. Verbose on purpose — when pasted into a fresh
  * chat with no context, the model needs to be reminded of the ritual.
  */
-export function assemblePlanningPrompt(gaps: PlanningGap[]): string {
+export function assemblePlanningPrompt(gaps: PlanningGap[], sprintLabel: string | null = null): string {
   if (gaps.length === 0) {
-    return 'No items need effort right now — every Task and Story in the current sprint has its planning fields filled in.';
+    const where = sprintLabel ? `${sprintLabel}` : 'this sprint';
+    return `No items need effort right now — every Task and Story in ${where} has its planning fields filled in.`;
   }
 
   const header = [
