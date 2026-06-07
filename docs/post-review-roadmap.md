@@ -116,15 +116,16 @@ half blocked by Decision #1.
 
 (All three decisions are now settled, so this is the real working order.)
 
-1. **Theme A** safe wins — match the locks, trim tool blurbs. Cheap, immediate.
-2. **Harden rules 3 → 2 → 1** (standup summary required, then the two session-close checks).
-   Small, high-value, and they protect your hours/standup data.
-3. **The two-doorway Azure refactor** (CLI + API behind one interface) — foundational for
-   both installation and config.
+1. ✅ **Theme A** safe wins — match the locks, trim tool blurbs. Cheap, immediate. *(done)*
+2. ✅ **Harden rules 3 → 2 → 1** (standup summary required, then the two session-close checks).
+   Small, high-value, and they protect your hours/standup data. *(done)*
+3. ✅ **The two-doorway Azure refactor** (CLI + API behind one interface) — foundational for
+   both installation and config. *(done — merged to main 2026-06-07; see `docs/azure-access.md`)*
 4. **Config place**, then the **easy half of installation**, then the **README**
    (README last so it describes the real, finished setup).
-5. **Tests** — set up Vitest, cover the pure-math files first, then the six invariants.
+5. ✅ **Tests** — set up Vitest, cover the pure-math files first, then the six invariants.
    Do this before/alongside any Dashboard splitting so changes are safe.
+   *(done — 53 tests; all six invariants covered. See `[[project-testing-gap]]`.)*
 6. **Theme D** ongoing — code-splitting only as you touch things; never a big-bang.
 7. **Hard half of installation** — the server running reliably on someone else's machine,
    now unblocked by the two-doorway refactor.
