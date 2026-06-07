@@ -1,0 +1,226 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { deriveStoryPoints } from './story-points';
+
+/**
+ * These tests exercise the ADO write paths against an in-memory fake "board"
+ * instead of real Azure DevOps. We mock:
+ *   - ./config        → a fake org/project so URIs build
+ *   - ./timers        → an in-memory settings map (state-name memory + the
+ *                       close/reopen markers writes.ts leans on)
+ *   - ./story-points  → keep the real deriveStoryPoints, pin workday to 9h
+ *   - node:child_process → a fake `az rest` that reads/patches the fake board
+ *
+ * The fake's "process template" accepts only New / Active / Blocked / Done.
+ * It rejects "Closed" with a state-transition error so the done-bucket chain
+ * walk (which tries Closed first, then Done) is genuinely exercised.
+ */
+const h = vi.hoisted(() => ({
+  settings: new Map<string, string>(),
+  store: new Map<number, { rev: number; fields: Record<string, unknown> }>(),
+}));
+
+vi.mock('./config', () => ({
+  loadAdoConfig: async () => ({
+    organization: 'https://dev.azure.com/org',
+    project: 'Proj',
+    team: 'Team',
+    user: 'moran@example.com',
+  }),
+}));
+
+vi.mock('./timers', () => ({
+  getSetting: (k: string) => h.settings.get(k),
+  setSetting: (k: string, v: string) => {
+    h.settings.set(k, v);
+  },
+}));
+
+vi.mock('./story-points', async importOriginal => {
+  const orig = await importOriginal<typeof import('./story-points')>();
+  return { ...orig, getWorkdayHours: () => 9 };
+});
+
+const ACCEPTED_STATES = new Set(['New', 'Active', 'Blocked', 'Done']);
+
+function handleAz(args: string[], body: string): string {
+  const method = args[args.indexOf('--method') + 1];
+  const uri = args[args.indexOf('--uri') + 1];
+  const id = Number(uri.match(/\/workitems\/(\d+)/i)?.[1] ?? NaN);
+
+  if (method === 'GET') {
+    const wi = h.store.get(id) ?? { rev: 1, fields: {} };
+    return JSON.stringify({ id, rev: wi.rev, fields: wi.fields });
+  }
+
+  if (method === 'PATCH') {
+    const patch = JSON.parse(body) as Array<{ op: string; path: string; value?: unknown }>;
+    const wi = h.store.get(id) ?? { rev: 1, fields: {} };
+    for (const p of patch) {
+      const field = p.path.replace('/fields/', '');
+      if (p.op === 'remove') {
+        delete wi.fields[field];
+        continue;
+      }
+      if (field === 'System.State' && !ACCEPTED_STATES.has(String(p.value))) {
+        throw new Error(`TF401320: '${String(p.value)}' is not a valid state transition`);
+      }
+      wi.fields[field] = p.value;
+    }
+    wi.rev += 1;
+    h.store.set(id, wi);
+    return JSON.stringify({ id, fields: wi.fields });
+  }
+
+  throw new Error(`fake az: unexpected method ${method}`);
+}
+
+vi.mock('node:child_process', () => ({
+  execFile: (
+    _cmd: string,
+    args: string[],
+    _opts: unknown,
+    cb: (err: Error | null, stdout: string, stderr: string) => void,
+  ) => {
+    const run = (body: string) => {
+      queueMicrotask(() => {
+        try {
+          cb(null, handleAz(args, body), '');
+        } catch (e) {
+          cb(e as Error, '', (e as Error).message);
+        }
+      });
+    };
+    // azStdin pipes the JSON-patch body through stdin (`--body @-`); azExec doesn't.
+    if (!args.includes('@-')) {
+      run('');
+      return {} as unknown;
+    }
+    let stdinData = '';
+    return {
+      stdin: {
+        write: (s: string) => {
+          stdinData += s;
+        },
+        end: () => run(stdinData),
+      },
+    } as unknown;
+  },
+}));
+
+import {
+  pushCompletedWork,
+  setStateBucket,
+  transitionToBlocked,
+  transitionFromBlocked,
+  setEffortWithDerivedPoints,
+} from './writes';
+
+const F = {
+  completed: 'Microsoft.VSTS.Scheduling.CompletedWork',
+  remaining: 'Microsoft.VSTS.Scheduling.RemainingWork',
+  effort: 'Microsoft.VSTS.Scheduling.Effort',
+  points: 'Microsoft.VSTS.Scheduling.StoryPoints',
+  state: 'System.State',
+} as const;
+
+function seed(id: number, fields: Record<string, unknown>) {
+  h.store.set(id, { rev: 1, fields: { ...fields } });
+}
+const fieldsOf = (id: number) => h.store.get(id)!.fields;
+
+beforeEach(() => {
+  h.settings.clear();
+  h.store.clear();
+});
+
+describe('pushCompletedWork — burn down Remaining as Completed grows', () => {
+  it('adds the logged hours to Completed and subtracts them from Remaining', async () => {
+    seed(1, { [F.completed]: 1, [F.remaining]: 4 });
+    const r = await pushCompletedWork(1, 3600); // +1h
+    expect(r.newCompletedHours).toBe(2);
+    expect(r.newRemainingHours).toBe(3);
+    expect(fieldsOf(1)[F.completed]).toBe(2);
+    expect(fieldsOf(1)[F.remaining]).toBe(3);
+  });
+
+  it('floors Remaining at zero when the work overran the estimate', async () => {
+    seed(2, { [F.completed]: 0, [F.remaining]: 1 });
+    const r = await pushCompletedWork(2, 2 * 3600); // +2h against 1h left
+    expect(r.newRemainingHours).toBe(0);
+    expect(r.newCompletedHours).toBe(2);
+  });
+});
+
+describe('setStateBucket — chain walk and close/reopen effort preservation', () => {
+  it('walks the state chain and remembers the name that worked', async () => {
+    seed(3, { [F.state]: 'Active' });
+    const resolved = await setStateBucket(3, 'done'); // 'Closed' rejected, 'Done' accepted
+    expect(resolved).toBe('Done');
+    expect(fieldsOf(3)[F.state]).toBe('Done');
+    expect(h.settings.get('state_done')).toBe('Done');
+  });
+
+  it('closing with Completed empty auto-fills it from Remaining and remembers both', async () => {
+    seed(4, { [F.state]: 'Active', [F.remaining]: 5, [F.completed]: 0 });
+    await setStateBucket(4, 'done');
+    expect(fieldsOf(4)[F.state]).toBe('Done');
+    expect(fieldsOf(4)[F.completed]).toBe(5); // "you used what was left"
+    expect(h.settings.get('remaining_prior_to_close_4')).toBe('5');
+    expect(h.settings.get('completed_auto_filled_4')).toBe('5');
+  });
+
+  it('does not overwrite a Completed value that was already set at close', async () => {
+    seed(5, { [F.state]: 'Active', [F.remaining]: 5, [F.completed]: 3 });
+    await setStateBucket(5, 'done');
+    expect(fieldsOf(5)[F.completed]).toBe(3); // left alone — no auto-fill
+    expect(h.settings.get('completed_auto_filled_5')).toBe('');
+  });
+
+  it('reopening a closed item restores Remaining and unwinds the auto-filled Completed', async () => {
+    seed(6, { [F.state]: 'Active', [F.remaining]: 5, [F.completed]: 0 });
+    await setStateBucket(6, 'done'); // auto-fills Completed=5, remembers Remaining=5
+    await setStateBucket(6, 'going'); // leaving done
+    expect(fieldsOf(6)[F.state]).toBe('Active');
+    expect(fieldsOf(6)[F.remaining]).toBe(5); // restored
+    expect(fieldsOf(6)[F.completed]).toBe(0); // auto-fill unwound
+    expect(h.settings.get('remaining_prior_to_close_6')).toBe('');
+    expect(h.settings.get('completed_auto_filled_6')).toBe('');
+  });
+});
+
+describe('block / unblock — capture and restore the prior state', () => {
+  it('blocking captures the prior state; unblocking restores it', async () => {
+    seed(7, { [F.state]: 'Active' });
+    const blocked = await transitionToBlocked(7);
+    expect(blocked.fromState).toBe('Active');
+    expect(blocked.toState).toBe('Blocked');
+    expect(fieldsOf(7)[F.state]).toBe('Blocked');
+    expect(h.settings.get('blocked_prior_state_7')).toBe('Active');
+
+    const unblocked = await transitionFromBlocked(7);
+    expect(unblocked.restored).toBe(true);
+    expect(unblocked.toState).toBe('Active');
+    expect(fieldsOf(7)[F.state]).toBe('Active');
+    expect(h.settings.get('blocked_prior_state_7')).toBe('');
+  });
+
+  it('unblocking with no captured prior state falls back to the going state', async () => {
+    seed(8, { [F.state]: 'Blocked' });
+    const r = await transitionFromBlocked(8);
+    expect(r.restored).toBe(false);
+    expect(r.toState).toBe('Active');
+    expect(fieldsOf(8)[F.state]).toBe('Active');
+  });
+});
+
+describe('setEffortWithDerivedPoints — Effort and StoryPoints land together', () => {
+  it('writes Effort and the derived StoryPoints in one shot', async () => {
+    seed(9, {});
+    const r = await setEffortWithDerivedPoints(9, 18); // workday pinned to 9h
+    const expectedPoints = deriveStoryPoints(18, 9); // 18h / 9h = 2 days = 2 points
+    expect(r.effort).toBe(18);
+    expect(r.storyPoints).toBe(expectedPoints);
+    expect(fieldsOf(9)[F.effort]).toBe(18);
+    expect(fieldsOf(9)[F.points]).toBe(expectedPoints);
+  });
+});
