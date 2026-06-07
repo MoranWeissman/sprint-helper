@@ -1,14 +1,13 @@
 /**
- * Azure DevOps client — shells out to `az` CLI.
+ * Azure DevOps reads — work items and iterations.
  *
- * Auth: relies on the user's existing `az login`. No PAT required.
- * All methods throw on failure with the underlying `az` stderr surfaced.
+ * Every Azure DevOps call goes through the one seam in `./ado-client`, so the
+ * same reads run two ways (CLI via `az`, or the REST API via a stored token),
+ * chosen by config. This module owns the WIQL/field mapping; the client owns
+ * auth + transport. See docs/azure-access.md.
  */
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { loadAdoConfig } from './config';
-
-const exec = promisify(execFile);
+import { getAdoClient, type RawWorkItem } from './ado-client';
 
 export interface Iteration {
   id: string;
@@ -80,10 +79,10 @@ const WORK_ITEM_FIELDS = [
 
 /**
  * Iterations rarely change within a session (sprint dates are fixed once a
- * sprint is created), but the `az` calls to fetch them cost ~0.9s. Cache both
- * the current-iteration lookup and the full list in memory with a short TTL so
- * a dashboard reload / sprint switch doesn't re-pay that on every request.
- * Work items themselves are never cached — only the iteration metadata.
+ * sprint is created), but fetching them costs a round-trip. Cache both the
+ * current-iteration lookup and the full list in memory with a short TTL so a
+ * dashboard reload / sprint switch doesn't re-pay that on every request. Work
+ * items themselves are never cached — only the iteration metadata.
  */
 const ITERATION_TTL_MS = 5 * 60 * 1000;
 let currentCache: { value: Iteration | null; at: number } | null = null;
@@ -99,25 +98,35 @@ export function invalidateIterationCache(): void {
   allCache = null;
 }
 
+interface RawIteration {
+  id: string;
+  name: string;
+  path: string;
+  attributes: { startDate?: string; finishDate?: string };
+}
+
+/** GET the team's iterations (optionally just the current one) via the seam. */
+async function fetchIterations(timeframeCurrent: boolean): Promise<RawIteration[]> {
+  const cfg = await loadAdoConfig();
+  const base = `${cfg.organization}/${encodeURIComponent(cfg.project)}/${encodeURIComponent(cfg.team)}/_apis/work/teamsettings/iterations`;
+  const uri = `${base}?${timeframeCurrent ? '$timeframe=current&' : ''}api-version=7.1`;
+  const parsed = await getAdoClient().rest<{ value?: RawIteration[] }>({ method: 'GET', uri });
+  return parsed.value ?? [];
+}
+
 export async function getCurrentIteration(): Promise<Iteration | null> {
   if (currentCache && fresh(currentCache.at)) return currentCache.value;
-  const cfg = await loadAdoConfig();
-  const { stdout } = await azJson(['boards', 'iteration', 'team', 'list', '--team', cfg.team, '--timeframe', 'current']);
-  const arr = JSON.parse(stdout) as Array<{
-    id: string;
-    name: string;
-    path: string;
-    attributes: { startDate: string; finishDate: string };
-  }>;
-  const value: Iteration | null = arr.length === 0
-    ? null
-    : {
-        id: arr[0].id,
-        name: arr[0].name,
-        path: arr[0].path,
-        startDate: arr[0].attributes.startDate,
-        finishDate: arr[0].attributes.finishDate,
-      };
+  const arr = await fetchIterations(true);
+  const first = arr[0];
+  const value: Iteration | null = first
+    ? {
+        id: first.id,
+        name: first.name,
+        path: first.path,
+        startDate: first.attributes.startDate ?? '',
+        finishDate: first.attributes.finishDate ?? '',
+      }
+    : null;
   currentCache = { value, at: Date.now() };
   return value;
 }
@@ -125,14 +134,7 @@ export async function getCurrentIteration(): Promise<Iteration | null> {
 /** All iterations the team has — for sprint picker (browse previous/upcoming). */
 export async function listAllIterations(): Promise<Iteration[]> {
   if (allCache && fresh(allCache.at)) return allCache.value;
-  const cfg = await loadAdoConfig();
-  const { stdout } = await azJson(['boards', 'iteration', 'team', 'list', '--team', cfg.team]);
-  const arr = JSON.parse(stdout) as Array<{
-    id: string;
-    name: string;
-    path: string;
-    attributes: { startDate?: string; finishDate?: string };
-  }>;
+  const arr = await fetchIterations(false);
   const value = arr
     .filter(it => it.attributes.startDate && it.attributes.finishDate)
     .map(it => ({
@@ -194,21 +196,15 @@ export interface WorkItemComment {
 
 export async function getWorkItem(id: number): Promise<WorkItemDetail> {
   const cfg = await loadAdoConfig();
-  const ADO_RESOURCE = '499b84ac-1321-427f-aa17-267ca6975798';
   const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitems/${id}?$expand=all&api-version=7.1`;
-  const { stdout } = await azJson([
-    'rest', '--method', 'GET',
-    '--uri', uri,
-    '--resource', ADO_RESOURCE,
-  ]);
-  const w = JSON.parse(stdout) as {
+  const w = await getAdoClient().rest<{
     id: number;
     rev: number;
     url: string;
     fields: Record<string, unknown>;
     relations?: Array<{ rel: string; url: string; attributes?: { name?: string } }>;
     _links?: { html?: { href?: string } };
-  };
+  }>({ method: 'GET', uri });
   const f = w.fields;
 
   const childIds: number[] = [];
@@ -275,21 +271,15 @@ export async function getWorkItem(id: number): Promise<WorkItemDetail> {
 
 export async function getWorkItemComments(id: number): Promise<WorkItemComment[]> {
   const cfg = await loadAdoConfig();
-  const ADO_RESOURCE = '499b84ac-1321-427f-aa17-267ca6975798';
   const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workItems/${id}/comments?api-version=7.1-preview.4&$top=200`;
-  const { stdout } = await azJson([
-    'rest', '--method', 'GET',
-    '--uri', uri,
-    '--resource', ADO_RESOURCE,
-  ]);
-  const parsed = JSON.parse(stdout) as {
+  const parsed = await getAdoClient().rest<{
     comments?: Array<{
       id: number;
       text: string;
       createdBy?: { displayName?: string };
       createdDate: string;
     }>;
-  };
+  }>({ method: 'GET', uri });
   return (parsed.comments ?? []).map(c => ({
     id: c.id,
     text: c.text,
@@ -305,19 +295,8 @@ export async function getWorkItemComments(id: number): Promise<WorkItemComment[]
  */
 export async function addWorkItemComment(id: number, text: string): Promise<void> {
   const cfg = await loadAdoConfig();
-  const ADO_RESOURCE = '499b84ac-1321-427f-aa17-267ca6975798';
   const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workItems/${id}/comments?api-version=7.1-preview.4`;
-  await execStdin(
-    'az',
-    [
-      'rest', '--method', 'POST',
-      '--uri', uri,
-      '--resource', ADO_RESOURCE,
-      '--headers', 'Content-Type=application/json',
-      '--body', '@-',
-    ],
-    JSON.stringify({ text }),
-  );
+  await getAdoClient().rest({ method: 'POST', uri, body: { text }, contentKind: 'json' });
 }
 
 function mapRef(w: WorkItem) {
@@ -345,10 +324,9 @@ function extractAssignedTo(v: unknown): string | undefined {
 }
 
 export async function getMyWorkItems(iterationPath: string): Promise<WorkItem[]> {
-  // 1) WIQL: fetch work items assigned to @Me in this iteration. Selecting the
-  //    fields means `az boards query` returns them already populated, so we
-  //    skip a separate workitemsbatch round-trip for the main items (one less
-  //    ~0.7s `az` call on every dashboard load).
+  // 1) WIQL: work items assigned to @Me in this iteration. The doorway returns
+  //    them already hydrated (CLI via `az boards query`; API via wiql + batch).
+  const cfg = await loadAdoConfig();
   const fieldList = WORK_ITEM_FIELDS.map(f => `[${f}]`).join(', ');
   const wiql = [
     `SELECT ${fieldList} FROM WorkItems`,
@@ -357,13 +335,12 @@ export async function getMyWorkItems(iterationPath: string): Promise<WorkItem[]>
     'ORDER BY [System.ChangedDate] DESC',
   ].join(' ');
 
-  const { stdout } = await azJson(['boards', 'query', '--wiql', wiql]);
-  const raw = JSON.parse(stdout) as Array<{
-    id: number;
-    rev: number;
-    url: string;
-    fields: Record<string, unknown>;
-  }>;
+  const raw = await getAdoClient().queryWorkItems({
+    wiql,
+    fields: WORK_ITEM_FIELDS,
+    organization: cfg.organization,
+    project: cfg.project,
+  });
   if (raw.length === 0) return [];
   const items = raw.map(w => mapWorkItem(w));
 
@@ -415,31 +392,14 @@ function humanWorkItemUrl(restUrl: string, id: number): string {
 
 async function getWorkItemBatch(ids: number[]): Promise<WorkItem[]> {
   const cfg = await loadAdoConfig();
-  const body = JSON.stringify({ ids, fields: WORK_ITEM_FIELDS });
-  // az rest can't auto-derive the AAD resource for dev.azure.com URLs — pass the
-  // Azure DevOps app ID explicitly so it acquires a proper bearer token.
-  const ADO_RESOURCE = '499b84ac-1321-427f-aa17-267ca6975798';
   const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitemsbatch?api-version=7.1`;
-  const { stdout } = await execStdin(
-    'az',
-    [
-      'rest', '--method', 'POST',
-      '--uri', uri,
-      '--resource', ADO_RESOURCE,
-      '--headers', 'Content-Type=application/json',
-      '--body', '@-',
-    ],
-    body,
-  );
-  const parsed = JSON.parse(stdout) as {
-    value: Array<{
-      id: number;
-      rev: number;
-      url: string;
-      fields: Record<string, unknown>;
-    }>;
-  };
-  return parsed.value.map(w => mapWorkItem(w));
+  const parsed = await getAdoClient().rest<{ value: RawWorkItem[] }>({
+    method: 'POST',
+    uri,
+    body: { ids, fields: WORK_ITEM_FIELDS },
+    contentKind: 'json',
+  });
+  return (parsed.value ?? []).map(w => mapWorkItem(w));
 }
 
 /**
@@ -449,6 +409,7 @@ async function getWorkItemBatch(ids: number[]): Promise<WorkItem[]> {
  * OriginalEstimate AND CompletedWork are populated so the ratio is meaningful.
  */
 export async function listClosedSiblings(parentId: number): Promise<WorkItem[]> {
+  const cfg = await loadAdoConfig();
   const fieldList = WORK_ITEM_FIELDS.map(f => `[${f}]`).join(', ');
   const wiql = [
     `SELECT ${fieldList} FROM WorkItems`,
@@ -459,13 +420,12 @@ export async function listClosedSiblings(parentId: number): Promise<WorkItem[]> 
     `  AND [Microsoft.VSTS.Scheduling.CompletedWork] > 0`,
     'ORDER BY [System.ChangedDate] DESC',
   ].join(' ');
-  const { stdout } = await azJson(['boards', 'query', '--wiql', wiql]);
-  const raw = JSON.parse(stdout) as Array<{
-    id: number;
-    rev: number;
-    url: string;
-    fields: Record<string, unknown>;
-  }>;
+  const raw = await getAdoClient().queryWorkItems({
+    wiql,
+    fields: WORK_ITEM_FIELDS,
+    organization: cfg.organization,
+    project: cfg.project,
+  });
   return raw.map(w => mapWorkItem(w));
 }
 
@@ -479,6 +439,7 @@ export async function listClosedSiblings(parentId: number): Promise<WorkItem[]> 
  * this sprint" and classify the iteration path on the TS side.
  */
 export async function listMyOpenStoriesNotInSprint(currentSprintPath: string): Promise<WorkItem[]> {
+  const cfg = await loadAdoConfig();
   const fieldList = WORK_ITEM_FIELDS.map(f => `[${f}]`).join(', ');
   const wiql = [
     `SELECT ${fieldList} FROM WorkItems`,
@@ -488,13 +449,12 @@ export async function listMyOpenStoriesNotInSprint(currentSprintPath: string): P
     `  AND [System.IterationPath] <> '${escapeWiql(currentSprintPath)}'`,
     'ORDER BY [System.IterationPath], [System.ChangedDate] DESC',
   ].join(' ');
-  const { stdout } = await azJson(['boards', 'query', '--wiql', wiql]);
-  const raw = JSON.parse(stdout) as Array<{
-    id: number;
-    rev: number;
-    url: string;
-    fields: Record<string, unknown>;
-  }>;
+  const raw = await getAdoClient().queryWorkItems({
+    wiql,
+    fields: WORK_ITEM_FIELDS,
+    organization: cfg.organization,
+    project: cfg.project,
+  });
   return raw.map(w => mapWorkItem(w));
 }
 
@@ -504,6 +464,7 @@ export async function listMyOpenStoriesNotInSprint(currentSprintPath: string): P
  * items where both OriginalEstimate AND CompletedWork are populated.
  */
 export async function listClosedCalibration(daysBack = 90, limit = 100): Promise<WorkItem[]> {
+  const cfg = await loadAdoConfig();
   const fieldList = WORK_ITEM_FIELDS.map(f => `[${f}]`).join(', ');
   const wiql = [
     `SELECT ${fieldList} FROM WorkItems`,
@@ -514,17 +475,16 @@ export async function listClosedCalibration(daysBack = 90, limit = 100): Promise
     `  AND [Microsoft.VSTS.Scheduling.CompletedWork] > 0`,
     'ORDER BY [System.ChangedDate] DESC',
   ].join(' ');
-  const { stdout } = await azJson(['boards', 'query', '--wiql', wiql]);
-  const raw = JSON.parse(stdout) as Array<{
-    id: number;
-    rev: number;
-    url: string;
-    fields: Record<string, unknown>;
-  }>;
+  const raw = await getAdoClient().queryWorkItems({
+    wiql,
+    fields: WORK_ITEM_FIELDS,
+    organization: cfg.organization,
+    project: cfg.project,
+  });
   return raw.slice(0, limit).map(w => mapWorkItem(w));
 }
 
-function mapWorkItem(w: { id: number; rev: number; url: string; fields: Record<string, unknown> }): WorkItem {
+function mapWorkItem(w: RawWorkItem): WorkItem {
   const f = w.fields;
   const assignedToRaw = f['System.AssignedTo'];
   const assignedTo =
@@ -571,41 +531,4 @@ function numOrUndef(v: unknown): number | undefined {
 
 function escapeWiql(s: string): string {
   return s.replace(/'/g, "''");
-}
-
-async function azJson(args: string[]): Promise<{ stdout: string }> {
-  try {
-    return await exec('az', [...args, '-o', 'json'], { maxBuffer: 16 * 1024 * 1024 });
-  } catch (e) {
-    throw enrichAzError(e, args);
-  }
-}
-
-function execStdin(cmd: string, args: string[], input: string): Promise<{ stdout: string }> {
-  return new Promise((resolve, reject) => {
-    const child = execFile(
-      cmd,
-      args,
-      { maxBuffer: 16 * 1024 * 1024 },
-      (err: Error | null, stdout: string | Buffer, stderr: string | Buffer) => {
-        if (err) {
-          reject(enrichAzError({ stderr: String(stderr ?? '') }, args));
-        } else {
-          resolve({ stdout: String(stdout) });
-        }
-      },
-    );
-    child.stdin?.write(input);
-    child.stdin?.end();
-  });
-}
-
-function enrichAzError(e: unknown, args: string[]): Error {
-  const stderr = (e && typeof e === 'object' && 'stderr' in e) ? String((e as { stderr: unknown }).stderr) : '';
-  const msg = stderr.includes('not logged in')
-    ? `sprint-helper needs you to run \`az login\` first.`
-    : `az command failed: ${stderr || (e instanceof Error ? e.message : 'unknown error')}`;
-  const err = new Error(msg);
-  (err as unknown as { command: string }).command = `az ${args.join(' ')}`;
-  return err;
 }
