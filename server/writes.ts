@@ -438,6 +438,31 @@ export async function setEstimate(workItemId: number, hours: number): Promise<vo
   ]);
 }
 
+/**
+ * Backfill the Original Estimate — but ONLY when it's currently blank. Original
+ * Estimate is the baseline the delivery manager compares actual hours against,
+ * so once it has a value it's set in stone (rewriting it kills the variance
+ * signal — that's why workitem_edit can't change it). The legitimate gap this
+ * fills: tasks that already existed with no estimate at all (created outside
+ * sprint-helper, or before estimating). "Set once" — just allowed to happen
+ * late. See [[feedback-effort-discipline]].
+ */
+export async function backfillEstimateIfBlank(workItemId: number, hours: number): Promise<void> {
+  const f = await readFields(workItemId, [
+    'Microsoft.VSTS.Scheduling.OriginalEstimate',
+    'System.Title',
+  ]);
+  const raw = f['Microsoft.VSTS.Scheduling.OriginalEstimate'];
+  const existing = typeof raw === 'number' ? raw : Number(raw);
+  if (Number.isFinite(existing) && existing > 0) {
+    const title = String(f['System.Title'] ?? `#${workItemId}`);
+    throw new Error(
+      `"${title}" already has an Original Estimate of ${existing}h — that's the baseline the delivery manager compares actual hours against, so it's set once and not rewritten. If the task grew, raise Remaining Work instead.`,
+    );
+  }
+  await setEstimate(workItemId, hours);
+}
+
 export async function setRemaining(workItemId: number, hours: number): Promise<void> {
   await patchWorkItem(workItemId, [
     { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.RemainingWork', value: round2(hours) },

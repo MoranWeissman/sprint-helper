@@ -115,6 +115,7 @@ import {
   setEffortWithDerivedPoints,
   setIterationPath,
   setTitle,
+  backfillEstimateIfBlank,
 } from './writes';
 
 const F = {
@@ -269,5 +270,27 @@ describe('setTitle — rename a work item', () => {
     seed(15, { [F.title]: 'Keep me' });
     await expect(setTitle(15, '   ')).rejects.toThrow();
     expect(fieldsOf(15)[F.title]).toBe('Keep me'); // unchanged
+  });
+});
+
+describe('backfillEstimateIfBlank — fill a blank Original Estimate, never overwrite a set one', () => {
+  const EST = 'Microsoft.VSTS.Scheduling.OriginalEstimate';
+
+  it('fills the estimate when the task has none', async () => {
+    seed(16, { [F.type]: 'Task', [F.title]: 'No estimate yet' });
+    await backfillEstimateIfBlank(16, 3);
+    expect(fieldsOf(16)[EST]).toBe(3);
+  });
+
+  it('treats 0 as blank and fills it', async () => {
+    seed(17, { [F.type]: 'Task', [EST]: 0 });
+    await backfillEstimateIfBlank(17, 5);
+    expect(fieldsOf(17)[EST]).toBe(5);
+  });
+
+  it('refuses to overwrite an estimate that is already set', async () => {
+    seed(18, { [F.type]: 'Task', [F.title]: 'Has a baseline', [EST]: 4 });
+    await expect(backfillEstimateIfBlank(18, 8)).rejects.toThrow(/baseline|set once|already/i);
+    expect(fieldsOf(18)[EST]).toBe(4); // untouched
   });
 });

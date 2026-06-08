@@ -63,6 +63,7 @@ import {
   setCompletedWork,
   setEffortWithDerivedPoints,
   setIterationPath,
+  backfillEstimateIfBlank,
   setRemaining,
   setStateBucket,
   setTitle,
@@ -1334,12 +1335,13 @@ server.registerTool(
   {
     title: 'Edit work item fields',
     description:
-      "Update an existing Azure DevOps work item: title, state (waiting/going only — close via session_end, not here), Remaining Work, Completed Work, story Effort, tags, iteration path. Original Estimate is NOT editable — it's set once at task_create. Pass at least one field; per-field rules are on each field below.",
+      "Update an existing Azure DevOps work item: title, state (waiting/going only — close via session_end, not here), Remaining Work, Completed Work, Original Estimate (backfill only — see field), story Effort, tags, iteration path. Pass at least one field; per-field rules are on each field below.",
     inputSchema: {
       workItemId: workItemIdSchema,
       title: z.string().min(1).optional().describe("Rename the work item (overwrites the title shown on the board). The title is visible to Moran's delivery manager, so confirm the exact new wording with Moran before calling — don't reword on your own."),
       state: z.enum(['waiting', 'going']).optional().describe("Move the item between 'waiting' and 'going'. To CLOSE a task, use session_end({done:true, completedHoursAfter}) instead — that's the only path that pushes Completed Work and zeros Remaining Work in one move."),
       remainingWork: z.number().min(0).optional().describe('Task field, in hours. The live signal — burns down as work happens. If a task is taking longer than estimated, raise this number (Original Estimate stays fixed for variance reporting).'),
+      originalEstimate: z.number().min(0).optional().describe("Task field, in hours. BACKFILL ONLY — fills the Original Estimate when it's currently blank (e.g. a task that already existed with no estimate). REFUSED if the task already has one: that value is the baseline the delivery manager compares actual hours against, set once and never rewritten. To reflect a task growing, use remainingWork. Anchor the number to history with estimate_anchor before proposing it, same as at task_create."),
       completedWork: z.number().min(0).optional().describe('Task field, in hours. Climbs up as work happens — overwrite (not additive). The DM tracks the sprint by this field.'),
       effort: z.number().min(0).optional().describe('Story field, in hours. Total hours he thinks the story is. StoryPoints is derived from this automatically (1 point = 1 workday) and written in the same patch — do not try to set points separately.'),
       addTags: z.array(z.string().min(1)).optional().describe('Tag names to add to this item (e.g. ["Blocked"]). Case-insensitive dedup against existing tags.'),
@@ -1347,22 +1349,23 @@ server.registerTool(
       iterationPath: z.string().min(1).optional().describe('Full ADO iteration path, backslash-separated (e.g. "IDP - DevOps\\\\2026" for the year-level, or "IDP - DevOps\\\\2026\\\\Q2\\\\26_11" for a specific sprint). Use this to move an item to a different sprint or to a parent iteration node. PLANNING RULE (enforced server-side): a story that is already underway stays in the sprint it started in — only its open TASKS carry over to a new sprint. Moving a started story (any state other than New / To Do / Proposed / Approved / Ready For Dev / Accepted) is refused. Move the tasks instead, or close the story. Never-started stories and tasks move freely.'),
     },
   },
-  async ({ workItemId, title, state, remainingWork, completedWork, effort, addTags, removeTags, iterationPath }) => {
+  async ({ workItemId, title, state, remainingWork, completedWork, originalEstimate, effort, addTags, removeTags, iterationPath }) => {
     if (
       title == null &&
       state == null && remainingWork == null && completedWork == null &&
-      effort == null &&
+      originalEstimate == null && effort == null &&
       (addTags == null || addTags.length === 0) &&
       (removeTags == null || removeTags.length === 0) &&
       iterationPath == null
     ) {
-      return errorResult('At least one of title, state, remainingWork, completedWork, effort, addTags, removeTags, iterationPath is required.');
+      return errorResult('At least one of title, state, remainingWork, completedWork, originalEstimate, effort, addTags, removeTags, iterationPath is required.');
     }
     const applied: {
       title?: string;
       state?: string;
       remainingWork?: number;
       completedWork?: number;
+      originalEstimate?: number;
       storyPoints?: number;
       effort?: number;
       tags?: string[];
@@ -1374,6 +1377,10 @@ server.registerTool(
       if (remainingWork != null) {
         await setRemaining(workItemId, remainingWork);
         applied.remainingWork = remainingWork;
+      }
+      if (originalEstimate != null) {
+        await backfillEstimateIfBlank(workItemId, originalEstimate);
+        applied.originalEstimate = originalEstimate;
       }
       if (completedWork != null) {
         await setCompletedWork(workItemId, completedWork);
