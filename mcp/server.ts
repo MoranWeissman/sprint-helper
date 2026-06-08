@@ -65,6 +65,7 @@ import {
   setIterationPath,
   setRemaining,
   setStateBucket,
+  setTitle,
   transitionFromBlocked,
   transitionToBlocked,
   updateTags,
@@ -1333,9 +1334,10 @@ server.registerTool(
   {
     title: 'Edit work item fields',
     description:
-      "Update an existing Azure DevOps work item: state (waiting/going only — close via session_end, not here), Remaining Work, Completed Work, story Effort, tags, iteration path. Original Estimate is NOT editable — it's set once at task_create. Pass at least one field; per-field rules are on each field below.",
+      "Update an existing Azure DevOps work item: title, state (waiting/going only — close via session_end, not here), Remaining Work, Completed Work, story Effort, tags, iteration path. Original Estimate is NOT editable — it's set once at task_create. Pass at least one field; per-field rules are on each field below.",
     inputSchema: {
       workItemId: workItemIdSchema,
+      title: z.string().min(1).optional().describe("Rename the work item (overwrites the title shown on the board). The title is visible to Moran's delivery manager, so confirm the exact new wording with Moran before calling — don't reword on your own."),
       state: z.enum(['waiting', 'going']).optional().describe("Move the item between 'waiting' and 'going'. To CLOSE a task, use session_end({done:true, completedHoursAfter}) instead — that's the only path that pushes Completed Work and zeros Remaining Work in one move."),
       remainingWork: z.number().min(0).optional().describe('Task field, in hours. The live signal — burns down as work happens. If a task is taking longer than estimated, raise this number (Original Estimate stays fixed for variance reporting).'),
       completedWork: z.number().min(0).optional().describe('Task field, in hours. Climbs up as work happens — overwrite (not additive). The DM tracks the sprint by this field.'),
@@ -1345,17 +1347,19 @@ server.registerTool(
       iterationPath: z.string().min(1).optional().describe('Full ADO iteration path, backslash-separated (e.g. "IDP - DevOps\\\\2026" for the year-level, or "IDP - DevOps\\\\2026\\\\Q2\\\\26_11" for a specific sprint). Use this to move an item to a different sprint or to a parent iteration node. PLANNING RULE (enforced server-side): a story that is already underway stays in the sprint it started in — only its open TASKS carry over to a new sprint. Moving a started story (any state other than New / To Do / Proposed / Approved / Ready For Dev / Accepted) is refused. Move the tasks instead, or close the story. Never-started stories and tasks move freely.'),
     },
   },
-  async ({ workItemId, state, remainingWork, completedWork, effort, addTags, removeTags, iterationPath }) => {
+  async ({ workItemId, title, state, remainingWork, completedWork, effort, addTags, removeTags, iterationPath }) => {
     if (
+      title == null &&
       state == null && remainingWork == null && completedWork == null &&
       effort == null &&
       (addTags == null || addTags.length === 0) &&
       (removeTags == null || removeTags.length === 0) &&
       iterationPath == null
     ) {
-      return errorResult('At least one of state, remainingWork, completedWork, effort, addTags, removeTags, iterationPath is required.');
+      return errorResult('At least one of title, state, remainingWork, completedWork, effort, addTags, removeTags, iterationPath is required.');
     }
     const applied: {
+      title?: string;
       state?: string;
       remainingWork?: number;
       completedWork?: number;
@@ -1365,6 +1369,7 @@ server.registerTool(
       iterationPath?: string;
     } = {};
     try {
+      if (title != null) applied.title = await setTitle(workItemId, title);
       if (state) applied.state = await setStateBucket(workItemId, state as StateBucket);
       if (remainingWork != null) {
         await setRemaining(workItemId, remainingWork);

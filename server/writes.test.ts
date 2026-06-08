@@ -114,6 +114,7 @@ import {
   transitionFromBlocked,
   setEffortWithDerivedPoints,
   setIterationPath,
+  setTitle,
 } from './writes';
 
 const F = {
@@ -253,5 +254,20 @@ describe('setIterationPath — a started story stays put, only tasks (and new st
     seed(13, { [F.type]: 'Task', [F.state]: 'Active', [F.title]: 'A carried task' });
     await setIterationPath(13, NEXT);
     expect(fieldsOf(13)[F.iteration]).toBe(NEXT);
+  });
+});
+
+describe('setTitle — rename a work item', () => {
+  it('overwrites the title, trimmed, and returns what was written', async () => {
+    seed(14, { [F.title]: 'Old name' });
+    const written = await setTitle(14, '  New name  ');
+    expect(written).toBe('New name');
+    expect(fieldsOf(14)[F.title]).toBe('New name');
+  });
+
+  it('rejects an empty title', async () => {
+    seed(15, { [F.title]: 'Keep me' });
+    await expect(setTitle(15, '   ')).rejects.toThrow();
+    expect(fieldsOf(15)[F.title]).toBe('Keep me'); // unchanged
   });
 });

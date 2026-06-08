@@ -457,6 +457,19 @@ export async function setCompletedWork(workItemId: number, hours: number): Promi
 }
 
 /**
+ * Rename a work item — overwrite System.Title. Trimmed; rejects an empty title.
+ * Returns the title that was written so the caller can echo it back.
+ */
+export async function setTitle(workItemId: number, title: string): Promise<string> {
+  const trimmed = title.trim();
+  if (!trimmed) throw new Error('A work item title cannot be empty.');
+  await patchWorkItem(workItemId, [
+    { op: 'add', path: '/fields/System.Title', value: trimmed },
+  ]);
+  return trimmed;
+}
+
+/**
  * Story-level effort. Effort (hours) is the source of truth on Moran's team —
  * StoryPoints is always derived from it via `deriveStoryPoints`, so the two
  * fields cannot drift. Direct setters are kept exported for the rare case a
