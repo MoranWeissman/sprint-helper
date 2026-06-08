@@ -1342,7 +1342,7 @@ server.registerTool(
       effort: z.number().min(0).optional().describe('Story field, in hours. Total hours he thinks the story is. StoryPoints is derived from this automatically (1 point = 1 workday) and written in the same patch — do not try to set points separately.'),
       addTags: z.array(z.string().min(1)).optional().describe('Tag names to add to this item (e.g. ["Blocked"]). Case-insensitive dedup against existing tags.'),
       removeTags: z.array(z.string().min(1)).optional().describe('Tag names to remove from this item.'),
-      iterationPath: z.string().min(1).optional().describe('Full ADO iteration path, backslash-separated (e.g. "IDP - DevOps\\\\2026" for the year-level, or "IDP - DevOps\\\\2026\\\\Q2\\\\26_11" for a specific sprint). Use this to move an item to a different sprint or to a parent iteration node.'),
+      iterationPath: z.string().min(1).optional().describe('Full ADO iteration path, backslash-separated (e.g. "IDP - DevOps\\\\2026" for the year-level, or "IDP - DevOps\\\\2026\\\\Q2\\\\26_11" for a specific sprint). Use this to move an item to a different sprint or to a parent iteration node. PLANNING RULE (enforced server-side): a story that is already underway stays in the sprint it started in — only its open TASKS carry over to a new sprint. Moving a started story (any state other than New / To Do / Proposed / Approved / Ready For Dev / Accepted) is refused. Move the tasks instead, or close the story. Never-started stories and tasks move freely.'),
     },
   },
   async ({ workItemId, state, remainingWork, completedWork, effort, addTags, removeTags, iterationPath }) => {
@@ -1779,7 +1779,7 @@ server.registerTool(
   {
     title: 'List sprint items missing effort fields',
     description:
-      "Return every Task in the current sprint missing OriginalEstimate or RemainingWork, plus every open Story missing Effort. Each gap is paired with a deterministic anchor proposal (median sibling actual from estimate_anchor, or a cold-start flag). Use this in a PLANNING HOME chat to walk Moran through the decompose-anchor-propose ritual one item at a time. Don't use this in a story-anchored work chat — it's a sprint-wide read.",
+      "Return every Task in the sprint being planned (the NEXT sprint by default, falling back to the current one when no next sprint is scheduled) missing OriginalEstimate or RemainingWork, plus every open Story missing Effort. Each gap is paired with a deterministic anchor proposal (median sibling actual from estimate_anchor, or a cold-start flag). Use this in a PLANNING HOME chat to walk Moran through the decompose-anchor-propose ritual one item at a time. Don't use this in a story-anchored work chat — it's a sprint-wide read.",
     inputSchema: {},
   },
   async () => {

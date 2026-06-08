@@ -676,7 +676,14 @@ function PullBacklogRow({
           </span>
         )}
         <span className="plan2-actions">
-          {nextSprintPath ? (
+          {stateClass !== 'waiting' ? (
+            <span
+              className="plan2-act-blocked"
+              title="This story is already underway — a started story stays in its sprint; only its open tasks carry over to a new one."
+            >
+              underway
+            </span>
+          ) : nextSprintPath ? (
             <button
               type="button"
               className="plan2-act plan2-act-pull"

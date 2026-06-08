@@ -4555,6 +4555,8 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 .plan2-act-pull:hover:not(:disabled) { background: color-mix(in oklch, var(--accent) 16%, transparent); border-color: var(--accent); }
 .plan2-act-done:hover:not(:disabled) { border-color: color-mix(in oklch, var(--st-done) 55%, var(--line)); color: var(--st-done); }
 .plan2-act.is-pulled { color: var(--st-done); border-color: color-mix(in oklch, var(--st-done) 45%, var(--line)); background: color-mix(in oklch, var(--st-done) 12%, transparent); pointer-events: none; }
+/* A started backlog story can't be pulled wholesale — only its tasks move. */
+.plan2-act-blocked { font-size: 11px; color: var(--ink-4); white-space: nowrap; cursor: help; padding: 6px 4px; font-style: italic; }
 .plan2-row.is-pulled { opacity: 0.5; }
 
 /* ---- NESTED tasks under an open story ---- */

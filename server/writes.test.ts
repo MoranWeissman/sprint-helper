@@ -113,6 +113,7 @@ import {
   transitionToBlocked,
   transitionFromBlocked,
   setEffortWithDerivedPoints,
+  setIterationPath,
 } from './writes';
 
 const F = {
@@ -121,6 +122,9 @@ const F = {
   effort: 'Microsoft.VSTS.Scheduling.Effort',
   points: 'Microsoft.VSTS.Scheduling.StoryPoints',
   state: 'System.State',
+  type: 'System.WorkItemType',
+  iteration: 'System.IterationPath',
+  title: 'System.Title',
 } as const;
 
 function seed(id: number, fields: Record<string, unknown>) {
@@ -222,5 +226,32 @@ describe('setEffortWithDerivedPoints — Effort and StoryPoints land together', 
     expect(r.storyPoints).toBe(expectedPoints);
     expect(fieldsOf(9)[F.effort]).toBe(18);
     expect(fieldsOf(9)[F.points]).toBe(expectedPoints);
+  });
+});
+
+describe('setIterationPath — a started story stays put, only tasks (and new stories) move', () => {
+  const NEXT = 'Proj\\2026\\Q2\\26_12';
+
+  it('refuses to move a started story to another sprint', async () => {
+    seed(10, { [F.type]: 'User Story', [F.state]: 'Active', [F.title]: 'Underway story', [F.iteration]: 'Proj\\2026\\Q2\\26_11' });
+    await expect(setIterationPath(10, NEXT)).rejects.toThrow(/underway/i);
+    expect(fieldsOf(10)[F.iteration]).toBe('Proj\\2026\\Q2\\26_11'); // unchanged
+  });
+
+  it('also refuses a blocked story', async () => {
+    seed(11, { [F.type]: 'User Story', [F.state]: 'Blocked', [F.title]: 'Stuck story' });
+    await expect(setIterationPath(11, NEXT)).rejects.toThrow();
+  });
+
+  it('moves a never-started (New) story', async () => {
+    seed(12, { [F.type]: 'User Story', [F.state]: 'New', [F.title]: 'Fresh story' });
+    await setIterationPath(12, NEXT);
+    expect(fieldsOf(12)[F.iteration]).toBe(NEXT);
+  });
+
+  it('always moves a task, even an active one (carryover)', async () => {
+    seed(13, { [F.type]: 'Task', [F.state]: 'Active', [F.title]: 'A carried task' });
+    await setIterationPath(13, NEXT);
+    expect(fieldsOf(13)[F.iteration]).toBe(NEXT);
   });
 });

@@ -711,11 +711,35 @@ function escapeHtml(s: string): string {
 }
 
 /**
+ * States that mean a story-level item has NOT been started yet. Only these may
+ * have their sprint iteration changed wholesale. Mirrors the ADO "Proposed"
+ * state category across the work-item types in Moran's tenant (User Story adds
+ * Approved / Ready For Dev; Bug adds Accepted).
+ */
+const NEVER_STARTED_STATES_LOWER = new Set([
+  'new', 'to do', 'proposed', 'approved', 'ready for dev', 'accepted',
+]);
+
+/**
  * Move a work item to a different iteration (e.g. from sprint 26_11 to the
  * 2026 year-level node). `iterationPath` is the full ADO path string
  * (backslash-separated), like 'IDP - DevOps\\2026' or 'IDP - DevOps\\2026\\Q2\\26_11'.
+ *
+ * Planning rule (Moran, 2026-06-08): a story that's already underway stays in
+ * the sprint it started in — only its open TASKS carry over. So this refuses to
+ * change the iteration of a story-level item that isn't in a never-started
+ * state. Tasks (and never-started stories) move freely. See [[carryover-convention]].
  */
 export async function setIterationPath(workItemId: number, iterationPath: string): Promise<void> {
+  const f = await readFields(workItemId, ['System.WorkItemType', 'System.State', 'System.Title']);
+  const type = String(f['System.WorkItemType'] ?? '').toLowerCase();
+  const state = String(f['System.State'] ?? '');
+  if (STORY_LEVEL_TYPES.has(type) && !NEVER_STARTED_STATES_LOWER.has(state.toLowerCase())) {
+    const title = String(f['System.Title'] ?? `#${workItemId}`);
+    throw new Error(
+      `Won't move "${title}" to another sprint — it's already underway (${state}). A story that's started stays in its sprint; only its open tasks carry over. Move the tasks instead, or close the story.`,
+    );
+  }
   await patchWorkItem(workItemId, [
     { op: 'add', path: '/fields/System.IterationPath', value: iterationPath },
   ]);
