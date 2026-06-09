@@ -546,29 +546,29 @@ silent (no prompt) — that's the design Moran approved.
     manually. Don't retry automatically.
   - Already-Active or Done items: no flip happens, no mention needed.
 
-KEEPING CHILD TASKS IN SYNC — silent open, close-the-loop done:
-When Moran has an open session (typically against a story), the conversation
-will move through specific child tasks ("now I'm setting up the IRSA role",
-"moving to the GitHub App connection", "ESO is configured, next is the
-secret sync"). You're responsible for keeping ADO in sync with that movement
-— Moran does NOT want to manually flip task states. This is the design he
-approved 2026-06-01.
+WORKING THROUGH TASKS — one session per task, decide at each finish:
+A session attaches to ONE task — never to a story. \`session_start\` refuses a
+User Story / Feature / Epic and returns its open tasks; pick one (or ask Moran
+which) and open the session on that task. While that task is the active work,
+log progress events against it and burn down its RemainingWork.
 
-  - At the start of an open session, call \`sprint_snapshot\` (or
-    \`list_my_work_items\`) once to learn which child tasks belong to the
-    story being worked on. Keep that mental map.
-  - When you start ACTIVELY working on a specific child task and it's still
-    in a "waiting" state (New / To Do / Proposed), call:
-        workitem_edit({ workItemId: <task id>, state: 'going' })
-    silently. Same philosophy as session_start auto-flip: you're starting
-    work, ADO should reflect reality. No prompt.
-  - When a task's work is FINISHED (clear from the progress events you've
-    logged), ASK Moran plainly: "**<task title>** (#<id>) looks done — want
-    me to close it?" Only after he says yes, call \`session_end\` with
-    \`done: true\` and \`completedHoursAfter: <agreed hours>\` — that's
-    the ONLY path that closes a task properly (pushes Completed Work and
-    zeros Remaining Work in one move). \`workitem_edit\` cannot close
-    tasks; the schema rejects \`state: 'done'\` outright.
+  - At the start, call \`sprint_snapshot\` (or \`list_my_work_items\`) once to
+    learn the sibling tasks under the same story. Keep that mental map so you
+    can offer them when the current task finishes.
+  - When the current task's work looks FINISHED (clear from the progress events
+    you've logged), STOP and ask Moran what's next — do NOT silently roll onto
+    the next thing. Offer the real choices:
+      • Close it — \`session_end({ done: true, completedHoursAfter })\`. The
+        ONLY path that closes a task properly (pushes Completed Work and zeros
+        Remaining Work in one move). \`workitem_edit\` cannot close a task —
+        the schema rejects \`state: 'done'\`.
+      • Pause / stop here — \`session_end\` without done.
+      • Move to a specific sibling task — open a NEW session on that task
+        (\`session_start\` with its id; auto-flip handles its state).
+      • Switch to a different story — pick a task under that story and
+        \`session_start\` on it.
+    Act on his choice: close or pause the current task's session, then
+    \`session_start\` the next task if he named one.
   - CLOSING A STORY is separate from closing a task. A story carries no hours
     of its own (they live on its tasks), so it doesn't go through session_end —
     use \`story_close({ workItemId: <story id> })\`. It only closes User
@@ -1844,12 +1844,26 @@ function buildBlockNudge(block: { blocked: boolean; state: string; hasTag: boole
   return `Heads-up: this work item is currently blocked (${sig}${block.hasTag && isBlockedState(block.state) ? ' + tag' : ''}). If the block has cleared, call \`workitem_unblock\` now — don't let it drift. If work is genuinely continuing while blocked (state restored for testing, partial unblock, etc.), say so to Moran explicitly so the tag isn't misleading.`;
 }
 
+/**
+ * Work-item types that are containers, not units of work. You open a session on
+ * a TASK under one of these, never on the container itself — a session on a
+ * story is why Focus mode shows the story with no task activity. Bug is a
+ * workable leaf (often no child tasks), so it's intentionally absent.
+ */
+const SESSION_CONTAINER_TYPES = new Set([
+  'user story',
+  'feature',
+  'epic',
+  'product backlog item',
+  'requirement',
+]);
+
 server.registerTool(
   'session_start',
   {
     title: 'Start a Claude Code session',
     description:
-      "Open a session against a work item. Tells sprint-helper that Moran is now working on this item with you. Returns a sessionId you'll pass to later session_log / session_end calls. Idempotent — returns the existing session if one is already open. AUTO-FLIPS the work item state from any 'waiting' state (New / To Do / Proposed) to 'going' (Active / In Progress) in Azure DevOps, since opening a session IS the act of starting work. When the item is a Task, its parent Story is flipped to 'going' too (a task in flight means the story is in flight) — reported as `parentStoryFlip`. No prompt — that's the design Moran approved. Reports `stateFlip` (and `parentStoryFlip` when the story flipped) so you can mention it in your reply.",
+      "Open a session against a work item — which must be a TASK (or a Bug). Sessions attach to a unit of work, never to a container: if you pass a User Story / Feature / Epic, this REFUSES and returns the open tasks under it — pick one (or ask Moran which) and call again with that task's id. (Opening on a story is why Focus mode shows the story with no task activity.) Returns a sessionId you'll pass to later session_log / session_end calls. Idempotent — returns the existing session if one is already open. AUTO-FLIPS the work item state from any 'waiting' state (New / To Do / Proposed) to 'going' (Active / In Progress) in Azure DevOps, since opening a session IS the act of starting work. When the item is a Task, its parent Story is flipped to 'going' too (a task in flight means the story is in flight) — reported as `parentStoryFlip`. No prompt — that's the design Moran approved. Reports `stateFlip` (and `parentStoryFlip` when the story flipped) so you can mention it in your reply.",
     inputSchema: {
       workItemId: workItemIdSchema,
       client: z
@@ -1859,6 +1873,30 @@ server.registerTool(
     },
   },
   async ({ workItemId, client }) => {
+    // Guard: a session attaches to a workable unit (Task/Bug), never to a
+    // container story. Read the item; if it's a container, refuse and hand back
+    // its open tasks so the assistant picks one instead of landing on the story.
+    // A read failure here doesn't block work — we just skip the guard.
+    let detail: Awaited<ReturnType<typeof getWorkItem>> | null = null;
+    try {
+      detail = await getWorkItem(workItemId);
+    } catch {
+      detail = null;
+    }
+    if (detail && SESSION_CONTAINER_TYPES.has(detail.type.trim().toLowerCase())) {
+      const storyName = `**${detail.title}** (#${detail.id})`;
+      const openTasks = detail.children.filter(c => !isDoneStateName(c.state));
+      if (openTasks.length === 0) {
+        return errorResult(
+          `${storyName} is a ${detail.type} — a session attaches to a task, not a story, and this one has no open tasks under it. Create a task first (task_create) before starting work. (If this is planning rather than doing, you don't need a session at all.)`,
+        );
+      }
+      const list = openTasks.map(t => `  • **${t.title}** (#${t.id}) — ${t.state}`).join('\n');
+      return errorResult(
+        `${storyName} is a ${detail.type}, not a unit of work — open the session on a task under it (that's why a session on a story leaves Focus with nothing to show). Pick one of its open tasks, or ask Moran which, then call session_start again with that task's id:\n${list}`,
+      );
+    }
+
     const session = startSession({ workItemId, client });
     timerService.start(workItemId); // silent time tracking begins with the session
     void mirrorTaskFile(workItemId); // background — keep the archive file fresh
