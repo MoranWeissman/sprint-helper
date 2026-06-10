@@ -1494,7 +1494,7 @@ function RailNotes({
   notes: ApiHelperNotes;
   onRefresh: () => void;
 }) {
-  const empty = !notes.summary && notes.notes.length === 0;
+  const empty = notes.notes.length === 0;
 
   return (
     <section className="r22-rail-card r22-rail-notes" aria-label="Notes from your helper">
@@ -1505,12 +1505,6 @@ function RailNotes({
         <p className="empty">All quiet here — I'll jot notes as I notice things.</p>
       ) : (
         <>
-          {notes.summary && (
-            <div className="r22-rail-summary">
-              <p className="summary">{notes.summary}</p>
-              {notes.summaryAt && <span className="summary-age">updated {relAgo(notes.summaryAt)}</span>}
-            </div>
-          )}
           {notes.notes.length > 0 && (
             <ul className="list">
               {notes.notes.map(n => (

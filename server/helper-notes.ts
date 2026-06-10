@@ -1,17 +1,13 @@
 /**
  * Helper's notes store (slice R3).
  *
- * Two halves, both local-only (never in Azure DevOps):
- *  - summary: a single always-current plain-English read of the sprint, kept in
- *    the shared `settings` table under one JSON key. The assistant rewrites it.
- *  - notes:   individual nudges in `helper_notes`, newest-first, soft-dismissed
- *    (Moran ticks them off — we set dismissed_at, we don't delete).
- *
- * The assistant writes these via MCP; the Day dashboard reads them via the payload.
+ * Local-only (never in Azure DevOps): individual nudges in `helper_notes`,
+ * newest-first, soft-dismissed (Moran ticks them off — we set dismissed_at, we
+ * don't delete). The assistant writes these via MCP; the Day dashboard reads
+ * them via the payload.
  */
 import { getDb } from './db';
 
-const SUMMARY_KEY = 'helper_summary';
 const CAPACITY_NUDGE_KEY = 'capacity_nudge_state';
 const STALE_REMAINING_NUDGE_PREFIX = 'stale_remaining_nudge';
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -32,44 +28,7 @@ export interface HelperNote {
 }
 
 export interface HelperNotes {
-  summary: string | null;
-  summaryAt: string | null;
   notes: HelperNote[];
-}
-
-interface StoredSummary {
-  body: string;
-  at: string;
-}
-
-/** Replace the living summary. Empty/whitespace clears it. */
-export function setSummary(body: string): { summary: string | null; summaryAt: string | null } {
-  const db = getDb();
-  const trimmed = body.trim();
-  if (!trimmed) {
-    db.prepare(`DELETE FROM settings WHERE key = ?`).run(SUMMARY_KEY);
-    return { summary: null, summaryAt: null };
-  }
-  const stored: StoredSummary = { body: trimmed, at: new Date().toISOString() };
-  db.prepare(
-    `INSERT INTO settings (key, value) VALUES (?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-  ).run(SUMMARY_KEY, JSON.stringify(stored));
-  return { summary: stored.body, summaryAt: stored.at };
-}
-
-export function getSummary(): { summary: string | null; summaryAt: string | null } {
-  const db = getDb();
-  const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(SUMMARY_KEY) as
-    | { value: string }
-    | undefined;
-  if (!row) return { summary: null, summaryAt: null };
-  try {
-    const parsed = JSON.parse(row.value) as StoredSummary;
-    return { summary: parsed.body ?? null, summaryAt: parsed.at ?? null };
-  } catch {
-    return { summary: null, summaryAt: null };
-  }
 }
 
 /** Add a nudge. `workItemId` ties it to a task so Focus can show it. Returns the created note. */
@@ -128,8 +87,7 @@ export function unpinNote(id: number): boolean {
 
 /** Combined read for the dashboard payload + the MCP get tool. */
 export function getHelperNotes(limit = 5): HelperNotes {
-  const { summary, summaryAt } = getSummary();
-  return { summary, summaryAt, notes: listNotes(limit) };
+  return { notes: listNotes(limit) };
 }
 
 /**

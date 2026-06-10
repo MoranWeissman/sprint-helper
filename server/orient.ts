@@ -93,8 +93,6 @@ export interface OrientPacket {
   liveNow: OrientLiveSession[];
   lastSession: OrientLastSession | null;
   helperNotes: {
-    summary: string | null;
-    summaryAt: string | null;
     /**
      * Number of un-dismissed helper notes. Bodies are NOT included in this
      * packet — call `helper_notes_get` to fetch them on demand. Keeping
@@ -302,8 +300,6 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
     liveNow,
     lastSession,
     helperNotes: {
-      summary: helperNotes.summary,
-      summaryAt: helperNotes.summaryAt,
       openNudgeCount: helperNotes.notes.length,
     },
     gaps: {

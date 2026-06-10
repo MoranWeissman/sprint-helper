@@ -4090,19 +4090,6 @@ html, body {
 /* Helper notes — actionable rows (2026-06-10). Dark/warm palette, one accent,
    no pulsing, per the UI rules. */
 
-/* Rail card: summary text + age stamp. */
-.r22-rail-notes .summary {
-  margin: 0; font-size: 13.5px; line-height: 1.6;
-  color: var(--ink-1); text-wrap: pretty;
-}
-.r22-rail-summary { margin-bottom: 12px; }
-.r22-rail-summary .summary-age {
-  display: block;
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--ink-3);
-}
-
 /* The note list layout applies in BOTH the Daily rail and the Focus block. */
 .r22-rail-notes .list,
 .r21-focus-notes .list {

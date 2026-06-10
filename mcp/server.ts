@@ -10,7 +10,7 @@
  *  - edits:     workitem_edit, workitem_reparent
  *  - blocking:  workitem_block, workitem_unblock
  *  - sessions:  session_start, session_log, session_end
- *  - notes:     helper_notes_get, helper_note_set_summary, helper_note_add
+ *  - notes:     helper_notes_get, helper_note_add
  *  - calendar:  calendar_set_url, calendar_status, capacity_check
  *
  * Time is tracked silently by the session lifecycle: session_start begins the
@@ -29,7 +29,7 @@ import { computeCapacity } from '../server/capacity.js';
 import { buildDashboard } from '../server/dashboard.js';
 import { buildDashboardCached, invalidateDashboardCache } from '../server/dashboard-cache.js';
 import { sprintCheckIn } from '../server/guardrail.js';
-import { addNote, getHelperNotes, setSummary } from '../server/helper-notes.js';
+import { addNote, getHelperNotes } from '../server/helper-notes.js';
 import { buildEstimateAnchor } from '../server/estimate-anchor.js';
 import { checkStaleLogNudge } from '../server/log-nudge.js';
 import { buildOrientPacket } from '../server/orient.js';
@@ -826,8 +826,8 @@ Always include it.
 BODY CONTENT — TASK-RELATED ONLY:
 The activity log is the long-term archive of the WORK. Not the chat,
 not the tool, not the discussion between you and the user. Before
-calling \`session_log\`, \`helper_note_add\`, or
-\`helper_note_set_summary\`, sanity-check the body against this:
+calling \`session_log\` or \`helper_note_add\`, sanity-check the body
+against this:
 
   Would a future engineer skimming this entry in
   \`~/.sprint-helper/archive/sprints/<sprint>/<task>.md\` six weeks from
@@ -867,7 +867,6 @@ Bodies become archive. The archive should be name-agnostic. Use
 This applies to ALL paths that write into the archive:
   - \`session_log\` \`text\` field.
   - \`helper_note_add\` body.
-  - \`helper_note_set_summary\` summary.
 
 Your spoken reply to the user in chat is UNAFFECTED — keep
 addressing him naturally there. The rule is only about TEXT THAT
@@ -1012,19 +1011,6 @@ CAPACITY (Moran's real desk time after meetings):
 
 KEEPING MORAN'S NOTES (his dashboard's "helper's notes" space):
   This is where you talk TO Moran about his sprint, in plain casual English.
-  - Keep the living summary FRESH via \`helper_note_set_summary\`: 1-3 sentences
-    on how the sprint is really going and what today is good for. The summary
-    sits at the top of his notes card; if it goes stale, the card stops feeling
-    alive. Call \`helper_notes_get\` first to read the current summary + its
-    timestamp; if either is missing OR the timestamp is more than ~24 hours
-    old, REWRITE it before you return to whatever you were doing. Triggers:
-    every \`session_start\` AFTER a stale-summary read, every \`session_end\`,
-    AND any moment the sprint picture shifts (a task closes, a blocker lands
-    or clears, the day's plan changes). If you only ever call
-    \`helper_note_add\` (and never \`helper_note_set_summary\`), the paragraph
-    Moran reads at the top of the card gets older every day while individual
-    notes accumulate underneath — exactly the failure mode he flagged
-    2026-06-04.
   - Drop a nudge with \`helper_note_add\` when you notice something worth his
     attention: an estimate that looks too small for the real work, tasks with no
     movement for days, a light calendar day that's good for deep work. One thought
@@ -2173,23 +2159,10 @@ server.registerTool(
   {
     title: "Get the helper's notes",
     description:
-      "Read what's currently in Moran's helper-notes space on his dashboard: the living summary plus his open (not-yet-cleared) nudges. Call this before writing so you don't repeat a nudge that's already there.",
+      "Read what's currently in Moran's helper-notes space on his dashboard: his open (not-yet-cleared) nudges. Call this before writing so you don't repeat a nudge that's already there.",
     inputSchema: {},
   },
   async () => jsonResult(getHelperNotes()),
-);
-
-server.registerTool(
-  'helper_note_set_summary',
-  {
-    title: "Set the helper's living summary",
-    description:
-      "Rewrite the one short, always-current plain-English read of Moran's sprint shown at the top of his notes space. Keep it to 1-3 casual sentences — how the sprint is really going, what today is good for. This REPLACES the previous summary. Pass an empty string to clear it.",
-    inputSchema: {
-      summary: z.string().describe('1-3 casual, plain-English sentences. Empty string clears it.'),
-    },
-  },
-  async ({ summary }) => jsonResult(setSummary(summary)),
 );
 
 server.registerTool(

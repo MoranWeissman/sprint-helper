@@ -35,8 +35,6 @@ export interface ApiHelperNote {
 }
 
 export interface ApiHelperNotes {
-  summary: string | null;
-  summaryAt: string | null;
   notes: ApiHelperNote[];
 }
 
