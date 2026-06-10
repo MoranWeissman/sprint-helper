@@ -4087,36 +4087,94 @@ html, body {
   background: var(--ink-4); box-shadow: none;
 }
 
-/* Notes card. */
+/* Helper notes — actionable rows (2026-06-10). Dark/warm palette, one accent,
+   no pulsing, per the UI rules. */
+
+/* Rail card: summary text + age stamp. */
 .r22-rail-notes .summary {
   margin: 0; font-size: 13.5px; line-height: 1.6;
   color: var(--ink-1); text-wrap: pretty;
 }
-.r22-rail-notes .list {
-  list-style: none; margin: 0; padding: 0;
-  display: flex; flex-direction: column; gap: 8px;
+.r22-rail-summary { margin-bottom: 12px; }
+.r22-rail-summary .summary-age {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-3);
 }
-.r22-rail-notes .note {
-  position: relative;
-  padding: 12px 46px 12px 14px;
-  background: var(--bg-1); border: 1px solid var(--line-hair); border-radius: 11px;
+
+/* The note list layout applies in BOTH the Daily rail and the Focus block. */
+.r22-rail-notes .list,
+.r21-focus-notes .list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-.r22-rail-notes .note p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-1); }
-.r22-rail-notes .note-check {
-  position: absolute; top: 10px; right: 10px;
-  width: 28px; height: 28px; border-radius: 50%;
-  border: 1px solid var(--line-soft); background: transparent; color: var(--ink-3);
-  display: grid; place-items: center; cursor: pointer;
-  transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+
+/* Single note row — shared between rail and focus. */
+.note {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border-left: 3px solid transparent;
 }
-.r22-rail-notes .note-check svg { width: 14px; height: 14px; }
-.r22-rail-notes .note-check:hover {
-  color: var(--accent); border-color: var(--accent-deep);
-  background: var(--accent-soft);
+.note.is-kept { border-left-color: var(--accent); background: var(--surface-3); }
+
+.note-main { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.note-body { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink-1); }
+.note-age { flex: none; font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+
+.note-actions { display: flex; gap: 8px; margin-top: 8px; }
+.note-actions button {
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line-soft);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
 }
-.r22-rail-notes .note-check:focus-visible {
-  outline: 2px solid var(--accent); outline-offset: 2px;
+.note-actions button:hover:not(:disabled) { border-color: var(--accent); color: var(--ink-1); }
+.note-actions button:disabled { opacity: 0.5; cursor: default; }
+.note-act { color: var(--accent) !important; border-color: var(--accent) !important; }
+.note-keep.is-on { background: var(--accent); color: var(--bg-1); border-color: var(--accent); }
+
+.note-compose { display: flex; gap: 8px; margin-top: 8px; }
+.note-compose input {
+  flex: 1;
+  font-size: 13px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-1);
+  color: var(--ink-1);
 }
+.note-copy {
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+/* --ev-blocker is the project's muted-rust error color (no --danger exists). */
+.note-error { margin: 6px 0 0; font-size: 12px; color: var(--ev-blocker); }
+
+/* Focus block notes section. */
+.r21-focus-notes { margin-top: 20px; }
+.r21-focus-notes-head {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 10px;
+}
+
+/* Preserved from old UI: empty + generic error states. */
 .r22-rail-notes .empty {
   margin: 0; font-size: 13px; color: var(--ink-3); line-height: 1.5;
 }
