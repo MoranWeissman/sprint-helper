@@ -1397,11 +1397,17 @@ function NoteRow({ note, onChange }: { note: ApiHelperNote; onChange: () => void
   const [error, setError] = useState<string | null>(null);
   const kept = note.pinnedAt != null;
 
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
+
   async function run(fn: () => Promise<void>) {
     setBusy(true);
     setError(null);
     try {
       await fn();
+      setBusy(false);
       onChange();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong');
@@ -1413,7 +1419,7 @@ function NoteRow({ note, onChange }: { note: ApiHelperNote; onChange: () => void
     try {
       await navigator.clipboard.writeText(buildNotePrompt(note.body, extra));
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      copiedTimer.current = setTimeout(() => setCopied(false), 2000);
     } catch {
       setError('Could not copy — your browser blocked the clipboard.');
     }
@@ -1426,7 +1432,7 @@ function NoteRow({ note, onChange }: { note: ApiHelperNote; onChange: () => void
         <span className="note-age">{relAgo(note.createdAt)}</span>
       </div>
       <div className="note-actions">
-        <button type="button" className="note-act" onClick={() => setComposing(v => !v)} disabled={busy}>
+        <button type="button" className="note-act" aria-expanded={composing} onClick={() => setComposing(v => !v)} disabled={busy}>
           Act on it
         </button>
         <button
