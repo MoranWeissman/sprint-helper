@@ -123,6 +123,27 @@ function migrate(db: DB) {
   if (!hasStandupSummary) {
     db.exec('ALTER TABLE session_events ADD COLUMN standup_summary TEXT');
   }
+
+  // Idempotent ADD COLUMN for helper_notes.pinned_at (2026-06-09). Null = not
+  // kept; an ISO timestamp = Moran pinned it ("Keep"), so it sorts first and
+  // can't get buried under newer notes.
+  const hasPinnedAt = db
+    .prepare("SELECT 1 FROM pragma_table_info('helper_notes') WHERE name = 'pinned_at'")
+    .get();
+  if (!hasPinnedAt) {
+    db.exec('ALTER TABLE helper_notes ADD COLUMN pinned_at TEXT');
+  }
+
+  // Idempotent ADD COLUMN for helper_notes.work_item_id (2026-06-09). Null =
+  // the note isn't about a specific work item (capacity / free-form notes);
+  // otherwise the Azure DevOps id it refers to, so Focus mode can show the
+  // notes about the task in front of him.
+  const hasWorkItemId = db
+    .prepare("SELECT 1 FROM pragma_table_info('helper_notes') WHERE name = 'work_item_id'")
+    .get();
+  if (!hasWorkItemId) {
+    db.exec('ALTER TABLE helper_notes ADD COLUMN work_item_id INTEGER');
+  }
 }
 
 /** For tests or graceful shutdown. */
