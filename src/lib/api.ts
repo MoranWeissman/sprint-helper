@@ -30,6 +30,8 @@ export interface ApiHelperNote {
   id: number;
   body: string;
   createdAt: string;
+  pinnedAt: string | null;
+  workItemId: number | null;
 }
 
 export interface ApiHelperNotes {
@@ -612,10 +614,22 @@ export async function markWorkItemDone(workItemId: number, completedHours: numbe
 /*  Helper's notes                                                            */
 /* -------------------------------------------------------------------------- */
 
-export async function dismissHelperNote(id: number): Promise<void> {
-  const r = await fetch(`/api/helper-note/${id}/dismiss`, { method: 'POST' });
+async function postNoteAction(id: number, action: 'dismiss' | 'pin' | 'unpin'): Promise<void> {
+  const r = await fetch(`/api/helper-note/${id}/${action}`, { method: 'POST' });
   const body = await r.json().catch(() => ({}));
   if (!r.ok || (body && 'error' in body)) {
-    throw new Error((body && body.error) || 'Could not clear that note');
+    throw new Error((body && body.error) || `Could not ${action} that note`);
   }
+}
+
+export async function dismissHelperNote(id: number): Promise<void> {
+  await postNoteAction(id, 'dismiss');
+}
+
+export async function pinHelperNote(id: number): Promise<void> {
+  await postNoteAction(id, 'pin');
+}
+
+export async function unpinHelperNote(id: number): Promise<void> {
+  await postNoteAction(id, 'unpin');
 }
