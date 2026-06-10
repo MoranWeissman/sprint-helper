@@ -27,6 +27,8 @@ export interface HelperNote {
   id: number;
   body: string;
   createdAt: string;
+  pinnedAt: string | null;
+  workItemId: number | null;
 }
 
 export interface HelperNotes {
@@ -70,27 +72,27 @@ export function getSummary(): { summary: string | null; summaryAt: string | null
   }
 }
 
-/** Add a nudge. Returns the created note. */
-export function addNote(body: string): HelperNote {
+/** Add a nudge. `workItemId` ties it to a task so Focus can show it. Returns the created note. */
+export function addNote(body: string, workItemId: number | null = null): HelperNote {
   const db = getDb();
   const trimmed = body.trim();
   if (!trimmed) throw new Error('Note body is required.');
   const createdAt = new Date().toISOString();
   const info = db
-    .prepare(`INSERT INTO helper_notes (body, created_at) VALUES (?, ?)`)
-    .run(trimmed, createdAt);
-  return { id: Number(info.lastInsertRowid), body: trimmed, createdAt };
+    .prepare(`INSERT INTO helper_notes (body, created_at, work_item_id) VALUES (?, ?, ?)`)
+    .run(trimmed, createdAt, workItemId);
+  return { id: Number(info.lastInsertRowid), body: trimmed, createdAt, pinnedAt: null, workItemId };
 }
 
-/** Open (not-yet-dismissed) notes, newest first. */
+/** Open (not-yet-dismissed) notes: kept ones first, then newest first. */
 export function listNotes(limit = 5): HelperNote[] {
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT id, body, created_at AS createdAt
+      `SELECT id, body, created_at AS createdAt, pinned_at AS pinnedAt, work_item_id AS workItemId
          FROM helper_notes
         WHERE dismissed_at IS NULL
-        ORDER BY datetime(created_at) DESC, id DESC
+        ORDER BY (pinned_at IS NOT NULL) DESC, datetime(created_at) DESC, id DESC
         LIMIT ?`,
     )
     .all(limit) as HelperNote[];
@@ -103,6 +105,24 @@ export function dismissNote(id: number): boolean {
   const info = db
     .prepare(`UPDATE helper_notes SET dismissed_at = ? WHERE id = ? AND dismissed_at IS NULL`)
     .run(new Date().toISOString(), id);
+  return info.changes > 0;
+}
+
+/** Keep a note (pin it). Returns true if a still-open note was pinned. */
+export function pinNote(id: number): boolean {
+  const db = getDb();
+  const info = db
+    .prepare(`UPDATE helper_notes SET pinned_at = ? WHERE id = ? AND dismissed_at IS NULL`)
+    .run(new Date().toISOString(), id);
+  return info.changes > 0;
+}
+
+/** Un-keep a note (unpin it). Returns true if a still-open note was unpinned. */
+export function unpinNote(id: number): boolean {
+  const db = getDb();
+  const info = db
+    .prepare(`UPDATE helper_notes SET pinned_at = NULL WHERE id = ? AND dismissed_at IS NULL`)
+    .run(id);
   return info.changes > 0;
 }
 
@@ -268,7 +288,7 @@ function ensureStaleRemainingNudge(opts: {
       : `${displayName} has been going with no activity yet and ${remPart}`;
   const body = `${lead} — update Remaining or move the task off your plate.`;
 
-  const note = addNote(body);
+  const note = addNote(body, opts.workItemId);
   db.prepare(
     `INSERT INTO settings (key, value) VALUES (?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
