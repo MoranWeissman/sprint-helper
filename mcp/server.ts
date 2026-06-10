@@ -797,31 +797,42 @@ STANDUP BLURB — what Moran reads tomorrow:
 Every \`progress\` and \`blocker\` event MUST also include
 \`standupSummary\`: a 1-2 sentence read-this-tomorrow version of the
 entry, capped at about 200 characters. The long \`text\` is the
-archive; \`standupSummary\` is the friendly summary that lands on his
-Yesterday/Today card in the dashboard. He reads it the morning
-after; without it he has to think about why he was blocked, which
-defeats the whole point of sprint-helper.
+technical archive; \`standupSummary\` is the friendly summary that
+lands on his Yesterday/Today card. He glances at it each morning to
+remember where he is — so it has to read like a sentence he'd say out
+loud, not a commit log.
 
 Write \`standupSummary\` so it answers, in plain English, ONE of:
-  - "what got done" (for \`progress\`)
-  - "why I'm stuck and who unblocks it" (for \`blocker\`)
+  - "what I got done" (for \`progress\`) — and, when there's an obvious
+    next step, end with it ("Next: …") so the Today card tells him
+    what he's picking up.
+  - "why I'm stuck and who unblocks it" (for \`blocker\`).
 
-Plain English rules apply: no banned vocabulary, names before
-numbers, no acronyms Moran doesn't already use. Example:
+KEEP IT NON-TECHNICAL. This is the gist, not the changelog. The
+details live in \`text\`. In \`standupSummary\`, DO NOT put:
+  - file names, paths, branch names, commit hashes;
+  - PR / ticket / work-item numbers (the row already shows the title);
+  - schema/field/variable names, config flags;
+  - product / tool / cluster / chart names, or acronyms he doesn't use.
+Say what it MEANT in human terms. If you'd have to be an engineer on
+this repo to understand the line, rewrite it.
 
-  text:           "Paused, blocked. Ready-to-migrate proven e2e on
-                  one cluster (sh-srvc-prod-eks: hello-world +
-                  Datadog + ESO). Only remaining gate is fleet
-                  connectivity, blocked on Yosef's egress for 5
-                  clusters. Resume when egress opens to confirm
-                  hello-world green everywhere."
-  standupSummary: "Critical-path proven end-to-end on sh-srvc-prod-eks
-                  (hello-world + Datadog + ESO). Now blocked on
-                  Yosef's network egress for 5 remaining clusters."
+Plain English rules apply (no banned vocabulary, names before numbers).
+Example — note how the summary drops every proper noun:
 
-If you skip \`standupSummary\` the dashboard falls back to the first
-~280 characters of \`text\`, which usually reads as a half-thought.
-Always include it.
+  text:           "tf-output contract shipped and merged to main
+                  (PR #4): schema.yaml (one data.infrastructure tree,
+                  eks optional, privateSubnetIds) + example in both
+                  forms, render-verified identical against the
+                  EnvironmentConfig chart; composition-owners handoff
+                  doc written. Next up: schemas/ naming convention."
+  standupSummary: "Finished and merged the output-format spec for the
+                  new repo, with worked examples and a handoff note
+                  for the owners. Next: the folder naming convention."
+
+The tool refuses a \`progress\`/\`blocker\` event without
+\`standupSummary\`, so there's no fallback to lean on — write it well
+the first time.
 
 BODY CONTENT — TASK-RELATED ONLY:
 The activity log is the long-term archive of the WORK. Not the chat,
@@ -1946,7 +1957,7 @@ server.registerTool(
         .min(1)
         .optional()
         .describe(
-          "1-2 sentence read-this-tomorrow blurb for the standup card. REQUIRED on `progress` and `blocker` events — the tool refuses those without it. It's what Moran sees on his Yesterday/Today rows when he opens the dashboard. Treat it as the answer to 'what got done / what's stuck, in plain English, in 200 chars or less.' Optional on `focus`, `decision`, and `note` events, which don't surface on the standup card.",
+          "1-2 sentence read-this-tomorrow blurb for the standup card. REQUIRED on `progress` and `blocker` events — the tool refuses those without it. It's what Moran sees on his Yesterday/Today rows when he opens the dashboard. PLAIN, NON-TECHNICAL gist — what it MEANT in human terms, ≤200 chars: 'what I got done (and the next step, if obvious)' or 'what's stuck and who unblocks it'. NO file names, paths, branch/commit/PR/ticket references, schema or config names, or product/tool/cluster names — those belong in `text`, not here. Optional on `focus`, `decision`, and `note` events, which don't surface on the standup card.",
         ),
       remainingHoursAfter: z
         .number()
