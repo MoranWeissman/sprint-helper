@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import MarkdownIt from 'markdown-it';
 import {
   dismissHelperNote,
+  pinHelperNote,
+  unpinHelperNote,
   nameFromEmail,
   useDashboardData,
   type ApiHelperNote,
@@ -24,6 +26,7 @@ import {
   useNow,
 } from '../lib/time';
 import { useMode } from '../lib/useMode';
+import { buildNotePrompt } from '../lib/notePrompt';
 import type { SprintContext } from '../lib/types';
 import { Dot } from './Dot';
 import { ModePlaceholder } from './ModePlaceholder';
@@ -1379,6 +1382,84 @@ function RailSprintTime({
   );
 }
 
+/**
+ * One helper note + its three actions, shared by the Daily rail and Focus.
+ * - Act on it: opens a one-line box, copies a deal-with-this prompt.
+ * - Keep: pins it (covers save + highlight); kept notes get an accent stripe.
+ * - Done: clears it for good.
+ * onChange refreshes the dashboard after a pin/unpin/dismiss write.
+ */
+function NoteRow({ note, onChange }: { note: ApiHelperNote; onChange: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [composing, setComposing] = useState(false);
+  const [extra, setExtra] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const kept = note.pinnedAt != null;
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      onChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong');
+      setBusy(false);
+    }
+  }
+
+  async function copyPrompt() {
+    try {
+      await navigator.clipboard.writeText(buildNotePrompt(note.body, extra));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError('Could not copy — your browser blocked the clipboard.');
+    }
+  }
+
+  return (
+    <li className={`note${kept ? ' is-kept' : ''}`}>
+      <div className="note-main">
+        <p className="note-body">{note.body}</p>
+        <span className="note-age">{relAgo(note.createdAt)}</span>
+      </div>
+      <div className="note-actions">
+        <button type="button" className="note-act" onClick={() => setComposing(v => !v)} disabled={busy}>
+          Act on it
+        </button>
+        <button
+          type="button"
+          className={`note-keep${kept ? ' is-on' : ''}`}
+          onClick={() => run(() => (kept ? unpinHelperNote(note.id) : pinHelperNote(note.id)))}
+          disabled={busy}
+        >
+          {kept ? 'Kept' : 'Keep'}
+        </button>
+        <button type="button" className="note-done" onClick={() => run(() => dismissHelperNote(note.id))} disabled={busy}>
+          Done
+        </button>
+      </div>
+      {composing && (
+        <div className="note-compose">
+          <input
+            type="text"
+            value={extra}
+            onChange={e => setExtra(e.target.value)}
+            placeholder="Anything to add? (optional)"
+            aria-label="Extra instructions for the prompt"
+          />
+          <button type="button" className="note-copy" onClick={copyPrompt}>
+            {copied ? 'Copied ✓' : 'Copy prompt'}
+          </button>
+        </div>
+      )}
+      {error && <p className="note-error">{error}</p>}
+    </li>
+  );
+}
+
 function RailNotes({
   notes,
   onRefresh,
@@ -1386,62 +1467,32 @@ function RailNotes({
   notes: ApiHelperNotes;
   onRefresh: () => void;
 }) {
-  const [pending, setPending] = useState<Set<number>>(new Set());
-  const [error, setError] = useState<string | null>(null);
-
-  const visible = notes.notes.filter(n => !pending.has(n.id));
-  const empty = !notes.summary && visible.length === 0;
-
-  async function clear(note: ApiHelperNote) {
-    setError(null);
-    setPending(prev => new Set(prev).add(note.id));
-    try {
-      await dismissHelperNote(note.id);
-      onRefresh();
-    } catch (e) {
-      setPending(prev => {
-        const next = new Set(prev);
-        next.delete(note.id);
-        return next;
-      });
-      setError(e instanceof Error ? e.message : 'Could not clear that note');
-    }
-  }
+  const empty = !notes.summary && notes.notes.length === 0;
 
   return (
     <section className="r22-rail-card r22-rail-notes" aria-label="Notes from your helper">
       <div className="r22-rail-card-head">
         <span className="r22-rail-card-label">Notes from your helper</span>
-        {notes.summaryAt && <span className="r22-rail-card-meta">{relAgo(notes.summaryAt)}</span>}
       </div>
       {empty ? (
         <p className="empty">All quiet here — I'll jot notes as I notice things.</p>
       ) : (
         <>
-          {notes.summary && <p className="summary">{notes.summary}</p>}
-          {visible.length > 0 && (
+          {notes.summary && (
+            <div className="r22-rail-summary">
+              <p className="summary">{notes.summary}</p>
+              {notes.summaryAt && <span className="summary-age">updated {relAgo(notes.summaryAt)}</span>}
+            </div>
+          )}
+          {notes.notes.length > 0 && (
             <ul className="list">
-              {visible.map(n => (
-                <li key={n.id} className="note">
-                  <p>{n.body}</p>
-                  <button
-                    type="button"
-                    className="note-check"
-                    onClick={() => clear(n)}
-                    title="Tick off — I've handled this"
-                    aria-label="Tick off this note"
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <path d="M3.5 8.5l3 3 6-7" stroke="currentColor" strokeWidth="1.7" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                </li>
+              {notes.notes.map(n => (
+                <NoteRow key={n.id} note={n} onChange={onRefresh} />
               ))}
             </ul>
           )}
         </>
       )}
-      {error && <p className="error">{error}</p>}
     </section>
   );
 }
