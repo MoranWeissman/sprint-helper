@@ -4176,12 +4176,9 @@ html, body {
   margin-bottom: 10px;
 }
 
-/* Preserved from old UI: empty + generic error states. */
+/* Preserved from old UI: empty state. */
 .r22-rail-notes .empty {
   margin: 0; font-size: 13px; color: var(--ink-3); line-height: 1.5;
-}
-.r22-rail-notes .error {
-  margin: 0; font-size: 12px; color: var(--ev-blocker);
 }
 
 /* Narrow: no room for two sidebars — body scrolls as one, context drops below stories. */
