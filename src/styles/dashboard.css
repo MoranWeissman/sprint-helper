@@ -4139,7 +4139,9 @@ html, body {
 }
 .note-actions button:hover:not(:disabled) { border-color: var(--accent); color: var(--ink-1); }
 .note-actions button:disabled { opacity: 0.5; cursor: default; }
-.note-act { color: var(--accent) !important; border-color: var(--accent) !important; }
+.note-actions button:focus-visible,
+.note-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.note-actions .note-act { color: var(--accent); border-color: var(--accent); }
 .note-keep.is-on { background: var(--accent); color: var(--bg-1); border-color: var(--accent); }
 
 .note-compose { display: flex; gap: 8px; margin-top: 8px; }
