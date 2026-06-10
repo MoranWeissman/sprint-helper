@@ -2197,12 +2197,18 @@ server.registerTool(
   {
     title: "Add a nudge to the helper's notes",
     description:
-      "Drop a single short nudge into Moran's notes space — something you noticed worth his attention (an estimate that looks low, tasks gone quiet, a good day for deep work). Plain, casual English, one thought per note. He ticks these off himself once handled, so only add things that are genuinely actionable or worth seeing.",
+      "Drop a single short nudge into Moran's notes space — something you noticed worth his attention (an estimate that looks low, tasks gone quiet, a good day for deep work). Plain, casual English, one thought per note. When the nudge is about a specific task or story, pass its id as workItemId so it also shows up in Focus mode while he's on that work. He ticks these off himself once handled, so only add things that are genuinely actionable or worth seeing.",
     inputSchema: {
       body: z.string().min(1).describe('One short, casual, plain-English nudge.'),
+      workItemId: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe('The Azure DevOps id this nudge is about, if any, so Focus can surface it.'),
     },
   },
-  async ({ body }) => jsonResult(addNote(body)),
+  async ({ body, workItemId }) => jsonResult(addNote(body, workItemId ?? null)),
 );
 
 /* ============================================================ */
