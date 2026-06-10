@@ -285,6 +285,8 @@ function DashboardLive({
                   secondary={secondaryLive}
                   onOpenItem={openItem}
                   onPromoteSecondary={() => secondaryLive && setFocalId(secondaryLive.id)}
+                  helperNotes={data.helperNotes}
+                  onRefresh={onRefresh}
                 />
               )}
             </div>
@@ -807,12 +809,16 @@ function R21Focus({
   secondary,
   onOpenItem,
   onPromoteSecondary,
+  helperNotes,
+  onRefresh,
 }: {
   task: ApiWorkItem;
   story: ApiUserStoryGroup | null;
   secondary: ApiWorkItem | null;
   onOpenItem: (id: string) => void;
   onPromoteSecondary: () => void;
+  helperNotes: ApiHelperNotes;
+  onRefresh: () => void;
 }) {
   // null = story view (default); a task id = drilled into that task's
   // activity feed. Click a task in the list to drill in; click "Back"
@@ -834,6 +840,10 @@ function R21Focus({
       />
     );
   }
+
+  const focusNotes = helperNotes.notes.filter(
+    n => n.pinnedAt != null || n.workItemId === Number(task.id) || (story != null && n.workItemId === Number(story.id)),
+  );
 
   const parent = task.parent;
   const loggedSec = task.localLoggedSeconds;
@@ -947,6 +957,17 @@ function R21Focus({
                 </li>
               );
             })}
+          </ul>
+        </section>
+      )}
+
+      {focusNotes.length > 0 && (
+        <section className="r21-focus-notes" aria-label="Notes about this work">
+          <div className="r21-focus-notes-head">Notes about this work</div>
+          <ul className="list">
+            {focusNotes.map(n => (
+              <NoteRow key={n.id} note={n} onChange={onRefresh} />
+            ))}
           </ul>
         </section>
       )}
