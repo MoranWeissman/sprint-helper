@@ -5,7 +5,9 @@
  * key/value table under `ceremony_schedule`. No new SQLite table needed.
  *
  * Recurrence kinds:
- *  - `weekdays`: every Mon-Fri at a fixed HH:MM (used for standup).
+ *  - `weekdays`: every working day at a fixed HH:MM (used for the Daily).
+ *    "Working day" follows the configured week (Sun-Thu by default), shared
+ *    with capacity + standup so they never disagree about which days count.
  *  - `sprint_relative`: anchored to the current sprint's start date — pick a
  *    week (1 or 2), a JS day-of-week (0=Sun .. 6=Sat), and an HH:MM.
  *
@@ -17,6 +19,7 @@
  * All time math is done in the server's local timezone (Moran's mac).
  */
 import { getSetting, setSetting } from './timers';
+import { DEFAULT_WORKING_DAYS } from './capacity';
 
 /**
  * Schedule entry ids — same ids the frontend uses for workspace modes.
@@ -263,7 +266,7 @@ function enumerateWeekday(c: CeremonyConfig, now: Date, horizon: Date): Upcoming
   const cursor = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   while (cursor.getTime() <= horizon.getTime()) {
     const dow = cursor.getDay();
-    if (dow >= 1 && dow <= 5) {
+    if (DEFAULT_WORKING_DAYS.has(dow)) {
       const startsAt = applyTime(cursor, time);
       // Include past-today occurrences too — they may still be "suggested"
       // (within 60 min after start). Skip ones that have ended (older than
