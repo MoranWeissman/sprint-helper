@@ -213,6 +213,52 @@ export interface BuildOptions {
   sprintName?: string;
 }
 
+export interface TaskMetaEntry {
+  title: string;
+  parentId: number | null;
+  parentTitle: string | null;
+  type: string;
+  state: string;
+}
+
+/**
+ * Build the id→metadata map the standup recap uses to resolve each worked
+ * item's title, type, parent and — crucially — its live Azure state.
+ *
+ * Two passes. The first records every sprint item the user owns. The second
+ * fills in parent stories that aren't their own item row, using the parent
+ * fields each child task already carries. That second pass matters because
+ * sessions are usually logged on the child Tasks, so a worked Story shows up
+ * only as `parentState` on its tasks. Without it the recap can't see a closed
+ * parent story and falls back to showing it as "going" — the bug Moran hit
+ * with "Prod addons ArgoCD ready to start migration". A real item row is
+ * authoritative; the parent-derived fallback only fills a gap, never
+ * overwrites a story present in its own right.
+ */
+export function buildTaskMeta(items: WorkItem[]): Map<number, TaskMetaEntry> {
+  const taskMeta = new Map<number, TaskMetaEntry>();
+  for (const w of items) {
+    taskMeta.set(w.id, {
+      title: w.title,
+      parentId: w.parentId ?? null,
+      parentTitle: w.parentTitle ?? null,
+      type: w.type,
+      state: w.state,
+    });
+  }
+  for (const w of items) {
+    if (w.parentId == null || taskMeta.has(w.parentId)) continue;
+    taskMeta.set(w.parentId, {
+      title: w.parentTitle ?? `#${w.parentId}`,
+      parentId: w.grandparentId ?? null,
+      parentTitle: w.grandparentTitle ?? null,
+      type: w.parentType ?? 'User Story',
+      state: w.parentState ?? '',
+    });
+  }
+  return taskMeta;
+}
+
 export async function buildDashboard(opts: BuildOptions = {}): Promise<DashboardPayload> {
   const cfg = await loadAdoConfig();
 
@@ -352,16 +398,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
 
   // Build the standup block — pulls yesterday + today entries from the
   // sessions DB, joined to task titles + parent story titles for display.
-  const taskMeta = new Map<number, { title: string; parentId: number | null; parentTitle: string | null; type: string; state: string }>();
-  for (const w of items) {
-    taskMeta.set(w.id, {
-      title: w.title,
-      parentId: w.parentId ?? null,
-      parentTitle: w.parentTitle ?? null,
-      type: w.type,
-      state: w.state,
-    });
-  }
+  const taskMeta = buildTaskMeta(items);
   const standup = buildStandup({ taskMeta });
 
   return {
