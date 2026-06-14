@@ -51,7 +51,7 @@ import {
 } from '../server/sessions.js';
 import { getSetting, setSetting } from '../server/timers.js';
 import * as timerService from '../server/timer-service.js';
-import { getWorkItem, addWorkItemComment, getCurrentIteration } from '../server/ado.js';
+import { getWorkItem, addWorkItemComment } from '../server/ado.js';
 import { markSHCreated } from '../server/sh-created.js';
 import {
   createStory,
@@ -1438,7 +1438,7 @@ server.registerTool(
   {
     title: 'Close a story',
     description:
-      "Close a User Story or Bug (move it to the team's Done/Closed state) once its work is finished. STORIES ONLY — close Tasks via session_end({done:true, completedHoursAfter}), which captures the hours; a story has no hours of its own (they live on its tasks), so it closes directly here. Guards (all enforced server-side): refuses Tasks, Features and Epics; refuses items not in the current sprint; refuses to close a story that still has open (not-done) child tasks — close or move those first. Use this to close out a story whose tasks are all done.",
+      "Close a User Story or Bug (move it to the team's Done/Closed state) once its work is finished. STORIES ONLY — close Tasks via session_end({done:true, completedHoursAfter}), which captures the hours; a story has no hours of its own (they live on its tasks), so it closes directly here. Guards (all enforced server-side): refuses Tasks, Features and Epics; refuses to close a story that still has open (not-done) child tasks — close or move those first. Works for a story in ANY sprint, including leftovers from a previous iteration — closing a finished story is always allowed. Use this to close out a story whose tasks are all done.",
     inputSchema: {
       workItemId: workItemIdSchema,
     },
@@ -1454,15 +1454,6 @@ server.registerTool(
       }
       if (typeLower === 'feature' || typeLower === 'epic') {
         return errorResult(`#${workItemId} is a ${d.type}. story_close is for User Stories / Bugs, not containers.`);
-      }
-      // Current-sprint guard (compare the trailing sprint segment of each path).
-      const current = await getCurrentIteration();
-      const itemSprint = d.iterationPath.split('\\').pop() ?? d.iterationPath;
-      const currentSprint = current ? current.path.split('\\').pop() ?? current.name : null;
-      if (currentSprint && itemSprint !== currentSprint) {
-        return errorResult(
-          `#${workItemId} is in "${itemSprint}", not the current sprint ("${currentSprint}"). story_close only closes stories in the current sprint.`,
-        );
       }
       // Don't close over unfinished work.
       const openChildren = d.children.filter(c => !isDoneStateName(c.state));
