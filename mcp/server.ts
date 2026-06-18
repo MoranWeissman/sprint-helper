@@ -1800,7 +1800,10 @@ server.registerTool(
   async ({ title, description, effortHours, parentFeatureId }) => {
     try {
       const created = await createBug({ title, description, effortHours, parentFeatureId });
+      // A bug is a story-level item here, so it's marked 'story'-kind (the kind
+      // only matters for retro filtering; the dashboard pip ignores it).
       markSHCreated(created.id, 'story');
+      // Drop the cache so a freshly created bug shows on the board right away.
       invalidateDashboardCache();
       return jsonResult(created);
     } catch (e) {
