@@ -682,6 +682,9 @@ async function createStoryLevel(
     { op: 'add', path: '/fields/System.Title', value: input.title },
     { op: 'add', path: '/fields/System.AssignedTo', value: cfg.user },
     { op: 'add', path: '/fields/System.IterationPath', value: iteration },
+    // SMOKE-TEST SUSPECT: a User Story takes Effort in this tenant, but whether
+    // the Bug type accepts it is unverified (process-dependent). If a real
+    // bug_create is rejected on this field, drop this one line for bugs.
     { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.Effort', value: round2(input.effortHours) },
     { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.StoryPoints', value: round2(derivedPoints) },
   ];
