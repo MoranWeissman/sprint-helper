@@ -1191,16 +1191,20 @@ function DailyView({
               ? g.stories.filter(s => s.id !== g.feature!.id)
               : g.stories;
             const featureId = g.feature?.id;
+            // The orphan ("No feature") group collapses too — give it a stable
+            // synthetic key (the same one the grouping uses) so it joins the
+            // same collapse set as real features.
+            const collapseKey = featureId ?? '__no_feature__';
             const featureState = featureDominantState(childStories);
-            const isCollapsed = featureId ? featuresCollapsed.has(featureId) : false;
-            const toggle = featureId ? () => toggleFeatureCollapsed(featureId) : undefined;
+            const isCollapsed = featuresCollapsed.has(collapseKey);
+            const toggle = () => toggleFeatureCollapsed(collapseKey);
             return (
               <section
                 className={`r21-daily-feature is-state-${featureState} ${isCollapsed ? 'is-collapsed' : ''}`}
                 key={g.feature?.id ?? `none-${idx}`}
               >
                 <header
-                  className={`r21-daily-feature-head ${g.feature ? 'is-collapsible' : 'is-orphan'} is-state-${featureState}`}
+                  className={`r21-daily-feature-head is-collapsible ${g.feature ? '' : 'is-orphan'} is-state-${featureState}`}
                   {...(toggle ? {
                     role: 'button' as const,
                     tabIndex: 0,
@@ -1215,11 +1219,9 @@ function DailyView({
                     title: isCollapsed ? 'Show stories under this feature' : 'Hide stories under this feature',
                   } : {})}
                 >
-                  {featureId && (
-                    <span className="r21-daily-feature-caret" aria-hidden="true">
-                      {isCollapsed ? '▸' : '▾'}
-                    </span>
-                  )}
+                  <span className="r21-daily-feature-caret" aria-hidden="true">
+                    {isCollapsed ? '▸' : '▾'}
+                  </span>
                   <span className="r21-daily-feature-kind">{g.feature?.type ?? 'No feature'}</span>
                   {g.feature && <Mono className="r21-daily-feature-id">#{g.feature.id}</Mono>}
                   {g.feature && childStories.length > 0 && (
