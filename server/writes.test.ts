@@ -146,6 +146,7 @@ import {
   backfillEstimateIfBlank,
   createStory,
   createBug,
+  changeWorkItemType,
 } from './writes';
 
 const F = {
@@ -346,5 +347,31 @@ describe('createBug — posts a Bug with the same planning fields as a story', (
     expect(f[F.title]).toBe('A bug');
     expect(f[F.effort]).toBe(18);
     expect(f[F.points]).toBe(2); // 18h / 9h = 2 points
+  });
+});
+
+describe('changeWorkItemType — Story <-> Bug only', () => {
+  it('flips a User Story to a Bug', async () => {
+    seed(10, { [F.type]: 'User Story', [F.state]: 'Active' });
+    const r = await changeWorkItemType(10, 'bug');
+    expect(r.type).toBe('Bug');
+    expect(fieldsOf(10)[F.type]).toBe('Bug');
+    expect(fieldsOf(10)[F.state]).toBe('Active'); // state carried across
+  });
+
+  it('flips a Bug back to a User Story', async () => {
+    seed(11, { [F.type]: 'Bug', [F.state]: 'New' });
+    const r = await changeWorkItemType(11, 'story');
+    expect(r.type).toBe('User Story');
+  });
+
+  it('refuses a Task source', async () => {
+    seed(12, { [F.type]: 'Task', [F.state]: 'Active' });
+    await expect(changeWorkItemType(12, 'bug')).rejects.toThrow(/only works between User Story and Bug/);
+  });
+
+  it('refuses a no-op (already that type)', async () => {
+    seed(13, { [F.type]: 'Bug', [F.state]: 'Active' });
+    await expect(changeWorkItemType(13, 'bug')).rejects.toThrow(/already a Bug/);
   });
 });

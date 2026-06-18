@@ -741,6 +741,66 @@ export async function createBug(input: CreateStoryInput): Promise<CreatedStory> 
   return createStoryLevel('$Bug', 'bug', input);
 }
 
+const TYPE_NAME: Record<'story' | 'bug', string> = {
+  story: 'User Story',
+  bug: 'Bug',
+};
+
+export interface ChangedType {
+  id: number;
+  title: string;
+  type: string;
+  state: string;
+}
+
+/**
+ * Change a work item's type between User Story and Bug. Reads the current type
+ * first: refuses anything that isn't a Story↔Bug flip (Task / Feature / Epic
+ * carry hierarchy meaning a type swap would corrupt) and refuses a no-op.
+ * Azure carries the State across because Story and Bug share the states this
+ * tenant uses (New / Active / Closed).
+ */
+export async function changeWorkItemType(
+  workItemId: number,
+  toType: 'story' | 'bug',
+): Promise<ChangedType> {
+  const target = TYPE_NAME[toType];
+  const current = await readFields(workItemId, [
+    'System.WorkItemType',
+    'System.State',
+    'System.Title',
+  ]);
+  const currentType = String(current['System.WorkItemType'] ?? '');
+
+  if (currentType !== 'User Story' && currentType !== 'Bug') {
+    throw new Error(
+      `#${workItemId} is a ${currentType || 'unknown type'} — changing type only works between User Story and Bug.`,
+    );
+  }
+  if (currentType === target) {
+    throw new Error(`#${workItemId} is already a ${target}.`);
+  }
+
+  const cfg = await loadAdoConfig();
+  const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitems/${workItemId}?api-version=7.1`;
+  const updated = await getAdoClient().rest<{
+    id: number;
+    fields: { 'System.WorkItemType': string; 'System.State': string; 'System.Title': string };
+  }>({
+    method: 'PATCH',
+    uri,
+    body: [{ op: 'add', path: '/fields/System.WorkItemType', value: target }],
+    contentKind: 'json-patch',
+  });
+
+  return {
+    id: updated.id,
+    title: String(updated.fields['System.Title'] ?? current['System.Title'] ?? ''),
+    type: updated.fields['System.WorkItemType'],
+    state: updated.fields['System.State'],
+  };
+}
+
 async function getCurrentIterationPath(): Promise<string | null> {
   const cfg = await loadAdoConfig();
   const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/${encodeURIComponent(cfg.team)}/_apis/work/teamsettings/iterations?$timeframe=current&api-version=7.1`;
