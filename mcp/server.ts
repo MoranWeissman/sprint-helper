@@ -55,7 +55,9 @@ import { getWorkItem, addWorkItemComment } from '../server/ado.js';
 import { markSHCreated } from '../server/sh-created.js';
 import {
   createStory,
+  createBug,
   createTask,
+  changeWorkItemType,
   ensureActive,
   ensureParentStoryActive,
   isBlockedState,
@@ -1474,6 +1476,35 @@ server.registerTool(
 );
 
 server.registerTool(
+  'workitem_change_type',
+  {
+    title: 'Change a work item between User Story and Bug',
+    description:
+      "Flip an existing work item's type between User Story and Bug. ONLY these two types — refuses Tasks, Features and Epics (changing those would corrupt the hierarchy). Refuses a no-op if the item is already the requested type. The type is visible to Moran's delivery manager, so CONFIRM with Moran before calling — don't flip a type on your own. The item's state carries across (Story and Bug share New/Active/Closed here). Returns the item's new type and state.",
+    inputSchema: {
+      workItemId: workItemIdSchema,
+      toType: z.enum(['story', 'bug']).describe("Target type: 'story' (User Story) or 'bug' (Bug)."),
+    },
+  },
+  async ({ workItemId, toType }) => {
+    try {
+      const changed = await changeWorkItemType(workItemId, toType);
+      invalidateDashboardCache();
+      return jsonResult({
+        changed: {
+          id: changed.id,
+          displayName: displayNameFor(changed.id, changed.title),
+          toType: changed.type,
+          state: changed.state,
+        },
+      });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
   'workitem_get',
   {
     title: 'Read a single work item',
@@ -1738,6 +1769,39 @@ server.registerTool(
         parentFeatureId,
       });
       markSHCreated(created.id, 'story');
+      return jsonResult(created);
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'bug_create',
+  {
+    title: 'Create an ADO bug in the current sprint',
+    description:
+      "Create a new Bug in Azure DevOps, placed in Moran's current sprint and assigned to him. The twin of story_create — same flow: ALWAYS ask Moran for effortHours before calling (never guess, never skip). Story Points are derived from it automatically (1 point = 1 workday). Pass `parentFeatureId` to nest under a Feature/Epic. Use this when the work is a defect rather than new scope. Note: Bugs have no 'Blocked' state in this tenant — workitem_block falls back to a tag for bugs. Returns the new bug's id and URL.",
+    inputSchema: {
+      title: z.string().min(1).describe('Bug title — short and specific.'),
+      description: z.string().optional().describe('Optional details. Plain text or simple HTML.'),
+      effortHours: z
+        .number()
+        .min(0)
+        .describe('REQUIRED. Total hours Moran thinks this bug is. Ask him for it before calling. StoryPoints is derived from this automatically — do not pass points separately.'),
+      parentFeatureId: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe('Optional Feature/Epic id to link this bug under.'),
+    },
+  },
+  async ({ title, description, effortHours, parentFeatureId }) => {
+    try {
+      const created = await createBug({ title, description, effortHours, parentFeatureId });
+      markSHCreated(created.id, 'story');
+      invalidateDashboardCache();
       return jsonResult(created);
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
