@@ -793,11 +793,14 @@ export async function changeWorkItemType(
     contentKind: 'json-patch',
   });
 
+  // Read back from the response, but fall back to the pre-change values (or the
+  // target we just set) so the ChangedType contract never silently returns
+  // undefined if a real Azure response omits a default field.
   return {
     id: updated.id,
     title: String(updated.fields['System.Title'] ?? current['System.Title'] ?? ''),
-    type: updated.fields['System.WorkItemType'],
-    state: updated.fields['System.State'],
+    type: String(updated.fields['System.WorkItemType'] ?? target),
+    state: String(updated.fields['System.State'] ?? current['System.State'] ?? ''),
   };
 }
 
