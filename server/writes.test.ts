@@ -42,12 +42,40 @@ vi.mock('./story-points', async importOriginal => {
 
 const ACCEPTED_STATES = new Set(['New', 'Active', 'Blocked', 'Done']);
 
+let nextCreatedId = 1000;
+
 function handleAz(args: string[], body: string): string {
   const method = args[args.indexOf('--method') + 1];
   const uri = args[args.indexOf('--uri') + 1];
   const id = Number(uri.match(/\/workitems\/(\d+)/i)?.[1] ?? NaN);
 
+  if (method === 'POST') {
+    const patch = JSON.parse(body) as Array<{ op: string; path: string; value?: unknown }>;
+    const typeSeg = uri.match(/\/workitems\/\$([^?]+)/i)?.[1] ?? 'Unknown';
+    const witType = decodeURIComponent(typeSeg); // '$User%20Story' -> 'User Story'
+    const newId = ++nextCreatedId;
+    const fields: Record<string, unknown> = {
+      'System.WorkItemType': witType,
+      'System.State': 'New',
+    };
+    for (const p of patch) {
+      if (p.path.startsWith('/fields/')) fields[p.path.replace('/fields/', '')] = p.value;
+      // '/relations/-' (parent links) are not asserted by these tests — ignore.
+    }
+    h.store.set(newId, { rev: 1, fields });
+    return JSON.stringify({
+      id: newId,
+      fields,
+      url: `https://dev.azure.com/org/_apis/wit/workItems/${newId}`,
+      _links: { html: { href: `https://dev.azure.com/org/_workitems/edit/${newId}` } },
+    });
+  }
+
   if (method === 'GET') {
+    // The current-sprint lookup createStory makes before it POSTs.
+    if (/_apis\/work\/teamsettings\/iterations/i.test(uri)) {
+      return JSON.stringify({ value: [{ path: 'Proj\\Sprint 1' }] });
+    }
     const wi = h.store.get(id) ?? { rev: 1, fields: {} };
     return JSON.stringify({ id, rev: wi.rev, fields: wi.fields });
   }
@@ -116,6 +144,7 @@ import {
   setIterationPath,
   setTitle,
   backfillEstimateIfBlank,
+  createStory,
 } from './writes';
 
 const F = {
@@ -292,5 +321,17 @@ describe('backfillEstimateIfBlank — fill a blank Original Estimate, never over
     seed(18, { [F.type]: 'Task', [F.title]: 'Has a baseline', [EST]: 4 });
     await expect(backfillEstimateIfBlank(18, 8)).rejects.toThrow(/baseline|set once|already/i);
     expect(fieldsOf(18)[EST]).toBe(4); // untouched
+  });
+});
+
+describe('createStory — posts a User Story with planning fields', () => {
+  it('creates with title, assignee, sprint, Effort and derived StoryPoints', async () => {
+    const created = await createStory({ title: 'A story', effortHours: 9 });
+    expect(created.type).toBe('User Story');
+    const f = fieldsOf(created.id);
+    expect(f[F.title]).toBe('A story');
+    expect(f[F.effort]).toBe(9);
+    expect(f[F.points]).toBe(1); // 9h / 9h workday = 1 point
+    expect(f['System.AssignedTo']).toBe('moran@example.com');
   });
 });
