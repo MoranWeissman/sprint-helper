@@ -145,6 +145,7 @@ import {
   setTitle,
   backfillEstimateIfBlank,
   createStory,
+  createBug,
 } from './writes';
 
 const F = {
@@ -333,5 +334,17 @@ describe('createStory — posts a User Story with planning fields', () => {
     expect(f[F.effort]).toBe(9);
     expect(f[F.points]).toBe(1); // 9h / 9h workday = 1 point
     expect(f['System.AssignedTo']).toBe('moran@example.com');
+  });
+});
+
+describe('createBug — posts a Bug with the same planning fields as a story', () => {
+  it('creates a Bug carrying Effort + derived StoryPoints', async () => {
+    const created = await createBug({ title: 'A bug', effortHours: 18 });
+    expect(created.type).toBe('Bug');
+    const f = fieldsOf(created.id);
+    expect(f[F.type]).toBe('Bug');
+    expect(f[F.title]).toBe('A bug');
+    expect(f[F.effort]).toBe(18);
+    expect(f[F.points]).toBe(2); // 18h / 9h = 2 points
   });
 });

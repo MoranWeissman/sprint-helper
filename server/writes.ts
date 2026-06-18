@@ -660,15 +660,21 @@ export interface CreatedStory {
 }
 
 /**
- * Create a new User Story in ADO. Defaults: assignee = current user, iteration =
- * current sprint, area = project default. Always sets StoryPoints + Effort —
- * these are required by callers, not optional, so the POM delivery manager
- * never sees a story with blank planning fields.
+ * Shared creator for the two story-level item types sprint-helper makes:
+ * User Story and Bug. They differ only by the POST type segment and the noun
+ * in the "no active sprint" error — everything else (assignee, current sprint,
+ * Effort + derived StoryPoints, optional description / tags / parent link) is
+ * identical. `createTask` stays separate: tasks carry OriginalEstimate /
+ * RemainingWork, not Effort / StoryPoints.
  */
-export async function createStory(input: CreateStoryInput): Promise<CreatedStory> {
+async function createStoryLevel(
+  typeSegment: string,
+  noun: string,
+  input: CreateStoryInput,
+): Promise<CreatedStory> {
   const cfg = await loadAdoConfig();
   const iteration = await getCurrentIterationPath();
-  if (!iteration) throw new Error('No active sprint found — cannot place new story.');
+  if (!iteration) throw new Error(`No active sprint found — cannot place new ${noun}.`);
 
   const workday = getWorkdayHours();
   const derivedPoints = deriveStoryPoints(input.effortHours, workday);
@@ -680,18 +686,10 @@ export async function createStory(input: CreateStoryInput): Promise<CreatedStory
     { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.StoryPoints', value: round2(derivedPoints) },
   ];
   if (input.description) {
-    patch.push({
-      op: 'add',
-      path: '/fields/System.Description',
-      value: escapeHtml(input.description),
-    });
+    patch.push({ op: 'add', path: '/fields/System.Description', value: escapeHtml(input.description) });
   }
   if (input.tags && input.tags.length > 0) {
-    patch.push({
-      op: 'add',
-      path: '/fields/System.Tags',
-      value: input.tags.join('; '),
-    });
+    patch.push({ op: 'add', path: '/fields/System.Tags', value: input.tags.join('; ') });
   }
   if (input.parentFeatureId) {
     patch.push({
@@ -704,14 +702,10 @@ export async function createStory(input: CreateStoryInput): Promise<CreatedStory
     });
   }
 
-  const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitems/$User%20Story?api-version=7.1`;
+  const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitems/${typeSegment}?api-version=7.1`;
   const created = await getAdoClient().rest<{
     id: number;
-    fields: {
-      'System.Title': string;
-      'System.WorkItemType': string;
-      'System.State': string;
-    };
+    fields: { 'System.Title': string; 'System.WorkItemType': string; 'System.State': string };
     url: string;
     _links?: { html?: { href?: string } };
   }>({ method: 'POST', uri, body: patch, contentKind: 'json-patch' });
@@ -727,6 +721,24 @@ export async function createStory(input: CreateStoryInput): Promise<CreatedStory
       `${cfg.organization}/${encodeURIComponent(cfg.project)}/_workitems/edit/${created.id}`,
     parentId: input.parentFeatureId,
   };
+}
+
+/**
+ * Create a new User Story in ADO. Defaults: assignee = current user, iteration =
+ * current sprint. Always sets StoryPoints + Effort so the delivery manager
+ * never sees blank planning fields.
+ */
+export async function createStory(input: CreateStoryInput): Promise<CreatedStory> {
+  return createStoryLevel('$User%20Story', 'story', input);
+}
+
+/**
+ * Create a new Bug in ADO. Same defaults and planning fields as a story (a Bug
+ * is a story-level item here). NOTE: this tenant's Bug type has no Blocked
+ * state — blocking a bug falls back to a tag elsewhere in this file.
+ */
+export async function createBug(input: CreateStoryInput): Promise<CreatedStory> {
+  return createStoryLevel('$Bug', 'bug', input);
 }
 
 async function getCurrentIterationPath(): Promise<string | null> {
