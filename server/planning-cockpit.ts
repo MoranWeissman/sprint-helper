@@ -236,7 +236,7 @@ function pickNextSprint(current: Iteration | null, all: Iteration[]): CockpitIte
  *
  * Returns null if the path is empty/unparseable.
  */
-function classifyIterationLevel(path: string): BacklogLevel | 'sprint' | null {
+export function classifyIterationLevel(path: string): BacklogLevel | 'sprint' | null {
   if (!path) return null;
   const segments = path.split('\\').filter(Boolean);
   if (segments.length === 0) return null;
@@ -259,7 +259,7 @@ function classifyIterationLevel(path: string): BacklogLevel | 'sprint' | null {
   return 'sprint';
 }
 
-function isSprintLevel(path: string): boolean {
+export function isSprintLevel(path: string): boolean {
   return classifyIterationLevel(path) === 'sprint';
 }
 
