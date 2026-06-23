@@ -256,6 +256,60 @@ function adoApiPlugin() {
         }
       });
 
+      server.middlewares.use('/api/carry-forward', async (req, res) => {
+        try {
+          if (req.method !== 'POST') {
+            res.statusCode = 405;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'POST only' }));
+            return;
+          }
+          const body = (await readJsonBody(req)) as { taskIds?: unknown };
+          const taskIds = Array.isArray(body.taskIds)
+            ? body.taskIds.map(Number).filter((n) => Number.isFinite(n))
+            : [];
+
+          // The client never sends a sprint path — the server resolves the
+          // current sprint so a stale browser can't move tasks into the wrong
+          // iteration.
+          const { getCurrentIteration } = await import('./server/ado');
+          const iteration = await getCurrentIteration();
+          if (!iteration) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'No active sprint.' }));
+            return;
+          }
+          const path = iteration.path;
+
+          const { setIterationPath } = await import('./server/writes');
+          let moved = 0;
+          const failed: number[] = [];
+          // Per-id failures never abort the batch — one bad id shouldn't strand
+          // the rest.
+          for (const id of taskIds) {
+            try {
+              await setIterationPath(id, path);
+              moved++;
+            } catch {
+              failed.push(id);
+            }
+          }
+
+          const { invalidateDashboardCache } = await import('./server/dashboard-cache');
+          invalidateDashboardCache();
+
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'no-store');
+          res.end(JSON.stringify({ moved, failed }));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'unknown error';
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: message }));
+        }
+      });
+
       server.middlewares.use('/api/planning/gaps', async (req, res) => {
         try {
           if (req.method !== 'GET') {
