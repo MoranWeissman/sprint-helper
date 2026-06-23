@@ -484,6 +484,33 @@ export async function listMyOpenStoriesNotInSprint(currentSprintPath: string): P
 }
 
 /**
+ * All open Tasks assigned to @Me that are NOT in the given sprint iteration
+ * path. Used by the Daily carry-forward banner to find tasks left behind in a
+ * previous sprint. Mirrors listMyOpenStoriesNotInSprint but for Task type.
+ * Caller classifies the iteration path (a task in backlog/year/quarter is not
+ * carry-over) — this just returns every open out-of-sprint task.
+ */
+export async function listMyOpenTasksNotInSprint(currentSprintPath: string): Promise<WorkItem[]> {
+  const cfg = await loadAdoConfig();
+  const fieldList = WORK_ITEM_FIELDS.map(f => `[${f}]`).join(', ');
+  const wiql = [
+    `SELECT ${fieldList} FROM WorkItems`,
+    `WHERE [System.AssignedTo] = @Me`,
+    `  AND [System.WorkItemType] = 'Task'`,
+    `  AND [System.State] NOT IN ('Done', 'Closed', 'Resolved', 'Completed', 'Removed', 'Canceled', 'Cancelled', 'Cut')`,
+    `  AND [System.IterationPath] <> '${escapeWiql(currentSprintPath)}'`,
+    'ORDER BY [System.IterationPath], [System.ChangedDate] DESC',
+  ].join(' ');
+  const raw = await getAdoClient().queryWorkItems({
+    wiql,
+    fields: WORK_ITEM_FIELDS,
+    organization: cfg.organization,
+    project: cfg.project,
+  });
+  return raw.map(w => mapWorkItem(w));
+}
+
+/**
  * Recently-closed tasks (assigned to @Me) across the whole project, for
  * computing a personal calibration ratio (actual / estimate). Includes only
  * items where both OriginalEstimate AND CompletedWork are populated.
