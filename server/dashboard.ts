@@ -261,22 +261,27 @@ export function buildTaskMeta(items: WorkItem[]): Map<number, TaskMetaEntry> {
  * backlog / year / quarter items are scheduling, not carry-over, and stay on
  * the Plan page. Returns null when nothing qualifies (banner renders nothing).
  */
-export function summarizeCarryForward(outOfSprintTasks: WorkItem[]): CarryForwardSummary | null {
-  const stranded = outOfSprintTasks.filter(t => isSprintLevel(t.iterationPath));
+export function summarizeCarryForward(
+  outOfSprintTasks: WorkItem[],
+  pastSprintPaths: Set<string>,
+): CarryForwardSummary | null {
+  // Only tasks in a real named sprint that started BEFORE the current one.
+  // The `pastSprintPaths` membership is what keeps FUTURE sprints out — a task
+  // the user parked in a not-yet-started sprint during planning must never be
+  // pulled backward into the current sprint by this banner. `isSprintLevel`
+  // additionally drops any backlog/year/quarter path that slipped into the set.
+  const stranded = outOfSprintTasks.filter(
+    t => isSprintLevel(t.iterationPath) && pastSprintPaths.has(t.iterationPath),
+  );
   if (stranded.length === 0) return null;
 
-  // Label by the most common sprint (last path segment), so copy reads
-  // "N tasks from 26_12" even when a few straggle in from an older sprint.
-  const counts = new Map<string, number>();
-  for (const t of stranded) {
-    const label = t.iterationPath.split('\\').filter(Boolean).pop() ?? t.iterationPath;
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-  let fromSprintLabel = '';
-  let best = -1;
-  for (const [label, n] of counts) {
-    if (n > best) { best = n; fromSprintLabel = label; }
-  }
+  // Label with the MOST RECENT past sprint the stranded tasks sit in (the
+  // pastSprintPaths set is ordered newest-first by the caller). Reads naturally
+  // as "N tasks from 26_12" even when a few straggle in from an older sprint.
+  const strandedPaths = new Set(stranded.map(t => t.iterationPath));
+  const newestPath = [...pastSprintPaths].find(p => strandedPaths.has(p));
+  const labelPath = newestPath ?? stranded[0].iterationPath;
+  const fromSprintLabel = labelPath.split('\\').filter(Boolean).pop() ?? labelPath;
 
   return { taskIds: stranded.map(t => t.id), count: stranded.length, fromSprintLabel };
 }
@@ -474,8 +479,17 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
   // the dashboard, so fall back to null (no banner).
   let carryForward: CarryForwardSummary | null = null;
   try {
+    // Paths of sprints that started strictly before the viewed sprint, newest
+    // first — so the banner only ever offers genuinely PAST work, never tasks
+    // parked in a future sprint during planning.
+    const pastSprintPaths = new Set(
+      allIterations
+        .filter(it => it.startDate && iteration.startDate && it.startDate < iteration.startDate)
+        .sort((a, b) => b.startDate.localeCompare(a.startDate))
+        .map(it => it.path),
+    );
     const outOfSprintTasks = await listMyOpenTasksNotInSprint(iteration.path);
-    carryForward = summarizeCarryForward(outOfSprintTasks);
+    carryForward = summarizeCarryForward(outOfSprintTasks, pastSprintPaths);
   } catch {
     carryForward = null;
   }
