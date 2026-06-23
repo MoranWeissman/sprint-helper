@@ -367,3 +367,28 @@ export function buildStandup(opts: BuildOpts): StandupBlock {
     today,
   };
 }
+
+/**
+ * The distinct work-item ids that any session touched within the same two
+ * windows `buildStandup` reads (since the last working day → end of today).
+ *
+ * The recap resolves each worked item's title/parent/state from `taskMeta`,
+ * which the dashboard builds from the CURRENT-sprint items only. An item worked
+ * in a previous sprint (a task not yet pulled into the new sprint) is therefore
+ * absent from `taskMeta`, so the recap can only show its bare `#id`. The
+ * dashboard uses this id list to fetch those few missing items from Azure and
+ * fold them into `taskMeta` before calling `buildStandup`, so the recap reads
+ * real names regardless of which sprint the work lives in.
+ */
+export function workedItemIdsForStandup(now: Date = new Date()): number[] {
+  const todayStart = startOfLocalDay(now);
+  const tomorrowStart = new Date(todayStart);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  const yesterdayStart = previousWorkingDayStart(todayStart);
+
+  const sessions = [
+    ...sessionsTouchingWindow(yesterdayStart.toISOString(), todayStart.toISOString()),
+    ...sessionsTouchingWindow(todayStart.toISOString(), tomorrowStart.toISOString()),
+  ];
+  return [...new Set(sessions.map(s => s.work_item_id))];
+}

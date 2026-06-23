@@ -403,6 +403,31 @@ async function getWorkItemBatch(ids: number[]): Promise<WorkItem[]> {
 }
 
 /**
+ * Fetch specific work items by id, with their parent's title/type/state filled
+ * in (one extra batch hop) — the same parent-enrichment `getMyWorkItems` does,
+ * but for an arbitrary id list instead of a whole sprint. Used by the dashboard
+ * to resolve titles for items worked in a PREVIOUS sprint (which the
+ * current-sprint query never returns), so the morning recap shows real names
+ * instead of bare `#id`s. Returns [] for an empty id list.
+ */
+export async function getWorkItemsWithParents(ids: number[]): Promise<WorkItem[]> {
+  if (ids.length === 0) return [];
+  const items = await getWorkItemBatch(ids);
+  const parentIds = [...new Set(items.map(i => i.parentId).filter((x): x is number => !!x))];
+  const parents = parentIds.length > 0 ? await getWorkItemBatch(parentIds) : [];
+  const parentMap = new Map(parents.map(p => [p.id, p]));
+  for (const i of items) {
+    if (i.parentId == null) continue;
+    const p = parentMap.get(i.parentId);
+    if (!p) continue;
+    i.parentTitle = p.title;
+    i.parentType = p.type;
+    i.parentState = p.state;
+  }
+  return items;
+}
+
+/**
  * Closed tasks (assigned to @Me) under a given parent — sorted newest first.
  * Used by the estimate-anchor flow to find "what did similar past tasks
  * under this story actually take?" Includes only items where both

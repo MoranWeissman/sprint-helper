@@ -9,6 +9,7 @@ import {
   getCurrentIteration,
   getIterationByName,
   getMyWorkItems,
+  getWorkItemsWithParents,
   listAllIterations,
   type Iteration,
   type WorkItem,
@@ -22,7 +23,7 @@ import {
 } from './ceremony';
 import { loadAdoConfig } from './config';
 import { getHelperNotes, type HelperNotes } from './helper-notes';
-import { buildStandup, type StandupBlock } from './standup';
+import { buildStandup, workedItemIdsForStandup, type StandupBlock } from './standup';
 import {
   getActiveSessionMap,
   getRecentEventsMap,
@@ -237,7 +238,20 @@ export interface TaskMetaEntry {
  */
 export function buildTaskMeta(items: WorkItem[]): Map<number, TaskMetaEntry> {
   const taskMeta = new Map<number, TaskMetaEntry>();
+  mergeIntoTaskMeta(taskMeta, items);
+  return taskMeta;
+}
+
+/**
+ * Add `items` (and their parent stories) into an existing taskMeta map, using
+ * the same two-pass rule as buildTaskMeta. Shared so the dashboard can fold in
+ * extra items worked outside the current sprint without duplicating the logic.
+ * An item already present is NOT overwritten — the first writer (current-sprint
+ * data) stays authoritative over a later best-effort fetch.
+ */
+export function mergeIntoTaskMeta(taskMeta: Map<number, TaskMetaEntry>, items: WorkItem[]): void {
   for (const w of items) {
+    if (taskMeta.has(w.id)) continue;
     taskMeta.set(w.id, {
       title: w.title,
       parentId: w.parentId ?? null,
@@ -256,7 +270,6 @@ export function buildTaskMeta(items: WorkItem[]): Map<number, TaskMetaEntry> {
       state: w.parentState ?? '',
     });
   }
-  return taskMeta;
 }
 
 export async function buildDashboard(opts: BuildOptions = {}): Promise<DashboardPayload> {
@@ -399,6 +412,21 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
   // Build the standup block — pulls yesterday + today entries from the
   // sessions DB, joined to task titles + parent story titles for display.
   const taskMeta = buildTaskMeta(items);
+  // The recap can surface work logged against items NOT in the current sprint
+  // (e.g. a task still sitting in last sprint, not yet pulled forward). Those
+  // are absent from `taskMeta`, so without help the recap shows a bare `#id`.
+  // Fetch just the missing worked items (+ their parents) and fold them in so
+  // the recap reads real names regardless of which sprint the work lives in.
+  const missingWorkedIds = workedItemIdsForStandup().filter(id => !taskMeta.has(id));
+  if (missingWorkedIds.length > 0) {
+    try {
+      const extra = await getWorkItemsWithParents(missingWorkedIds);
+      mergeIntoTaskMeta(taskMeta, extra);
+    } catch {
+      // Best-effort enrichment — if the fetch fails the recap still renders
+      // with bare ids rather than breaking the whole dashboard.
+    }
+  }
   const standup = buildStandup({ taskMeta });
 
   return {

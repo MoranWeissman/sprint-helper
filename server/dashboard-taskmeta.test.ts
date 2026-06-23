@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTaskMeta } from './dashboard';
+import { buildTaskMeta, mergeIntoTaskMeta, type TaskMetaEntry } from './dashboard';
 import type { WorkItem } from './ado';
 
 // Regression test for the bug Moran hit: a closed User Story
@@ -59,5 +59,48 @@ describe('buildTaskMeta — parent story state is reachable for the recap', () =
     const meta = buildTaskMeta([story, task]);
 
     expect(meta.get(200)?.state).toBe('Active');
+  });
+});
+
+describe('mergeIntoTaskMeta — fold in work from a previous sprint', () => {
+  it('resolves a previous-sprint task title + its parent story (both absent from current sprint)', () => {
+    // Current sprint has one unrelated story; nothing about the old work.
+    const meta = buildTaskMeta([
+      raw({ id: 100, type: 'User Story', title: 'This sprint story', state: 'Active' }),
+    ]);
+
+    // The recap touched a task still living in last sprint, parented to a story
+    // also still in last sprint — fetched best-effort and merged in.
+    const oldTask = raw({
+      id: 426269,
+      type: 'Task',
+      title: 'Copilot blast-radius guardrail',
+      state: 'Closed',
+      parentId: 426266,
+      parentTitle: 'Discovery: Access & Guardrails',
+      parentType: 'User Story',
+      parentState: 'Closed',
+    });
+
+    mergeIntoTaskMeta(meta, [oldTask]);
+
+    // The worked task now has a real title (no more bare #id in the recap)...
+    expect(meta.get(426269)?.title).toBe('Copilot blast-radius guardrail');
+    // ...and the parent story it rolls up to is reachable with its real state.
+    expect(meta.get(426266)?.title).toBe('Discovery: Access & Guardrails');
+    expect(meta.get(426266)?.state).toBe('Closed');
+  });
+
+  it('never overwrites an entry already present (current-sprint data wins)', () => {
+    const meta: Map<number, TaskMetaEntry> = buildTaskMeta([
+      raw({ id: 100, type: 'User Story', title: 'Authoritative', state: 'Active' }),
+    ]);
+
+    mergeIntoTaskMeta(meta, [
+      raw({ id: 100, type: 'User Story', title: 'Stale duplicate', state: 'Closed' }),
+    ]);
+
+    expect(meta.get(100)?.title).toBe('Authoritative');
+    expect(meta.get(100)?.state).toBe('Active');
   });
 });
