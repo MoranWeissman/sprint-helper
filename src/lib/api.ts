@@ -205,6 +205,8 @@ export interface ApiPayload {
   helperNotes: ApiHelperNotes;
   /** What got worked yesterday + what's open today, for the morning standup. */
   standup: ApiStandupBlock;
+  /** Unfinished tasks left behind in a previous sprint, offered to pull in. Null when none. */
+  carryForward: { taskIds: number[]; count: number; fromSprintLabel: string } | null;
   ceremonies: {
     upcoming: ApiUpcomingCeremony[];
     next: ApiUpcomingCeremony | null;
@@ -630,4 +632,18 @@ export async function pinHelperNote(id: number): Promise<void> {
 
 export async function unpinHelperNote(id: number): Promise<void> {
   await postNoteAction(id, 'unpin');
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Carry-forward                                                             */
+/* -------------------------------------------------------------------------- */
+
+export async function postCarryForward(taskIds: number[]): Promise<{ moved: number; failed: number[] }> {
+  const res = await fetch('/api/carry-forward', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ taskIds }),
+  });
+  if (!res.ok) throw new Error(`carry-forward failed: ${res.status}`);
+  return (await res.json()) as { moved: number; failed: number[] };
 }

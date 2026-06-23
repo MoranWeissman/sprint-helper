@@ -4,6 +4,7 @@ import {
   dismissHelperNote,
   pinHelperNote,
   unpinHelperNote,
+  postCarryForward,
   nameFromEmail,
   useDashboardData,
   type ApiHelperNote,
@@ -293,6 +294,7 @@ function DashboardLive({
           ) : (
             <DailyView
               stories={stories}
+              carryForward={data.carryForward}
               sprintName={sprintLabel}
               onOpenItem={openItem}
               outlookCapacity={data.outlookCapacity}
@@ -1071,8 +1073,50 @@ function FocusTaskDrill({
   );
 }
 
+function CarryForwardBanner({
+  info,
+  onDone,
+}: {
+  info: { taskIds: number[]; count: number; fromSprintLabel: string };
+  onDone: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const pull = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await postCarryForward(info.taskIds);
+      if (r.failed.length > 0) {
+        setError(`Couldn't move ${r.failed.length} — open them in Azure DevOps.`);
+      }
+      onDone();
+    } catch {
+      setError('Something went wrong — try again, or use the Plan page.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const noun = info.count === 1 ? 'task' : 'tasks';
+  return (
+    <section className="r21-carryforward" aria-label="Unfinished work from last sprint">
+      <div className="r21-carryforward-text">
+        <strong>{info.count} unfinished {noun} from {info.fromSprintLabel}</strong>
+        <span>These didn't get finished last sprint. Pull them in so they're on your board.</span>
+        {error && <span className="r21-carryforward-error">{error}</span>}
+      </div>
+      <button type="button" className="r21-carryforward-btn" onClick={pull} disabled={busy}>
+        {busy ? 'Pulling…' : 'Pull them into this sprint'}
+      </button>
+    </section>
+  );
+}
+
 function DailyView({
   stories,
+  carryForward,
   sprintName,
   onOpenItem,
   outlookCapacity,
@@ -1087,6 +1131,7 @@ function DailyView({
   onToggleRailCollapsed,
 }: {
   stories: ApiUserStoryGroup[];
+  carryForward: ApiPayload['carryForward'];
   sprintName: string;
   onOpenItem: (id: string) => void;
   outlookCapacity: ApiOutlookCapacity | null;
@@ -1179,6 +1224,10 @@ function DailyView({
           when the delivery manager opens the board: yesterday's work + today's
           work, brief, optimized for speaking aloud. */}
       <StandupCard standup={standup} />
+
+      {carryForward && (
+        <CarryForwardBanner info={carryForward} onDone={onRefresh} />
+      )}
 
       {stories.length === 0 ? (
         <p className="r21-daily-empty">No stories in this sprint yet.</p>
