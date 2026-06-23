@@ -38,7 +38,7 @@ import {
   getUncapturedSecondsMap,
 } from './timers';
 import { getSHCreatedIdSet } from './sh-created';
-import { isSprintLevel } from './planning-cockpit';
+import { isSprintLevel } from './iteration-paths';
 
 export type { SessionEvent, SessionEventType, Session } from './sessions';
 
