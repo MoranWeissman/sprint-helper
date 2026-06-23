@@ -38,6 +38,7 @@ import {
   getUncapturedSecondsMap,
 } from './timers';
 import { getSHCreatedIdSet } from './sh-created';
+import { isSprintLevel } from './planning-cockpit';
 
 export type { SessionEvent, SessionEventType, Session } from './sessions';
 
@@ -222,6 +223,15 @@ export interface TaskMetaEntry {
   state: string;
 }
 
+export interface CarryForwardSummary {
+  /** Open tasks stranded in a previous sprint, ready to pull into the current one. */
+  taskIds: number[];
+  /** taskIds.length — convenience for the banner copy. */
+  count: number;
+  /** The sprint label most stranded tasks sit in, e.g. "26_12". */
+  fromSprintLabel: string;
+}
+
 /**
  * Build the id→metadata map the standup recap uses to resolve each worked
  * item's title, type, parent and — crucially — its live Azure state.
@@ -240,6 +250,32 @@ export function buildTaskMeta(items: WorkItem[]): Map<number, TaskMetaEntry> {
   const taskMeta = new Map<number, TaskMetaEntry>();
   mergeIntoTaskMeta(taskMeta, items);
   return taskMeta;
+}
+
+/**
+ * Turn the raw "my open tasks not in the current sprint" list into the banner
+ * summary. Keeps only tasks whose iteration path is a real PREVIOUS sprint —
+ * backlog / year / quarter items are scheduling, not carry-over, and stay on
+ * the Plan page. Returns null when nothing qualifies (banner renders nothing).
+ */
+export function summarizeCarryForward(outOfSprintTasks: WorkItem[]): CarryForwardSummary | null {
+  const stranded = outOfSprintTasks.filter(t => isSprintLevel(t.iterationPath));
+  if (stranded.length === 0) return null;
+
+  // Label by the most common sprint (last path segment), so copy reads
+  // "N tasks from 26_12" even when a few straggle in from an older sprint.
+  const counts = new Map<string, number>();
+  for (const t of stranded) {
+    const label = t.iterationPath.split('\\').filter(Boolean).pop() ?? t.iterationPath;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  let fromSprintLabel = '';
+  let best = -1;
+  for (const [label, n] of counts) {
+    if (n > best) { best = n; fromSprintLabel = label; }
+  }
+
+  return { taskIds: stranded.map(t => t.id), count: stranded.length, fromSprintLabel };
 }
 
 /**
