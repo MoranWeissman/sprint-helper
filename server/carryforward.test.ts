@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { summarizeCarryForward } from './dashboard';
 import type { WorkItem } from './ado';
 
-function task(id: number, iterationPath: string): WorkItem {
+function task(id: number, iterationPath: string, title = `Task ${id}`): WorkItem {
   return {
-    id, rev: 1, type: 'Task', title: `#${id}`, state: 'New',
+    id, rev: 1, type: 'Task', title, state: 'New',
     assignedTo: 'me', iterationPath, areaPath: 'A',
     changedDate: '2026-06-23T00:00:00Z',
     url: `https://x/_apis/wit/workItems/${id}`,
@@ -25,7 +25,7 @@ describe('summarizeCarryForward', () => {
 
   it('keeps only tasks in a real previous sprint, not backlog/year/quarter', () => {
     const tasks = [
-      task(1, 'IDP - DevOps\\2026\\Q2\\26_12'),
+      task(1, 'IDP - DevOps\\2026\\Q2\\26_12', 'Fix the thing'),
       task(2, 'IDP - DevOps\\2026\\Q2\\26_12'),
       task(3, 'IDP - DevOps\\2026'),
       task(4, 'IDP - DevOps\\Backlog'),
@@ -35,6 +35,9 @@ describe('summarizeCarryForward', () => {
     expect(r!.count).toBe(2);
     expect(r!.taskIds.sort()).toEqual([1, 2]);
     expect(r!.fromSprintLabel).toBe('26_12');
+    // The summary carries names so the banner can list what it moves.
+    expect(r!.tasks).toContainEqual({ id: 1, title: 'Fix the thing' });
+    expect(r!.tasks).toHaveLength(2);
   });
 
   it('returns null when every stranded task is backlog-level', () => {

@@ -206,7 +206,12 @@ export interface ApiPayload {
   /** What got worked yesterday + what's open today, for the morning standup. */
   standup: ApiStandupBlock;
   /** Unfinished tasks left behind in a previous sprint, offered to pull in. Null when none. */
-  carryForward: { taskIds: number[]; count: number; fromSprintLabel: string } | null;
+  carryForward: {
+    taskIds: number[];
+    tasks: { id: number; title: string }[];
+    count: number;
+    fromSprintLabel: string;
+  } | null;
   ceremonies: {
     upcoming: ApiUpcomingCeremony[];
     next: ApiUpcomingCeremony | null;

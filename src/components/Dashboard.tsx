@@ -1075,9 +1075,11 @@ function FocusTaskDrill({
 
 function CarryForwardBanner({
   info,
+  onOpenItem,
   onDone,
 }: {
-  info: { taskIds: number[]; count: number; fromSprintLabel: string };
+  info: { taskIds: number[]; tasks: { id: number; title: string }[]; count: number; fromSprintLabel: string };
+  onOpenItem: (id: string) => void;
   onDone: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -1102,14 +1104,26 @@ function CarryForwardBanner({
   const noun = info.count === 1 ? 'task' : 'tasks';
   return (
     <section className="r21-carryforward" aria-label="Unfinished work from last sprint">
-      <div className="r21-carryforward-text">
-        <strong>{info.count} unfinished {noun} from {info.fromSprintLabel}</strong>
-        <span>These didn't get finished last sprint. Pull them in so they're on your board.</span>
-        {error && <span className="r21-carryforward-error">{error}</span>}
+      <div className="r21-carryforward-head">
+        <div className="r21-carryforward-text">
+          <strong>{info.count} unfinished {noun} from {info.fromSprintLabel}</strong>
+          <span>These didn't get finished last sprint. Pull them in so they're on your board.</span>
+        </div>
+        <button type="button" className="r21-carryforward-btn" onClick={pull} disabled={busy}>
+          {busy ? 'Pulling…' : `Pull ${info.count === 1 ? 'it' : 'them'} into this sprint`}
+        </button>
       </div>
-      <button type="button" className="r21-carryforward-btn" onClick={pull} disabled={busy}>
-        {busy ? 'Pulling…' : 'Pull them into this sprint'}
-      </button>
+      <ul className="r21-carryforward-list">
+        {info.tasks.map(t => (
+          <li key={t.id}>
+            <button type="button" className="r21-carryforward-task" onClick={() => onOpenItem(String(t.id))}>
+              <span className="r21-carryforward-task-title">{t.title}</span>
+              <Mono className="r21-carryforward-task-id">#{t.id}</Mono>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {error && <span className="r21-carryforward-error">{error}</span>}
     </section>
   );
 }
@@ -1226,7 +1240,7 @@ function DailyView({
       <StandupCard standup={standup} />
 
       {carryForward && (
-        <CarryForwardBanner info={carryForward} onDone={onRefresh} />
+        <CarryForwardBanner info={carryForward} onOpenItem={onOpenItem} onDone={onRefresh} />
       )}
 
       {stories.length === 0 ? (

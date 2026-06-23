@@ -226,9 +226,16 @@ export interface TaskMetaEntry {
   state: string;
 }
 
+export interface CarryForwardTask {
+  id: number;
+  title: string;
+}
+
 export interface CarryForwardSummary {
   /** Open tasks stranded in a previous sprint, ready to pull into the current one. */
   taskIds: number[];
+  /** The same tasks with their names, so the banner can list what it's about to move. */
+  tasks: CarryForwardTask[];
   /** taskIds.length — convenience for the banner copy. */
   count: number;
   /** The sprint label most stranded tasks sit in, e.g. "26_12". */
@@ -283,7 +290,12 @@ export function summarizeCarryForward(
   const labelPath = newestPath ?? stranded[0].iterationPath;
   const fromSprintLabel = labelPath.split('\\').filter(Boolean).pop() ?? labelPath;
 
-  return { taskIds: stranded.map(t => t.id), count: stranded.length, fromSprintLabel };
+  return {
+    taskIds: stranded.map(t => t.id),
+    tasks: stranded.map(t => ({ id: t.id, title: t.title })),
+    count: stranded.length,
+    fromSprintLabel,
+  };
 }
 
 /**
