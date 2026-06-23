@@ -11,6 +11,7 @@ import {
   getMyWorkItems,
   getWorkItemsWithParents,
   listAllIterations,
+  listMyOpenTasksNotInSprint,
   type Iteration,
   type WorkItem,
 } from './ado';
@@ -203,6 +204,8 @@ export interface DashboardPayload {
    * card). Read-only summary — no edits in the dashboard.
    */
   standup: StandupBlock;
+  /** Open tasks left behind in a previous sprint, for the Daily carry-forward banner. Null when none. */
+  carryForward: CarryForwardSummary | null;
   fetchedAt: string;
 }
 
@@ -342,6 +345,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
       helperNotes: getHelperNotes(),
       ceremonies: buildCeremonyBlock(null, null),
       standup: buildStandup({ taskMeta: new Map() }),
+      carryForward: null,
       fetchedAt: new Date().toISOString(),
     };
   }
@@ -465,6 +469,17 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
   }
   const standup = buildStandup({ taskMeta });
 
+  // Open tasks left behind in a previous sprint — the Daily banner offers to
+  // pull them into the current one. Best-effort: a query failure must not break
+  // the dashboard, so fall back to null (no banner).
+  let carryForward: CarryForwardSummary | null = null;
+  try {
+    const outOfSprintTasks = await listMyOpenTasksNotInSprint(iteration.path);
+    carryForward = summarizeCarryForward(outOfSprintTasks);
+  } catch {
+    carryForward = null;
+  }
+
   return {
     user: cfg.user,
     sprint: {
@@ -488,6 +503,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
       new Date(iteration.finishDate),
     ),
     standup,
+    carryForward,
     fetchedAt: new Date().toISOString(),
   };
 }
