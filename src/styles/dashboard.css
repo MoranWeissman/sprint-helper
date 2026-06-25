@@ -4776,3 +4776,34 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .r21-carryforward-task-id { color: var(--ink-3); font-size: 12px; flex: none; }
+
+/* ============================ Pre-plan page ============================ */
+.preplan { max-width: 880px; margin: 0 auto; padding: 24px clamp(16px, 4vw, 40px); display: flex; flex-direction: column; gap: 24px; }
+.preplan-head h1 { margin: 0 0 4px; font-size: 22px; }
+.preplan-sub { margin: 0; color: var(--ink-3); font-size: 14px; }
+.preplan-state { padding: 40px 0; color: var(--ink-3); text-align: center; font-size: 15px; }
+.preplan-error { color: var(--st-blocked, #d98); }
+.preplan-goals { display: flex; flex-direction: column; gap: 8px; }
+.preplan-goals label { font-size: 13px; color: var(--ink-3); }
+.preplan-goals-box { width: 100%; resize: vertical; background: var(--surface-2, #1c1c22); color: var(--ink-1); border: 1px solid var(--line, #333); border-radius: 8px; padding: 10px 12px; font: inherit; line-height: 1.5; }
+.preplan-cards { display: flex; flex-direction: column; gap: 12px; }
+.preplan-card { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; background: var(--surface-2, #1c1c22); border: 1px solid var(--line, #333); border-left: 3px solid var(--st-going, #5b8def); border-radius: 10px; padding: 14px 16px; }
+.preplan-card.is-blocked { border-left-color: var(--st-blocked, #d98); }
+.preplan-card-main { display: flex; flex-direction: column; gap: 6px; min-width: 240px; }
+.preplan-card-title { background: none; border: none; padding: 0; color: var(--ink-1); font-size: 15px; font-weight: 600; text-align: left; cursor: pointer; }
+.preplan-card-title:hover { text-decoration: underline; }
+.preplan-id { color: var(--ink-3); font-weight: 400; font-size: 13px; }
+.preplan-facts { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--ink-3); }
+.preplan-blocked { color: var(--st-blocked, #d98); font-weight: 600; }
+.preplan-card-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.preplan-call { display: inline-flex; border: 1px solid var(--line, #333); border-radius: 8px; overflow: hidden; }
+.preplan-call-btn { background: var(--surface-1, #16161a); color: var(--ink-2); border: none; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+.preplan-call-btn + .preplan-call-btn { border-left: 1px solid var(--line, #333); }
+.preplan-call-btn.is-on { background: var(--accent, #5b8def); color: #fff; }
+.preplan-call-btn.is-suggested.is-on { background: color-mix(in oklch, var(--accent, #5b8def) 55%, transparent); }
+.preplan-goal-select { background: var(--surface-1, #16161a); color: var(--ink-2); border: 1px solid var(--line, #333); border-radius: 8px; padding: 6px 8px; font-size: 13px; max-width: 240px; }
+.preplan-coverage h2 { font-size: 15px; margin: 0 0 8px; }
+.preplan-coverage ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.preplan-coverage li { font-size: 14px; color: var(--ink-2); }
+.preplan-coverage li.preplan-gap { color: var(--st-blocked, #d98); font-weight: 600; }
+.preplan-room { font-size: 14px; color: var(--ink-2); background: var(--surface-2, #1c1c22); border-radius: 8px; padding: 12px 14px; margin: 0; }
