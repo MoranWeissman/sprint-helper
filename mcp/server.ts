@@ -2135,6 +2135,10 @@ server.registerTool(
       );
     }
 
+    // Computed once up here: used by the no-open-session warning below (Move 3)
+    // and saved as the closing summary when the session does close.
+    const haveSummary = summary != null && summary.trim() !== '';
+
     // ---- Pre-close speed bumps (run BEFORE the session is closed) ----
     // The session is still open here, so we can read what happened during it.
     // If a check fails we return early and the session stays open, so the AI
@@ -2178,7 +2182,18 @@ server.registerTool(
     }
 
     const session = endSession({ sessionId, summary });
-    if (!session) return errorResult(`Session not found: ${sessionId}`);
+    if (!session) {
+      // No open session matched. If the agent was clearly closing out work
+      // (it passed a summary or done=true), this is the "never opened one"
+      // case — warn plainly so Moran sees the session went untracked. This is
+      // a message only: we do NOT retroactively create a session (Option 1).
+      if (haveSummary || done) {
+        return errorResult(
+          `No open session matched ${sessionId}, so nothing was recorded against the task during this chat — it went untracked. If work happened here, next time call session_start on the task before working so it gets logged. (Nothing was written to Azure DevOps.)`,
+        );
+      }
+      return errorResult(`Session not found: ${sessionId}`);
+    }
     // Ending a session is the single most cache-invalidating event we have —
     // activeSession turns off, timer stops, the Day view re-shapes. Drop the
     // cache here so BOTH the pause-only and done=true paths leave a clean
