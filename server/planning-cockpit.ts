@@ -78,7 +78,7 @@ export {
   isSprintLevel,
   type BacklogLevel,
 } from './iteration-paths';
-import { classifyIterationLevel, isSprintLevel } from './iteration-paths';
+import { classifyIterationLevel, classifyPastSprint, isSprintLevel } from './iteration-paths';
 import type { BacklogLevel } from './iteration-paths';
 
 export interface CockpitBacklogStory {
@@ -116,8 +116,20 @@ export interface CockpitTopUpStory {
   locationLabel: string;
   /** Sum of open-task remaining (or estimate) hours — what a full pull adds. */
   pullableHours: number;
+  /**
+   * True when the whole story (not just its tasks) may be pulled into the
+   * current sprint: a New story, or a started story NOT sitting in a finished
+   * sprint. False for a started story still in a past sprint (only its tasks
+   * carry forward) — mirrors the setIterationPath guard so the UI agrees.
+   */
+  canPullStory: boolean;
   openTasks: CockpitTopUpTask[];
 }
+
+// Never-started states — a story in any of these can always be moved whole.
+// Mirrors NEVER_STARTED_STATES_LOWER in writes.ts (kept in sync by hand; both
+// reflect the same ADO Proposed-category states for this tenant).
+const NEVER_STARTED = new Set(['new', 'to do', 'proposed', 'approved', 'ready for dev', 'accepted']);
 
 /**
  * Group open out-of-sprint TASKS under their parent open STORIES, for the
@@ -128,7 +140,11 @@ export interface CockpitTopUpStory {
  * with no open tasks is still returned (so "see all my stories" holds) with
  * pullableHours 0 — the UI shows it greyed with no pull button.
  */
-export function groupTopUp(stories: WorkItem[], tasks: WorkItem[]): CockpitTopUpStory[] {
+export function groupTopUp(
+  stories: WorkItem[],
+  tasks: WorkItem[],
+  pastSprintOf: (iterationPath: string) => boolean = () => false,
+): CockpitTopUpStory[] {
   const liveStories = stories.filter(s => !DEAD_STATES.has(s.state.trim().toLowerCase()));
   const byParent = new Map<number, WorkItem[]>();
   for (const t of tasks) {
@@ -153,6 +169,8 @@ export function groupTopUp(stories: WorkItem[], tasks: WorkItem[]): CockpitTopUp
     const pullableHours = Math.round(
       openTasks.reduce((sum, t) => sum + (t.remainingWork ?? t.originalEstimate ?? 0), 0),
     );
+    const neverStarted = NEVER_STARTED.has(s.state.trim().toLowerCase());
+    const canPullStory = neverStarted || !pastSprintOf(s.iterationPath);
     return {
       id: s.id,
       title: s.title,
@@ -161,6 +179,7 @@ export function groupTopUp(stories: WorkItem[], tasks: WorkItem[]): CockpitTopUp
       state: s.state,
       locationLabel: topUpLocationLabel(s.iterationPath),
       pullableHours,
+      canPullStory,
       openTasks,
     };
   });
@@ -198,6 +217,10 @@ export interface CockpitPayload {
   currentSprint: CockpitIteration | null;
   nextSprint: CockpitIteration | null;
   nextSprintCapacity: CockpitCapacity | null;
+  /** Real desk hours (after meetings) for the CURRENT sprint — the top-up meter's cap. */
+  currentSprintCapacity: CockpitCapacity | null;
+  /** Hours already committed to the current sprint (open tasks under open stories). */
+  currentSprintCommittedHours: number;
   openStories: CockpitOpenStory[];
   backlogStories: CockpitBacklogStory[];
   topUpStories: CockpitTopUpStory[];
@@ -289,7 +312,41 @@ export async function buildCockpitPayload(): Promise<CockpitPayload> {
     };
   }
 
-  return { currentSprint, nextSprint, nextSprintCapacity, openStories, backlogStories, topUpStories };
+  // Same, for the CURRENT sprint — the cap the top-up meter fills toward.
+  let currentSprintCapacity: CockpitCapacity | null = null;
+  if (currentIteration) {
+    const cap = await computeCapacity({
+      sprintStart: new Date(currentIteration.startDate),
+      sprintEnd: new Date(currentIteration.finishDate),
+      plannedHours: 0,
+    });
+    currentSprintCapacity = {
+      workingHoursTotal: cap.workingHoursTotal,
+      availableHours: cap.availableHours,
+      meetingHours: cap.meetingHours.weighted,
+      hasUrl: cap.hasUrl,
+    };
+  }
+
+  // Hours already committed to the running sprint = open tasks under open
+  // stories. This is the meter's starting fill, before any pull this session.
+  const currentSprintCommittedHours = Math.round(
+    openStories.reduce(
+      (sum, s) => sum + s.openTasks.reduce((a, t) => a + (t.remainingWork ?? t.originalEstimate ?? 0), 0),
+      0,
+    ),
+  );
+
+  return {
+    currentSprint,
+    nextSprint,
+    nextSprintCapacity,
+    currentSprintCapacity,
+    currentSprintCommittedHours,
+    openStories,
+    backlogStories,
+    topUpStories,
+  };
 }
 
 /**
@@ -302,11 +359,14 @@ async function collectTopUpStories(
 ): Promise<CockpitTopUpStory[]> {
   if (!currentIteration) return [];
   try {
-    const [stories, tasks] = await Promise.all([
+    const [stories, tasks, iterations] = await Promise.all([
       listMyOpenStoriesNotInSprint(currentIteration.path),
       listMyOpenTasksNotInSprint(currentIteration.path),
+      listAllIterations().catch(() => [] as Iteration[]),
     ]);
-    return groupTopUp(stories, tasks);
+    const now = new Date();
+    const pastSprintOf = (path: string) => classifyPastSprint(iterations, path, now);
+    return groupTopUp(stories, tasks, pastSprintOf);
   } catch {
     return [];
   }

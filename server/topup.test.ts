@@ -59,4 +59,26 @@ describe('groupTopUp', () => {
     expect(r[1].pullableHours).toBe(0);
     expect(r[1].openTasks).toHaveLength(0);
   });
+
+  it('canPullStory: New story in a past sprint CAN be pulled; started one CANNOT', () => {
+    const past = 'IDP - DevOps\\2026\\Q2\\26_11';
+    const stories = [
+      wi({ id: 7, type: 'User Story', state: 'New', iterationPath: past }),    // never started
+      wi({ id: 8, type: 'User Story', state: 'Active', iterationPath: past }), // started, in past sprint
+    ];
+    // pastSprintOf returns true only for the past path.
+    const r = groupTopUp(stories, [], (p) => p === past);
+    const byId = Object.fromEntries(r.map(s => [s.id, s.canPullStory]));
+    expect(byId[7]).toBe(true);  // New always pullable
+    expect(byId[8]).toBe(false); // started + past sprint → tasks only
+  });
+
+  it('canPullStory: started story NOT in a past sprint can be pulled whole', () => {
+    const r = groupTopUp(
+      [wi({ id: 9, type: 'User Story', state: 'Active', iterationPath: 'IDP - DevOps\\Backlog' })],
+      [],
+      () => false, // not a past sprint
+    );
+    expect(r[0].canPullStory).toBe(true);
+  });
 });
