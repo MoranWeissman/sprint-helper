@@ -35,6 +35,7 @@ import { checkStaleLogNudge } from '../server/log-nudge.js';
 import { buildOrientPacket } from '../server/orient.js';
 import { getPlanningHome, isPlanningHomeCwd, setPlanningHome } from '../server/planning-home.js';
 import { findGaps } from '../server/planning.js';
+import { catchUpLogRequired } from '../server/session-close.js';
 import {
   resolveStoryMatch,
   setLearnedStoryId,
@@ -2146,14 +2147,20 @@ server.registerTool(
         (e) => e.type === 'progress' || e.type === 'blocker' || e.type === 'decision',
       );
       const minutesOpen = (Date.now() - new Date(openSession.startedAt).getTime()) / 60000;
-      const haveSummary = summary != null && summary.trim() !== '';
 
       // Rule 1 (catch-up log): a session that ran a real stretch but recorded
-      // nothing about what happened shouldn't close silently. Satisfiable by a
-      // session_log progress/blocker/decision entry OR a non-empty summary here.
-      if (minutesOpen >= SESSION_LOG_REQUIRED_AFTER_MINUTES && !hadSubstantiveLog && !haveSummary) {
+      // nothing about what happened shouldn't close silently. A closing summary
+      // alone is NOT enough on a long session — it needs at least one real
+      // session_log entry (progress / blocker / decision).
+      if (
+        catchUpLogRequired({
+          minutesOpen,
+          hadSubstantiveLog,
+          thresholdMinutes: SESSION_LOG_REQUIRED_AFTER_MINUTES,
+        })
+      ) {
         return errorResult(
-          `This session has been open about ${Math.round(minutesOpen)} minutes but nothing was logged about what happened. Before closing, either call session_log with a 'progress' entry describing what got done, or pass a one-line \`summary\` to session_end. (This catches the case where sub-agents did the work and it never got written down.)`,
+          `This session has been open about ${Math.round(minutesOpen)} minutes but nothing was logged about what got done. A closing summary on its own isn't enough on a session this long — call session_log with at least one 'progress' entry naming what happened, then call session_end again. (This is what catches the case where sub-agents did the work and it never got written down.)`,
         );
       }
 
