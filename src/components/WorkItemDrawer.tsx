@@ -1,8 +1,10 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
 import {
   useWorkItem,
+  postWorkItemBlock,
+  postWorkItemUnblock,
   type ApiWorkItemDetail,
   type ApiWorkItemRef,
   type ApiWorkItemComment,
@@ -54,6 +56,7 @@ export function WorkItemDrawer({ itemId, onClose, onNavigate }: WorkItemDrawerPr
             <Mono>#{itemId}</Mono>
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {state.status === 'ok' && <BlockButton item={state.data.item} onChanged={refresh} />}
             <button className="ember-sync" onClick={refresh} title="Refresh from Azure DevOps">
               <span className="ember-sync-icon">↻</span>
             </button>
@@ -295,6 +298,54 @@ function SafeHtml({ html }: { html: string }) {
       className="ember-drawer-html"
       dangerouslySetInnerHTML={{ __html: clean }}
     />
+  );
+}
+
+// Only Task and User Story have a Blocked state in this tenant. A Bug has none
+// (transitionToBlocked would throw), so the button is hidden for everything else.
+const BLOCKABLE_TYPES = new Set(['task', 'user story']);
+
+function isBlockedNow(state: string, tags?: string): boolean {
+  const s = state.trim().toLowerCase();
+  if (s === 'blocked' || s === 'on hold') return true;
+  if (tags && tags.split(';').some(t => t.trim().toLowerCase() === 'blocked')) return true;
+  return false;
+}
+
+function BlockButton({ item, onChanged }: { item: ApiWorkItemDetail; onChanged: () => void }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!BLOCKABLE_TYPES.has(item.type.trim().toLowerCase())) return null;
+
+  const blocked = isBlockedNow(item.state, item.tags);
+
+  async function toggle() {
+    setPending(true);
+    setError(null);
+    try {
+      if (blocked) await postWorkItemUnblock(String(item.id));
+      else await postWorkItemBlock(String(item.id));
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'failed');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <span className="ember-drawer-block">
+      {error && <span className="ember-block-error dim-small">{error}</span>}
+      <button
+        className={`ember-block-btn ${blocked ? 'is-blocked' : ''}`}
+        onClick={toggle}
+        disabled={pending}
+        title={blocked ? 'Clear the block in Azure DevOps' : 'Mark blocked in Azure DevOps'}
+      >
+        {pending ? '…' : blocked ? 'Unblock' : 'Block'}
+      </button>
+    </span>
   );
 }
 
