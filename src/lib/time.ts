@@ -70,10 +70,12 @@ export function sprintDays(sprint: SprintContext, now: Date): SprintDay[] {
   return Array.from({ length: sprint.totalDays }, (_, i) => {
     const d = new Date(sprint.startDate);
     d.setDate(d.getDate() + i);
+    const dow = d.getDay();
     return {
       index: i,
-      label: WEEKDAYS_SHORT[d.getDay()],
+      label: WEEKDAYS_SHORT[dow],
       state: i < todayIdx ? 'past' : i === todayIdx ? 'today' : 'future',
+      isOff: dow === 5 || dow === 6, // Fri / Sat — Moran's weekend
     };
   });
 }

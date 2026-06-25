@@ -40,4 +40,6 @@ export interface SprintDay {
   index: number;
   label: string;
   state: 'past' | 'today' | 'future';
+  /** True for Friday/Saturday — Moran's weekend (off). Rendered grayed. */
+  isOff: boolean;
 }

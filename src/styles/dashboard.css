@@ -2175,6 +2175,9 @@ html, body {
 .r21-side-week-cell.is-past { color: var(--ink-4); }
 .r21-side-week-cell.is-today { color: oklch(0.16 0.04 260); background: var(--accent); font-weight: 600; }
 .r21-side-week-cell.is-future { color: var(--ink-2); border-color: var(--line-hair); }
+/* Fri/Sat — Moran's weekend. Grayed + struck so they read clearly as off,
+   even when they fall in the "today/future" range. Overrides the state colors. */
+.r21-side-week-cell.is-off { color: var(--ink-4); opacity: 0.4; background: transparent; border-color: transparent; font-weight: 400; text-decoration: line-through; }
 
 /* TOP BAR — two crossfading layers */
 .r21-topwrap { position: relative; flex-shrink: 0; height: 60px; border-bottom: 1px solid var(--line-hair); background: var(--bg-0); z-index: 2; }
