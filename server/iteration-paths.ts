@@ -48,3 +48,32 @@ export function classifyIterationLevel(path: string): BacklogLevel | 'sprint' | 
 export function isSprintLevel(path: string): boolean {
   return classifyIterationLevel(path) === 'sprint';
 }
+
+export interface IterationLite {
+  path: string;
+  finishDate: string;
+}
+
+/**
+ * True when `iterationPath` is a sprint-level path whose finish date is
+ * strictly before the start of `now`'s day — i.e. a sprint that has already
+ * ended. Backlog/year/quarter paths and paths not found in the list return
+ * false (they aren't a finished sprint). Pure — the caller supplies the
+ * iteration list, so this is testable without ADO.
+ *
+ * Used to protect a finished sprint's planned-vs-completed record: a started
+ * story can't be moved OUT of a past sprint (only its tasks carry forward),
+ * but it can move freely out of the backlog, the current, or a future sprint.
+ */
+export function classifyPastSprint(
+  iterations: IterationLite[],
+  iterationPath: string,
+  now: Date,
+): boolean {
+  if (!isSprintLevel(iterationPath)) return false;
+  const match = iterations.find(it => it.path === iterationPath);
+  if (!match) return false;
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  return new Date(match.finishDate).getTime() < startOfToday.getTime();
+}
