@@ -91,6 +91,13 @@ export interface OrientPacket {
     finishDate: string;
   };
   liveNow: OrientLiveSession[];
+  /**
+   * One-line plain-English nudge to open a session, set ONLY when no session
+   * is open (liveNow is empty). Null when a session is already open. The
+   * assistant surfaces this in its greeting. See SERVER_INSTRUCTIONS →
+   * OPENING GREETING.
+   */
+  sessionReminder: string | null;
   lastSession: OrientLastSession | null;
   helperNotes: {
     /**
@@ -144,6 +151,17 @@ function plainCapacitySummary(c: Capacity | null): string | null {
     return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${available} hours available after meetings, so there's about ${Math.abs(diff)} hours of room left if you want to pull something in.`;
   }
   return `You've planned about ${planned} hours of work this sprint and your calendar leaves about ${available} hours available after meetings — close to balanced.`;
+}
+
+/**
+ * One-line nudge for the assistant when NO work session is open. Naming
+ * `session_start` here is also what prompts the assistant to reach for that
+ * (possibly deferred) tool. Returns null when a session is already open —
+ * don't nag. See SERVER_INSTRUCTIONS → OPENING GREETING.
+ */
+export function sessionReminderFor(liveSessionCount: number): string | null {
+  if (liveSessionCount > 0) return null;
+  return "You don't have a work session open. When you start working a task, call session_start on it so your progress gets recorded.";
 }
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -298,6 +316,7 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
       finishDate: sprint.finishDate,
     },
     liveNow,
+    sessionReminder: sessionReminderFor(liveNow.length),
     lastSession,
     helperNotes: {
       openNudgeCount: helperNotes.notes.length,
