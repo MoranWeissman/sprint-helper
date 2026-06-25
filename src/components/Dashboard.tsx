@@ -33,6 +33,7 @@ import { Dot } from './Dot';
 import { ModePlaceholder } from './ModePlaceholder';
 import { Mono } from './Mono';
 import { PlanView } from './PlanView';
+import { PrePlanView } from './PrePlanView';
 import { ScheduleModal } from './ScheduleModal';
 import { WorkItemDrawer } from './WorkItemDrawer';
 
@@ -280,6 +281,8 @@ function DashboardLive({
         <div className="r21-bodywrap">
           {mode === 'plan' ? (
             <PlanView onOpenItem={openItem} />
+          ) : mode === 'preplan' ? (
+            <PrePlanView onOpenItem={openItem} />
           ) : mode !== 'day' ? (
             <ModePlaceholder mode={mode} />
           ) : isFocus ? (
