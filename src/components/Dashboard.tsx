@@ -1432,11 +1432,14 @@ function RailSprintTime({
   const availableLeft = Math.round(capacity.availableHoursRemaining);
   const hasCalendar = capacity.hasUrl && !capacity.fetchError;
   const workingDaysLeft = capacity.workingDaysRemaining;
-  // The bar tracks HOURS left (matching the headline number), not days — so
-  // the visual and the big number tell the same story.
-  const pctLeft =
+  // The bar fills with HOURS USED, draining forward as the sprint burns down —
+  // matching the universal "fuller = more spent" instinct. The headline still
+  // reads the hours LEFT; bar and number tell complementary stories (one fills
+  // up, one counts down) instead of competing. (A "left"-filling bar read as
+  // "that much already gone" — the opposite of its meaning.)
+  const pctUsed =
     available > 0
-      ? Math.max(0, Math.min(100, Math.round((availableLeft / available) * 100)))
+      ? Math.max(0, Math.min(100, Math.round(((available - availableLeft) / available) * 100)))
       : 0;
 
   return (
@@ -1451,7 +1454,7 @@ function RailSprintTime({
         <span className="suffix">{hasCalendar ? 'left after meetings' : 'left'}</span>
       </div>
       <div className="bar" aria-hidden="true">
-        <i style={{ width: `${pctLeft}%` }} />
+        <i style={{ width: `${pctUsed}%` }} />
       </div>
       <p className="caption">
         {workingDaysLeft <= 0
