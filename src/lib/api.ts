@@ -644,6 +644,62 @@ export async function fetchCockpit(): Promise<ApiCockpitPayload> {
   return body as ApiCockpitPayload;
 }
 
+/* ----------------------------- Pre-plan page ----------------------------- */
+
+export type ApiPrePlanCall = 'on-track' | 'at-risk' | 'carries-over';
+
+export interface ApiPrePlanCard {
+  id: string;
+  displayName: string;
+  remainingHours: number;
+  blocked: boolean;
+  lastActivityAt: string | null;
+  call: ApiPrePlanCall;
+  callIsSuggested: boolean;
+  goalIndex: number | null;
+}
+
+export interface ApiPrePlanRoomLine {
+  openStoriesRemainingHours: number;
+  roomHours: number;
+  hasCapacity: boolean;
+}
+
+export interface ApiPrePlanCoverageGoal {
+  index: number;
+  text: string;
+  storyCount: number;
+}
+
+export interface ApiPrePlanPayload {
+  sprintName: string;
+  goals: string[];
+  cards: ApiPrePlanCard[];
+  coverage: ApiPrePlanCoverageGoal[];
+  room: ApiPrePlanRoomLine;
+}
+
+export async function fetchPrePlan(): Promise<ApiPrePlanPayload> {
+  const r = await fetch('/api/preplan', { cache: 'no-store' });
+  const body = await r.json();
+  if (!r.ok || 'error' in body) throw new Error(body.error ?? 'Could not load the pre-plan page');
+  return body as ApiPrePlanPayload;
+}
+
+export async function savePrePlan(body: {
+  goals?: string[];
+  story?: { id: string; call?: ApiPrePlanCall; goalIndex?: number | null };
+}): Promise<ApiPrePlanPayload> {
+  const r = await fetch('/api/preplan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const resBody = await r.json();
+  if (!r.ok || 'error' in resBody) throw new Error(resBody.error ?? 'Could not save the pre-plan changes');
+  return resBody as ApiPrePlanPayload;
+}
+
 export async function moveWorkItemToIteration(workItemId: number, iterationPath: string): Promise<void> {
   const r = await fetch(`/api/workitem/${workItemId}/edit`, {
     method: 'POST',
