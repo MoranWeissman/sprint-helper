@@ -227,14 +227,20 @@ function DashboardLive({
               <span className="r21-brand-meta"><Mono>{userName.toLowerCase()}</Mono></span>
             </div>
             <div className="r21-top-right">
-              <SprintPicker
-                options={data.sprintOptions}
-                currentName={selectedSprintName ?? sprintLabel}
-                onSelect={name => {
-                  const sprint = data.sprintOptions.find(o => o.isCurrent);
-                  onSprintChange(sprint && sprint.name === name ? undefined : name);
-                }}
-              />
+              {/* The picker switches which sprint the Daily/board view shows.
+                  The Plan page always works on the live current → next sprint,
+                  so it ignores this choice — hide it there rather than leave a
+                  control that does nothing. */}
+              {mode !== 'plan' && (
+                <SprintPicker
+                  options={data.sprintOptions}
+                  currentName={selectedSprintName ?? sprintLabel}
+                  onSelect={name => {
+                    const sprint = data.sprintOptions.find(o => o.isCurrent);
+                    onSprintChange(sprint && sprint.name === name ? undefined : name);
+                  }}
+                />
+              )}
               <span className="r21-pill">day&nbsp;<span className="v">{today}/{sprintCtx?.totalDays ?? '—'}</span></span>
               <span className="r21-pill"><span className="v">{clock}</span></span>
               <button className="ember-sync" onClick={onRefresh} title="Refresh from Azure DevOps">
