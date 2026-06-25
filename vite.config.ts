@@ -72,7 +72,7 @@ function adoApiPlugin() {
       server.middlewares.use('/api/workitem/', async (req, res) => {
         try {
           const url = new URL(req.url ?? '/', 'http://localhost');
-          const m = url.pathname.match(/^\/(\d+)(\/edit)?/);
+          const m = url.pathname.match(/^\/(\d+)(?:\/(edit|block|unblock))?/);
           if (!m) {
             res.statusCode = 400;
             res.setHeader('Content-Type', 'application/json');
@@ -80,9 +80,39 @@ function adoApiPlugin() {
             return;
           }
           const id = Number(m[1]);
-          const isEdit = !!m[2];
+          const action = m[2]; // 'edit' | 'block' | 'unblock' | undefined
 
-          if (isEdit) {
+          if (action === 'block' || action === 'unblock') {
+            if (req.method !== 'POST') {
+              res.statusCode = 405;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'POST only' }));
+              return;
+            }
+            // One-click block/unblock from the drawer. No reason captured (the
+            // 'why' lives in the chat-driven workitem_block tool); this is the
+            // lightweight twin. The Blocked tag is added/removed alongside the
+            // state flip so a drawer-blocked item looks identical on the board.
+            const { transitionToBlocked, transitionFromBlocked, updateTags } = await import('./server/writes');
+            let state: string;
+            if (action === 'block') {
+              const change = await transitionToBlocked(id);
+              await updateTags(id, { add: ['Blocked'] });
+              state = change.toState;
+            } else {
+              const change = await transitionFromBlocked(id);
+              await updateTags(id, { remove: ['Blocked'] });
+              state = change.toState;
+            }
+            const { invalidateDashboardCache } = await import('./server/dashboard-cache');
+            invalidateDashboardCache();
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Cache-Control', 'no-store');
+            res.end(JSON.stringify({ state }));
+            return;
+          }
+
+          if (action === 'edit') {
             if (req.method !== 'POST') {
               res.statusCode = 405;
               res.setHeader('Content-Type', 'application/json');
