@@ -19,6 +19,7 @@ import {
   getCurrentIteration,
   listAllIterations,
   listMyOpenStoriesNotInSprint,
+  listMyOpenTasksNotInSprint,
   type Iteration,
   type WorkItem,
 } from './ado';
@@ -199,6 +200,7 @@ export interface CockpitPayload {
   nextSprintCapacity: CockpitCapacity | null;
   openStories: CockpitOpenStory[];
   backlogStories: CockpitBacklogStory[];
+  topUpStories: CockpitTopUpStory[];
 }
 
 export async function buildCockpitPayload(): Promise<CockpitPayload> {
@@ -266,6 +268,10 @@ export async function buildCockpitPayload(): Promise<CockpitPayload> {
   // otherwise loop iterations.
   const backlogStories: CockpitBacklogStory[] = await collectBacklogStories(currentIteration);
 
+  // Top-up — every open out-of-sprint story with its open tasks, so Moran can
+  // pull task hours into the CURRENT (running) sprint any time.
+  const topUpStories: CockpitTopUpStory[] = await collectTopUpStories(currentIteration);
+
   // Real desk time for the next sprint, after Outlook meetings — so the Plan
   // meter measures against hours Moran actually has, not raw working hours.
   let nextSprintCapacity: CockpitCapacity | null = null;
@@ -283,7 +289,27 @@ export async function buildCockpitPayload(): Promise<CockpitPayload> {
     };
   }
 
-  return { currentSprint, nextSprint, nextSprintCapacity, openStories, backlogStories };
+  return { currentSprint, nextSprint, nextSprintCapacity, openStories, backlogStories, topUpStories };
+}
+
+/**
+ * Open stories assigned to Moran that aren't in the current sprint, each with
+ * its open tasks — for the "top up this sprint" section. Best-effort: a fetch
+ * failure returns [] so the rest of the Plan page still renders.
+ */
+async function collectTopUpStories(
+  currentIteration: Iteration | null,
+): Promise<CockpitTopUpStory[]> {
+  if (!currentIteration) return [];
+  try {
+    const [stories, tasks] = await Promise.all([
+      listMyOpenStoriesNotInSprint(currentIteration.path),
+      listMyOpenTasksNotInSprint(currentIteration.path),
+    ]);
+    return groupTopUp(stories, tasks);
+  } catch {
+    return [];
+  }
 }
 
 function toCockpitIteration(it: Iteration): CockpitIteration {
