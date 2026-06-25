@@ -4649,6 +4649,29 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 .plan2-level-line { flex: 1; height: 1px; background: var(--line-hair); }
 .plan2-level-count { font-size: 11px; color: var(--ink-4); font-family: var(--font-mono); }
 
+/* ---- TOP UP this sprint (any-time tool, set apart from the numbered steps) ---- */
+.plan2-topup { border-top-width: 3px; }
+/* The pull button is the primary action: filled accent, hours called out.
+   Matches the Daily carry-forward button (same "pull tasks in" action). */
+.plan2-topup-pull {
+  background: var(--accent); color: var(--accent-ink, #fff);
+  border-color: var(--accent); font-size: 13px; padding: 7px 14px; font-weight: 600;
+}
+.plan2-topup-pull:hover:not(:disabled) { opacity: 0.9; background: var(--accent); color: var(--accent-ink, #fff); }
+.plan2-topup-pull b { font-weight: 700; }
+.plan2-topup-loc {
+  font-size: 11px; color: var(--ink-3); font-family: var(--font-mono);
+  padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap;
+}
+/* A story with no open tasks: present, but clearly nothing to pull. */
+.plan2-row.plan2-topup-empty { opacity: 0.55; }
+.plan2-topup-notasks { font-size: 12px; color: var(--ink-4); font-style: italic; white-space: nowrap; }
+/* Per-story expand chevron button (reveals the task list). */
+.plan2-chevron-btn { appearance: none; background: none; border: 0; padding: 0 2px; cursor: pointer; color: var(--ink-4); flex: none; }
+.plan2-chevron-btn:hover:not(:disabled) .plan2-chevron { color: var(--ink-2); }
+.plan2-chevron-btn.is-hidden { visibility: hidden; cursor: default; }
+.plan2-chevron-btn .plan2-chevron.is-open { transform: rotate(90deg); }
+
 /* ---- GAPS (sanity check) — reuses the row shell but keeps card detail ---- */
 .plan2-gap-intro { margin: 0 0 16px; font-size: 13.5px; line-height: 1.6; color: var(--ink-3); max-width: 64ch; }
 .plan2-gap-group { margin-bottom: 18px; }
