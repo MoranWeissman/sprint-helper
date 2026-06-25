@@ -1,10 +1,41 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
+import Database from 'better-sqlite3';
+
+// The store reads the live SQLite via getDb(). Swap in a fresh in-memory db
+// per test so getSetting/setSetting work against test state.
+const h = vi.hoisted(() => ({ db: { value: null as null | InstanceType<typeof Database> } }));
+vi.mock('./db', () => ({ getDb: () => h.db.value }));
+
 import {
+  getPrePlanState,
+  prePlanSettingsKey,
+  savePrePlanState,
   suggestCall,
   suggestGoalIndex,
   summarizeCoverage,
   workingDaysBetween,
 } from './preplan';
+import { setSetting } from './timers';
+
+function makeDb() {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE helper_notes (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      body         TEXT NOT NULL,
+      created_at   TEXT NOT NULL,
+      dismissed_at TEXT,
+      pinned_at    TEXT,
+      work_item_id INTEGER
+    );
+    CREATE TABLE settings ( key TEXT PRIMARY KEY, value TEXT NOT NULL );
+  `);
+  return db;
+}
+
+beforeEach(() => {
+  h.db.value = makeDb();
+});
 
 const NOW = new Date('2026-06-25T12:00:00Z'); // a Thursday
 
@@ -92,5 +123,31 @@ describe('summarizeCoverage', () => {
   });
   it('returns empty when there are no goals', () => {
     expect(summarizeCoverage([{ goalIndex: null }], [])).toEqual([]);
+  });
+});
+
+describe('pre-plan state I/O', () => {
+  it('returns empty state when nothing saved', () => {
+    expect(getPrePlanState('26_99')).toEqual({ goals: [], stories: {} });
+  });
+
+  it('round-trips goals and per-story calls/links', () => {
+    savePrePlanState('26_99', {
+      goals: ['Goal A', 'Goal B'],
+      stories: { '443697': { call: 'carries-over', goalIndex: 1 } },
+    });
+    const back = getPrePlanState('26_99');
+    expect(back.goals).toEqual(['Goal A', 'Goal B']);
+    expect(back.stories['443697']).toEqual({ call: 'carries-over', goalIndex: 1 });
+  });
+
+  it('keys per sprint', () => {
+    expect(prePlanSettingsKey('26_13')).toBe('preplan_26_13');
+  });
+
+  it('returns empty state on corrupt JSON', () => {
+    // write junk under the key via setSetting directly, then read
+    setSetting(prePlanSettingsKey('26_corrupt'), '{not json');
+    expect(getPrePlanState('26_corrupt')).toEqual({ goals: [], stories: {} });
   });
 });

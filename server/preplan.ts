@@ -6,6 +6,8 @@
  * See docs/superpowers/specs/2026-06-25-preplan-page-design.md.
  */
 
+import { getSetting, setSetting } from './timers';
+
 export type PrePlanCall = 'on-track' | 'at-risk' | 'carries-over';
 
 export interface PrePlanCard {
@@ -129,4 +131,26 @@ export function summarizeCoverage(
     text,
     storyCount: cards.filter(c => c.goalIndex === index).length,
   }));
+}
+
+export function prePlanSettingsKey(sprintName: string): string {
+  return `preplan_${sprintName}`;
+}
+
+export function getPrePlanState(sprintName: string): PrePlanState {
+  const raw = getSetting(prePlanSettingsKey(sprintName));
+  if (!raw) return { goals: [], stories: {} };
+  try {
+    const parsed = JSON.parse(raw) as Partial<PrePlanState>;
+    return {
+      goals: Array.isArray(parsed.goals) ? parsed.goals : [],
+      stories: parsed.stories && typeof parsed.stories === 'object' ? parsed.stories : {},
+    };
+  } catch {
+    return { goals: [], stories: {} };
+  }
+}
+
+export function savePrePlanState(sprintName: string, state: PrePlanState): void {
+  setSetting(prePlanSettingsKey(sprintName), JSON.stringify(state));
 }
