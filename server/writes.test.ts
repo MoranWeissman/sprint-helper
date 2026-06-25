@@ -248,6 +248,20 @@ describe('block / unblock — capture and restore the prior state', () => {
     expect(r.toState).toBe('Active');
     expect(fieldsOf(8)[F.state]).toBe('Active');
   });
+
+  // A Bug has no Blocked state in this tenant. transitionToBlocked exhausts the
+  // Blocked-bucket chain (Blocked, On Hold) and throws. This is WHY the dashboard
+  // block button is hidden for Bugs — pin it so a refactor can't silently change it.
+  it('throws when the work item type has no Blocked state (Bug)', async () => {
+    ACCEPTED_STATES.delete('Blocked'); // simulate a Bug: no Blocked, no On Hold
+    try {
+      seed(13, { [F.type]: 'Bug', [F.state]: 'Active' });
+      await expect(transitionToBlocked(13)).rejects.toThrow();
+      expect(fieldsOf(13)[F.state]).toBe('Active'); // unchanged
+    } finally {
+      ACCEPTED_STATES.add('Blocked'); // restore for the rest of the suite
+    }
+  });
 });
 
 describe('setEffortWithDerivedPoints — Effort and StoryPoints land together', () => {
