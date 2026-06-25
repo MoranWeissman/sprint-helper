@@ -12,12 +12,29 @@ const CAPACITY_NUDGE_KEY = 'capacity_nudge_state';
 const STALE_REMAINING_NUDGE_PREFIX = 'stale_remaining_nudge';
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-/** Once-per-sprint-per-direction guard so the capacity nudge doesn't re-fire. */
+/**
+ * Guard state for the capacity nudge. We remember the sprint, the direction
+ * (over/under), the gap we last showed, and the id of the note we posted — so
+ * we can RETIRE a stale note and post a fresh one when the numbers actually
+ * move, instead of leaving a frozen snapshot on the board. `noteId` is null for
+ * legacy rows written before this field existed.
+ */
 interface StoredCapacityNudge {
   sprintName: string;
   direction: 'over' | 'under';
   addedAt: string;
+  /** The rounded gap (h) the last-posted note quoted. */
+  gap?: number;
+  /** Id of the note we posted, so we can dismiss it on refresh. */
+  noteId?: number | null;
 }
+
+/**
+ * How far the gap must move (hours) before we replace the note with fresh
+ * numbers. Below this, the old note is "close enough" — leave it (and respect
+ * a dismissal). At/above this, the snapshot is misleading, so refresh it.
+ */
+const CAPACITY_REFRESH_TOLERANCE_H = 8;
 
 export interface HelperNote {
   id: number;
@@ -107,23 +124,40 @@ export function ensureCapacityNudge(opts: {
   const threshold = opts.thresholdHours ?? 8;
   if (Math.abs(opts.difference) < threshold) return null;
   const direction: 'over' | 'under' = opts.difference > 0 ? 'over' : 'under';
+  const gap = Math.round(Math.abs(opts.difference));
 
   const db = getDb();
   const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(CAPACITY_NUDGE_KEY) as
     | { value: string }
     | undefined;
+
+  let prev: StoredCapacityNudge | null = null;
   if (row) {
     try {
-      const state = JSON.parse(row.value) as StoredCapacityNudge;
-      if (state.sprintName === opts.sprintName && state.direction === direction) return null;
+      prev = JSON.parse(row.value) as StoredCapacityNudge;
     } catch {
-      /* corrupt state — fall through and overwrite */
+      /* corrupt state — treat as no prior nudge */
     }
+  }
+
+  if (prev && prev.sprintName === opts.sprintName && prev.direction === direction) {
+    // Same sprint, same direction. Only act if the numbers have drifted enough
+    // that the posted note is now misleading. Within tolerance we leave the
+    // existing note exactly as-is — which also means a dismissed note STAYS
+    // dismissed (we never resurrect a nudge Moran already waved off).
+    const prevGap = prev.gap ?? gap;
+    if (Math.abs(prevGap - gap) < CAPACITY_REFRESH_TOLERANCE_H) return null;
+  }
+
+  // We're going to post a fresh note (new sprint, flipped direction, or the
+  // gap drifted past tolerance). Retire the previous note first so the board
+  // never shows two capacity nudges or a stale snapshot alongside the new one.
+  if (prev && prev.noteId != null) {
+    dismissNote(prev.noteId);
   }
 
   const planned = Math.round(opts.plannedHours);
   const available = Math.round(opts.availableHours);
-  const gap = Math.round(Math.abs(opts.difference));
   const body =
     direction === 'over'
       ? `You're planned about ${gap}h over capacity this sprint (${planned}h planned vs ~${available}h available after meetings). Want to trim or push something?`
@@ -135,6 +169,8 @@ export function ensureCapacityNudge(opts: {
     sprintName: opts.sprintName,
     direction,
     addedAt: new Date().toISOString(),
+    gap,
+    noteId: note.id,
   };
   db.prepare(
     `INSERT INTO settings (key, value) VALUES (?, ?)
