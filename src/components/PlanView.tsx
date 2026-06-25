@@ -175,7 +175,7 @@ export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
     }
   };
 
-  const onTopUp = async (key: number, taskIds: number[]) => {
+  const onTopUp = async (key: number, taskIds: number[], creditHours: number) => {
     if (taskIds.length === 0) return;
     setActingOn(key);
     setActionError(null);
@@ -183,6 +183,26 @@ export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
       // Reuses the carry-forward endpoint: it resolves the current sprint
       // server-side and moves only the tasks (the story stays put).
       await postCarryForward(taskIds);
+      if (creditHours > 0) setPulledHoursThisSession(h => h + creditHours);
+      await refreshCockpit();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Pull failed');
+    } finally {
+      setActingOn(null);
+    }
+  };
+
+  // Pull the whole story (and its tasks) into the CURRENT sprint. The server's
+  // setIterationPath enforces the move-rule, so a disallowed move surfaces as
+  // an error rather than going through.
+  const onPullStoryWhole = async (story: ApiCockpitTopUpStory) => {
+    setActingOn(story.id);
+    setActionError(null);
+    try {
+      const cur = cockpit.status === 'ok' ? cockpit.data.currentSprint : null;
+      if (!cur) throw new Error('No current sprint to pull into.');
+      await moveWorkItemToIteration(story.id, cur.path);
+      if (story.pullableHours > 0) setPulledHoursThisSession(h => h + story.pullableHours);
       await refreshCockpit();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Pull failed');
@@ -230,7 +250,9 @@ export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
       <TopUpSection
         cockpit={cockpit}
         actingOn={actingOn}
+        pulledHours={pulledHoursThisSession}
         onTopUp={onTopUp}
+        onPullStoryWhole={onPullStoryWhole}
         onOpenItem={onOpenItem}
       />
     </div>
@@ -972,21 +994,31 @@ function classifyState(state: string): 'going' | 'waiting' | 'done' | 'blocked' 
 function TopUpSection({
   cockpit,
   actingOn,
+  pulledHours,
   onTopUp,
+  onPullStoryWhole,
   onOpenItem,
 }: {
   cockpit: CockpitState;
   actingOn: number | null;
-  onTopUp: (key: number, taskIds: number[]) => Promise<void>;
+  pulledHours: number;
+  onTopUp: (key: number, taskIds: number[], creditHours: number) => Promise<void>;
+  onPullStoryWhole: (story: ApiCockpitTopUpStory) => Promise<void>;
   onOpenItem?: (id: string) => void;
 }) {
   if (cockpit.status !== 'ok') return null;
-  const { currentSprint, topUpStories } = cockpit.data;
+  const { currentSprint, topUpStories, currentSprintCapacity, currentSprintCommittedHours } = cockpit.data;
   const here = currentSprint?.name ?? 'this sprint';
 
   return (
     <section className="plan2-section plan2-topup">
       <SectionHead title="Top up this sprint" note={`pull tasks from your other stories into ${here}`} />
+      <TopUpMeter
+        committed={currentSprintCommittedHours}
+        pulled={pulledHours}
+        capacity={currentSprintCapacity}
+        sprintName={here}
+      />
       {topUpStories.length === 0 ? (
         <div className="plan2-empty">No other open stories — nothing to pull in.</div>
       ) : (
@@ -997,6 +1029,7 @@ function TopUpSection({
               story={story}
               actingOn={actingOn}
               onTopUp={onTopUp}
+              onPullStoryWhole={onPullStoryWhole}
               onOpenItem={onOpenItem}
             />
           ))}
@@ -1006,15 +1039,57 @@ function TopUpSection({
   );
 }
 
+function TopUpMeter({
+  committed,
+  pulled,
+  capacity,
+  sprintName,
+}: {
+  committed: number;
+  pulled: number;
+  capacity: ApiCockpitCapacity | null;
+  sprintName: string;
+}) {
+  const cap = Math.max(0, Math.round(capacity?.availableHours ?? 0));
+  const filled = Math.max(0, Math.round(committed + pulled));
+  const left = cap - filled;
+  let verdict = '— no capacity yet';
+  let vClass: 'is-room' | 'is-near' | 'is-over' = 'is-room';
+  let over = false;
+  if (cap > 0) {
+    if (filled > cap) { verdict = `${filled - cap}h over`; vClass = 'is-over'; over = true; }
+    else if (left <= 8) { verdict = `${left}h left`; vClass = 'is-near'; }
+    else { verdict = `${left}h to spare`; vClass = 'is-room'; }
+  }
+  const pct = cap > 0 ? Math.min(100, Math.round((filled / cap) * 100)) : 0;
+  return (
+    <div className="plan2-meter plan2-topup-meter">
+      <div className="plan2-meter-top">
+        <span className="plan2-meter-label">{sprintName} load</span>
+        <span className={`plan2-meter-verdict ${vClass}`}>{verdict}</span>
+      </div>
+      <div className="plan2-meter-bar">
+        <span className={`plan2-meter-fill ${over ? 'is-over' : ''}`} style={{ width: `${pct}%` }} />
+      </div>
+      <div className="plan2-meter-foot">
+        <span>filled <span className="n big">{filled}h</span></span>
+        <span>of <span className="n">{cap}h</span> {capacity?.hasUrl ? 'after meetings' : 'available'}</span>
+      </div>
+    </div>
+  );
+}
+
 function TopUpRow({
   story,
   actingOn,
   onTopUp,
+  onPullStoryWhole,
   onOpenItem,
 }: {
   story: ApiCockpitTopUpStory;
   actingOn: number | null;
-  onTopUp: (key: number, taskIds: number[]) => Promise<void>;
+  onTopUp: (key: number, taskIds: number[], creditHours: number) => Promise<void>;
+  onPullStoryWhole: (story: ApiCockpitTopUpStory) => Promise<void>;
   onOpenItem?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -1052,20 +1127,33 @@ function TopUpRow({
         </button>
         <span className="plan2-topup-loc" title="Where this story lives now">{story.locationLabel}</span>
         <span className="plan2-actions">
+          {story.canPullStory && (
+            <button
+              type="button"
+              className="plan2-act plan2-topup-storypull"
+              disabled={rowBusy}
+              onClick={() => void onPullStoryWhole(story)}
+              title="Move the whole story (and its open tasks) into the current sprint"
+            >
+              Pull story in
+            </button>
+          )}
           {hasTasks ? (
             <button
               type="button"
               className="plan2-act plan2-act-pull plan2-topup-pull"
               disabled={rowBusy}
-              onClick={() => void onTopUp(story.id, allTaskIds)}
+              onClick={() => void onTopUp(story.id, allTaskIds, story.pullableHours)}
               title={`Move this story's ${story.openTasks.length} open task${story.openTasks.length === 1 ? '' : 's'} into the current sprint`}
             >
               {rowBusy ? '…' : <>Pull <b>{story.pullableHours}h</b> in →</>}
             </button>
           ) : (
-            <span className="plan2-topup-notasks" title="No open tasks to pull — hours live on tasks.">
-              no tasks yet
-            </span>
+            !story.canPullStory && (
+              <span className="plan2-topup-notasks" title="No open tasks to pull — hours live on tasks.">
+                no tasks yet
+              </span>
+            )
           )}
         </span>
       </div>
@@ -1076,7 +1164,7 @@ function TopUpRow({
               key={task.id}
               task={task}
               busy={rowBusy}
-              onPull={() => void onTopUp(task.id, [task.id])}
+              onPull={() => void onTopUp(task.id, [task.id], task.remainingWork ?? task.originalEstimate ?? 0)}
               onOpenItem={onOpenItem}
             />
           ))}
