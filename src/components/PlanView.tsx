@@ -5,11 +5,14 @@ import {
   fetchPlanningGaps,
   markWorkItemDone,
   moveWorkItemToIteration,
+  postCarryForward,
   type ApiCockpitBacklogStory,
   type ApiCockpitCapacity,
   type ApiCockpitOpenStory,
   type ApiCockpitOpenTask,
   type ApiCockpitPayload,
+  type ApiCockpitTopUpStory,
+  type ApiCockpitTopUpTask,
   type ApiPlanningGap,
   type ApiPlanningGapsResponse,
 } from '../lib/api';
@@ -172,6 +175,22 @@ export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
     }
   };
 
+  const onTopUp = async (key: number, taskIds: number[]) => {
+    if (taskIds.length === 0) return;
+    setActingOn(key);
+    setActionError(null);
+    try {
+      // Reuses the carry-forward endpoint: it resolves the current sprint
+      // server-side and moves only the tasks (the story stays put).
+      await postCarryForward(taskIds);
+      await refreshCockpit();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Pull failed');
+    } finally {
+      setActingOn(null);
+    }
+  };
+
   return (
     <div className="r12-plan">
       <PlanHeader
@@ -207,6 +226,13 @@ export function PlanView({ onOpenItem, onScanComplete }: PlanViewProps) {
       />
 
       <SanityCheckSection onScanComplete={onScanComplete} />
+
+      <TopUpSection
+        cockpit={cockpit}
+        actingOn={actingOn}
+        onTopUp={onTopUp}
+        onOpenItem={onOpenItem}
+      />
     </div>
   );
 }
@@ -868,10 +894,10 @@ function GapGroups({ gaps }: { gaps: ApiPlanningGap[] }) {
 /*  Small helpers                                                              */
 /* -------------------------------------------------------------------------- */
 
-function SectionHead({ step, title, note }: { step: number; title: string; note?: React.ReactNode }) {
+function SectionHead({ step, title, note }: { step?: number; title: string; note?: React.ReactNode }) {
   return (
     <div className="plan2-sec-head">
-      <span className="plan2-step">{step}</span>
+      {step != null && <span className="plan2-step">{step}</span>}
       <h2 className="plan2-sec-title">{title}</h2>
       {note && <span className="plan2-sec-note">{note}</span>}
     </div>
@@ -937,4 +963,165 @@ function classifyState(state: string): 'going' | 'waiting' | 'done' | 'blocked' 
   if (['active', 'in progress', 'doing', 'committed'].includes(s)) return 'going';
   if (['done', 'closed', 'resolved', 'completed', 'removed'].includes(s)) return 'done';
   return 'waiting';
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Top up the current sprint — an any-time tool below the numbered steps     */
+/* -------------------------------------------------------------------------- */
+
+function TopUpSection({
+  cockpit,
+  actingOn,
+  onTopUp,
+  onOpenItem,
+}: {
+  cockpit: CockpitState;
+  actingOn: number | null;
+  onTopUp: (key: number, taskIds: number[]) => Promise<void>;
+  onOpenItem?: (id: string) => void;
+}) {
+  if (cockpit.status !== 'ok') return null;
+  const { currentSprint, topUpStories } = cockpit.data;
+  const here = currentSprint?.name ?? 'this sprint';
+
+  return (
+    <section className="plan2-section plan2-topup">
+      <SectionHead title="Top up this sprint" note={`pull tasks from your other stories into ${here}`} />
+      {topUpStories.length === 0 ? (
+        <div className="plan2-empty">No other open stories — nothing to pull in.</div>
+      ) : (
+        <ul className="plan2-rows">
+          {topUpStories.map(story => (
+            <TopUpRow
+              key={story.id}
+              story={story}
+              actingOn={actingOn}
+              onTopUp={onTopUp}
+              onOpenItem={onOpenItem}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function TopUpRow({
+  story,
+  actingOn,
+  onTopUp,
+  onOpenItem,
+}: {
+  story: ApiCockpitTopUpStory;
+  actingOn: number | null;
+  onTopUp: (key: number, taskIds: number[]) => Promise<void>;
+  onOpenItem?: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const stateClass = classifyState(story.state);
+  const kind = story.type.toLowerCase() === 'bug' ? 'bug' : 'story';
+  const hasTasks = story.openTasks.length > 0;
+  const allTaskIds = story.openTasks.map(t => t.id);
+  // The whole story's controls disable while ANY of its rows is in flight.
+  const rowBusy = actingOn === story.id || story.openTasks.some(t => t.id === actingOn);
+
+  return (
+    <li className={`plan2-row is-${stateClass} ${hasTasks ? '' : 'plan2-topup-empty'}`}>
+      <div className="plan2-row-main">
+        <button
+          type="button"
+          className={`plan2-chevron-btn ${hasTasks ? '' : 'is-hidden'}`}
+          onClick={() => hasTasks && setOpen(o => !o)}
+          aria-expanded={open}
+          aria-label={open ? 'Hide tasks' : 'Show tasks'}
+          disabled={!hasTasks}
+        >
+          <span className={`plan2-chevron ${open ? 'is-open' : ''}`} aria-hidden="true">▸</span>
+        </button>
+        <KindBadge kind={kind} />
+        <StateChip state={story.state} />
+        <button
+          type="button"
+          className="plan2-title plan2-title-btn"
+          onClick={() => onOpenItem?.(String(story.id))}
+          disabled={!onOpenItem}
+          title="Open story details"
+        >
+          <span className="t">{story.title}</span>
+          <span className="id">#{story.id}</span>
+        </button>
+        <span className="plan2-topup-loc" title="Where this story lives now">{story.locationLabel}</span>
+        <span className="plan2-actions">
+          {hasTasks ? (
+            <button
+              type="button"
+              className="plan2-act plan2-act-pull plan2-topup-pull"
+              disabled={rowBusy}
+              onClick={() => void onTopUp(story.id, allTaskIds)}
+              title={`Move this story's ${story.openTasks.length} open task${story.openTasks.length === 1 ? '' : 's'} into the current sprint`}
+            >
+              {rowBusy ? '…' : <>Pull <b>{story.pullableHours}h</b> in →</>}
+            </button>
+          ) : (
+            <span className="plan2-topup-notasks" title="No open tasks to pull — hours live on tasks.">
+              no tasks yet
+            </span>
+          )}
+        </span>
+      </div>
+      {open && hasTasks && (
+        <ul className="plan2-rows plan2-subrows">
+          {story.openTasks.map(task => (
+            <TopUpTaskRow
+              key={task.id}
+              task={task}
+              busy={rowBusy}
+              onPull={() => void onTopUp(task.id, [task.id])}
+              onOpenItem={onOpenItem}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+function TopUpTaskRow({
+  task,
+  busy,
+  onPull,
+  onOpenItem,
+}: {
+  task: ApiCockpitTopUpTask;
+  busy: boolean;
+  onPull: () => void;
+  onOpenItem?: (id: string) => void;
+}) {
+  const rem = task.remainingWork ?? task.originalEstimate;
+  const remText = rem != null ? `${Math.round(rem)}h` : '—';
+  return (
+    <li className="plan2-subrow plan2-row">
+      <span className="plan2-chevron is-spacer" aria-hidden="true">▸</span>
+      <KindBadge kind={kindFromType(task.type)} />
+      <StateChip state={task.state} />
+      <button
+        type="button"
+        className="plan2-title plan2-title-btn"
+        onClick={() => onOpenItem?.(String(task.id))}
+        disabled={!onOpenItem}
+        title="Open task details"
+      >
+        <span className="t">{task.title}</span>
+        <span className="id">#{task.id}</span>
+      </button>
+      <span className="plan2-meta">
+        <span className="plan2-stat"><span className="l">remaining</span><span className="v">{remText}</span></span>
+      </span>
+      <span className="plan2-actions">
+        <button type="button" className="plan2-act plan2-act-pull" disabled={busy} onClick={onPull}>
+          + pull
+        </button>
+      </span>
+    </li>
+  );
 }
