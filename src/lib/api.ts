@@ -470,6 +470,31 @@ export async function updateWorkItem(
   return body;
 }
 
+/** Block a work item (Task / User Story). Returns the new ADO state. */
+export async function postWorkItemBlock(workItemId: string): Promise<{ state: string }> {
+  return postBlockAction(workItemId, 'block');
+}
+
+/** Clear a block on a work item. Returns the new ADO state. */
+export async function postWorkItemUnblock(workItemId: string): Promise<{ state: string }> {
+  return postBlockAction(workItemId, 'unblock');
+}
+
+async function postBlockAction(
+  workItemId: string,
+  action: 'block' | 'unblock',
+): Promise<{ state: string }> {
+  const r = await fetch(`/api/workitem/${encodeURIComponent(workItemId)}/${action}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const body = await r.json();
+  if (!r.ok || 'error' in body) {
+    throw new Error(body.error ?? `${action} failed`);
+  }
+  return body;
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Planning gaps                                                             */
 /* -------------------------------------------------------------------------- */
