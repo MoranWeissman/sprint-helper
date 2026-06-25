@@ -164,7 +164,7 @@ const STORY_TYPES = new Set(['user story', 'bug']);
 function isStarted(s: UserStoryGroup): boolean {
   if (s.hasActiveSession) return true;
   if (ACTIVE_STATES.has(s.state)) return true;
-  return s.tasks.some(t => !DONE_STATES.has(t.state) && ACTIVE_STATES.has(t.state));
+  return s.tasks.some(t => ACTIVE_STATES.has(t.state));
 }
 
 export function selectCarriedStories(stories: UserStoryGroup[]): UserStoryGroup[] {

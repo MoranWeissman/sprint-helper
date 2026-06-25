@@ -206,4 +206,24 @@ describe('buildCards', () => {
     expect(cards[1].blocked).toBe(true);
     expect(cards[1].displayName).toBe('**Story 2** (#2)');
   });
+
+  it('preserves explicit null goalIndex when saved', () => {
+    const stories = [
+      story({ id: '10', title: 'Improve ArgoCD rollout confidence', state: 'Active', remainingHours: 2 }),
+    ];
+    const state = { goals: ['Improve ArgoCD rollout confidence'], stories: { '10': { goalIndex: null } } };
+    const cards = buildCards(stories, state, NOW2);
+    // The title strongly matches the goal, but saved null must be preserved (user chose "no goal")
+    expect(cards[0].goalIndex).toBeNull();
+  });
+
+  it('detects blocked via tag when state is Active', () => {
+    const stories = [
+      story({ id: '20', state: 'Active', tags: ['Blocked'], remainingHours: 5 }),
+    ];
+    const state = { goals: [], stories: {} };
+    const cards = buildCards(stories, state, NOW2);
+    expect(cards[0].blocked).toBe(true);
+    expect(cards[0].call).toBe('at-risk');
+  });
 });
