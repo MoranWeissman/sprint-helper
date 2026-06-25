@@ -72,9 +72,18 @@ function handleAz(args: string[], body: string): string {
   }
 
   if (method === 'GET') {
-    // The current-sprint lookup createStory makes before it POSTs.
+    // Iteration lookups. With $timeframe=current → just the current sprint
+    // (what createStory reads). Without it → the full dated list that
+    // listAllIterations + classifyPastSprint walk. 26_11 finished long ago
+    // (a PAST sprint), 26_13 finishes far in the future (current/future).
     if (/_apis\/work\/teamsettings\/iterations/i.test(uri)) {
-      return JSON.stringify({ value: [{ path: 'Proj\\Sprint 1' }] });
+      if (/\$timeframe=current/i.test(uri)) {
+        return JSON.stringify({ value: [{ id: 'cur', name: 'Sprint 1', path: 'Proj\\Sprint 1', attributes: { startDate: '2099-01-01T00:00:00Z', finishDate: '2099-01-14T00:00:00Z' } }] });
+      }
+      return JSON.stringify({ value: [
+        { id: 'p', name: '26_11', path: 'Proj\\2026\\Q2\\26_11', attributes: { startDate: '2020-01-01T00:00:00Z', finishDate: '2020-01-14T00:00:00Z' } },
+        { id: 'f', name: '26_13', path: 'Proj\\2026\\Q2\\26_13', attributes: { startDate: '2099-01-01T00:00:00Z', finishDate: '2099-01-14T00:00:00Z' } },
+      ] });
     }
     const wi = h.store.get(id) ?? { rev: 1, fields: {} };
     return JSON.stringify({ id, rev: wi.rev, fields: wi.fields });
@@ -165,9 +174,13 @@ function seed(id: number, fields: Record<string, unknown>) {
 }
 const fieldsOf = (id: number) => h.store.get(id)!.fields;
 
-beforeEach(() => {
+beforeEach(async () => {
   h.settings.clear();
   h.store.clear();
+  // The iteration list is cached in ado.ts across calls; clear it so each test
+  // sees the fake board fresh.
+  const { invalidateIterationCache } = await import('./ado');
+  invalidateIterationCache();
 });
 
 describe('pushCompletedWork — burn down Remaining as Completed grows', () => {
@@ -276,30 +289,40 @@ describe('setEffortWithDerivedPoints — Effort and StoryPoints land together', 
   });
 });
 
-describe('setIterationPath — a started story stays put, only tasks (and new stories) move', () => {
-  const NEXT = 'Proj\\2026\\Q2\\26_12';
+describe('setIterationPath — blocks a started story only out of a FINISHED sprint', () => {
+  // Fake board: 26_11 is PAST (finished 2020), 26_13 is FUTURE (finishes 2099).
+  const PAST = 'Proj\\2026\\Q2\\26_11';
+  const FUTURE = 'Proj\\2026\\Q2\\26_13';
+  const TARGET = 'Proj\\2026\\Q2\\26_99';
 
-  it('refuses to move a started story to another sprint', async () => {
-    seed(10, { [F.type]: 'User Story', [F.state]: 'Active', [F.title]: 'Underway story', [F.iteration]: 'Proj\\2026\\Q2\\26_11' });
-    await expect(setIterationPath(10, NEXT)).rejects.toThrow(/underway/i);
-    expect(fieldsOf(10)[F.iteration]).toBe('Proj\\2026\\Q2\\26_11'); // unchanged
+  it('refuses a started story leaving a finished sprint', async () => {
+    seed(10, { [F.type]: 'User Story', [F.state]: 'Active', [F.title]: 'Past underway', [F.iteration]: PAST });
+    await expect(setIterationPath(10, TARGET)).rejects.toThrow(/finished sprint/i);
+    expect(fieldsOf(10)[F.iteration]).toBe(PAST); // unchanged
   });
 
-  it('also refuses a blocked story', async () => {
-    seed(11, { [F.type]: 'User Story', [F.state]: 'Blocked', [F.title]: 'Stuck story' });
-    await expect(setIterationPath(11, NEXT)).rejects.toThrow();
+  it('moves a started story out of a current/future sprint', async () => {
+    seed(11, { [F.type]: 'User Story', [F.state]: 'Active', [F.title]: 'Future underway', [F.iteration]: FUTURE });
+    await setIterationPath(11, TARGET);
+    expect(fieldsOf(11)[F.iteration]).toBe(TARGET);
   });
 
-  it('moves a never-started (New) story', async () => {
-    seed(12, { [F.type]: 'User Story', [F.state]: 'New', [F.title]: 'Fresh story' });
-    await setIterationPath(12, NEXT);
-    expect(fieldsOf(12)[F.iteration]).toBe(NEXT);
+  it('moves a started story out of the backlog', async () => {
+    seed(16, { [F.type]: 'User Story', [F.state]: 'Active', [F.title]: 'Backlog underway', [F.iteration]: 'Proj\\Backlog' });
+    await setIterationPath(16, TARGET);
+    expect(fieldsOf(16)[F.iteration]).toBe(TARGET);
   });
 
-  it('always moves a task, even an active one (carryover)', async () => {
-    seed(13, { [F.type]: 'Task', [F.state]: 'Active', [F.title]: 'A carried task' });
-    await setIterationPath(13, NEXT);
-    expect(fieldsOf(13)[F.iteration]).toBe(NEXT);
+  it('moves a never-started (New) story even out of a finished sprint', async () => {
+    seed(12, { [F.type]: 'User Story', [F.state]: 'New', [F.title]: 'Fresh story', [F.iteration]: PAST });
+    await setIterationPath(12, TARGET);
+    expect(fieldsOf(12)[F.iteration]).toBe(TARGET);
+  });
+
+  it('always moves a task, even an active one in a finished sprint (carryover)', async () => {
+    seed(13, { [F.type]: 'Task', [F.state]: 'Active', [F.title]: 'A carried task', [F.iteration]: PAST });
+    await setIterationPath(13, TARGET);
+    expect(fieldsOf(13)[F.iteration]).toBe(TARGET);
   });
 });
 
