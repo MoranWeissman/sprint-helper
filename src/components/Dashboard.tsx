@@ -205,7 +205,6 @@ function DashboardLive({
           next={ceremonies.next}
           now={now}
           sprintLabel={sprintLabel}
-          today={today}
           totalDays={sprintCtx?.totalDays ?? 0}
           railDays={railDays}
           view={isFocus ? 'focus' : 'daily'}
@@ -519,7 +518,6 @@ function R21Sidebar({
   next,
   now,
   sprintLabel,
-  today,
   totalDays,
   railDays,
   view,
@@ -537,9 +535,8 @@ function R21Sidebar({
   /** Fresh client-side clock — recompute relative-time locally; don't trust the server's stale minutesUntil. */
   now: Date;
   sprintLabel: string;
-  today: number;
   totalDays: number;
-  railDays: Array<{ index: number; state: string; label: string }>;
+  railDays: Array<{ index: number; state: string; label: string; isOff: boolean }>;
   view: 'daily' | 'focus';
   hasLive: boolean;
   onPickDaily: () => void;
@@ -597,24 +594,30 @@ function R21Sidebar({
           </div>
         )}
 
-        {totalDays > 0 && (
-          <div className="r21-side-week">
-            <div className="r21-side-week-head">
-              <span>Sprint <span className="day"><Mono>{sprintLabel}</Mono></span></span>
-              <span>day <span className="day"><Mono>{today}/{totalDays}</Mono></span></span>
+        {totalDays > 0 && (() => {
+          // Count in WORKING days (Sun-Thu), not calendar days — Fri/Sat are
+          // off. Working-day-of-N = working days up to & including today.
+          const workingTotal = railDays.filter(d => !d.isOff).length;
+          const workingSoFar = railDays.filter(d => !d.isOff && d.state !== 'future').length;
+          return (
+            <div className="r21-side-week">
+              <div className="r21-side-week-head">
+                <span>Sprint <span className="day"><Mono>{sprintLabel}</Mono></span></span>
+                <span>day <span className="day"><Mono>{workingSoFar}/{workingTotal}</Mono></span></span>
+              </div>
+              <div className="r21-side-week-grid">
+                {railDays.map(d => (
+                  <span
+                    key={d.index}
+                    className={`r21-side-week-cell ${d.isOff ? 'is-off' : ''} ${d.state === 'past' ? 'is-past' : d.state === 'today' ? 'is-today' : 'is-future'}`}
+                  >
+                    {d.label}
+                  </span>
+                ))}
+              </div>
             </div>
-            <div className="r21-side-week-grid">
-              {railDays.map(d => (
-                <span
-                  key={d.index}
-                  className={`r21-side-week-cell ${d.state === 'past' ? 'is-past' : d.state === 'today' ? 'is-today' : 'is-future'}`}
-                >
-                  {d.label}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </aside>
     </div>
   );
@@ -1424,16 +1427,16 @@ function RailSprintTime({
 
   const available = Math.round(capacity.availableHours);
   // Headline = real desk time STILL AHEAD, so it counts down through the
-  // sprint. The whole-sprint figure becomes the context line under it.
+  // sprint. The whole-sprint figure is context inside the caption, not a
+  // competing number on its own line.
   const availableLeft = Math.round(capacity.availableHoursRemaining);
   const hasCalendar = capacity.hasUrl && !capacity.fetchError;
-  // Working days are Sun-Thu in Moran's setup, so calendar days left
-  // overcount — use the workingDaysRemaining the server computes.
-  const workingDaysTotal = capacity.workingDays;
   const workingDaysLeft = capacity.workingDaysRemaining;
+  // The bar tracks HOURS left (matching the headline number), not days — so
+  // the visual and the big number tell the same story.
   const pctLeft =
-    workingDaysTotal > 0
-      ? Math.max(0, Math.min(100, Math.round((workingDaysLeft / workingDaysTotal) * 100)))
+    available > 0
+      ? Math.max(0, Math.min(100, Math.round((availableLeft / available) * 100)))
       : 0;
 
   return (
@@ -1447,16 +1450,13 @@ function RailSprintTime({
         <span className="unit">h</span>
         <span className="suffix">{hasCalendar ? 'left after meetings' : 'left'}</span>
       </div>
-      <p className="of-line">of {available}h {hasCalendar ? 'after meetings' : 'available'} this sprint</p>
       <div className="bar" aria-hidden="true">
         <i style={{ width: `${pctLeft}%` }} />
       </div>
       <p className="caption">
         {workingDaysLeft <= 0
-          ? 'Last day of the sprint'
-          : workingDaysLeft === 1
-            ? '1 working day left in the sprint'
-            : `${workingDaysLeft} working days left in the sprint`}
+          ? `Last working day — ${availableLeft}h of ${available}h still open`
+          : `${workingDaysLeft} working day${workingDaysLeft === 1 ? '' : 's'} left — ${availableLeft}h of ${available}h still open`}
       </p>
       {live && focalTitle ? (
         <button type="button" className="live" onClick={jumpToLive} title="Jump to the story you're working on">
