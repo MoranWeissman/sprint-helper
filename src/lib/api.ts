@@ -601,12 +601,36 @@ export interface ApiCockpitCapacity {
   hasUrl: boolean;
 }
 
+export interface ApiCockpitTopUpTask {
+  id: number;
+  title: string;
+  displayName: string;
+  state: string;
+  type: string;
+  remainingWork?: number;
+  originalEstimate?: number;
+}
+
+export interface ApiCockpitTopUpStory {
+  id: number;
+  title: string;
+  displayName: string;
+  type: string;
+  state: string;
+  /** Where the story lives now: a sprint name (e.g. "26_12") or "Backlog". */
+  locationLabel: string;
+  /** Sum of open-task hours — what a full pull adds to the current sprint. */
+  pullableHours: number;
+  openTasks: ApiCockpitTopUpTask[];
+}
+
 export interface ApiCockpitPayload {
   currentSprint: ApiCockpitIteration | null;
   nextSprint: ApiCockpitIteration | null;
   nextSprintCapacity: ApiCockpitCapacity | null;
   openStories: ApiCockpitOpenStory[];
   backlogStories: ApiCockpitBacklogStory[];
+  topUpStories: ApiCockpitTopUpStory[];
 }
 
 export async function fetchCockpit(): Promise<ApiCockpitPayload> {
