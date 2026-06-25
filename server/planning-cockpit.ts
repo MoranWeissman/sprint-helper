@@ -95,6 +95,89 @@ export interface CockpitBacklogStory {
   feature?: { id: number; title: string; displayName: string };
 }
 
+export interface CockpitTopUpTask {
+  id: number;
+  title: string;
+  displayName: string;
+  state: string;
+  type: string;
+  remainingWork?: number;
+  originalEstimate?: number;
+}
+
+export interface CockpitTopUpStory {
+  id: number;
+  title: string;
+  displayName: string;
+  type: string;
+  state: string;
+  /** Where the story lives now: a sprint name (e.g. "26_12") or "Backlog". */
+  locationLabel: string;
+  /** Sum of open-task remaining (or estimate) hours — what a full pull adds. */
+  pullableHours: number;
+  openTasks: CockpitTopUpTask[];
+}
+
+/**
+ * Group open out-of-sprint TASKS under their parent open STORIES, for the
+ * "top up this sprint" section. Pure — caller supplies both already-fetched
+ * lists, so this is testable with no ADO.
+ *
+ * Only tasks ever move (Moran's carryover rule); the story stays put. A story
+ * with no open tasks is still returned (so "see all my stories" holds) with
+ * pullableHours 0 — the UI shows it greyed with no pull button.
+ */
+export function groupTopUp(stories: WorkItem[], tasks: WorkItem[]): CockpitTopUpStory[] {
+  const liveStories = stories.filter(s => !DEAD_STATES.has(s.state.trim().toLowerCase()));
+  const byParent = new Map<number, WorkItem[]>();
+  for (const t of tasks) {
+    if (DEAD_STATES.has(t.state.trim().toLowerCase())) continue;
+    if (t.parentId == null) continue;
+    const list = byParent.get(t.parentId) ?? [];
+    list.push(t);
+    byParent.set(t.parentId, list);
+  }
+
+  const out: CockpitTopUpStory[] = liveStories.map(s => {
+    const childTasks = byParent.get(s.id) ?? [];
+    const openTasks: CockpitTopUpTask[] = childTasks.map(t => ({
+      id: t.id,
+      title: t.title,
+      displayName: displayNameFor(t.id, t.title),
+      state: t.state,
+      type: t.type,
+      remainingWork: t.remainingWork,
+      originalEstimate: t.originalEstimate,
+    }));
+    const pullableHours = Math.round(
+      openTasks.reduce((sum, t) => sum + (t.remainingWork ?? t.originalEstimate ?? 0), 0),
+    );
+    return {
+      id: s.id,
+      title: s.title,
+      displayName: displayNameFor(s.id, s.title),
+      type: s.type,
+      state: s.state,
+      locationLabel: topUpLocationLabel(s.iterationPath),
+      pullableHours,
+      openTasks,
+    };
+  });
+
+  // Stories with pullable hours first (most hours first); task-less stories last.
+  out.sort((a, b) => {
+    if ((a.pullableHours > 0) !== (b.pullableHours > 0)) return a.pullableHours > 0 ? -1 : 1;
+    if (b.pullableHours !== a.pullableHours) return b.pullableHours - a.pullableHours;
+    return b.id - a.id;
+  });
+  return out;
+}
+
+function topUpLocationLabel(iterationPath: string): string {
+  if (isSprintLevel(iterationPath)) return iterationPath.split('\\').pop() ?? iterationPath;
+  return 'Backlog';
+}
+
 /**
  * Real desk time for the next sprint, after Outlook meetings — what the Plan
  * meter measures "pulled work" against. null when there's no next sprint.
