@@ -7,6 +7,8 @@
  */
 
 import { getSetting, setSetting } from './timers';
+import { buildDashboardCached } from './dashboard-cache';
+import type { UserStoryGroup } from './dashboard';
 
 export type PrePlanCall = 'on-track' | 'at-risk' | 'carries-over';
 
@@ -153,4 +155,71 @@ export function getPrePlanState(sprintName: string): PrePlanState {
 
 export function savePrePlanState(sprintName: string, state: PrePlanState): void {
   setSetting(prePlanSettingsKey(sprintName), JSON.stringify(state));
+}
+
+const DONE_STATES = new Set(['Done', 'Closed', 'Resolved', 'Completed', 'Removed']);
+const ACTIVE_STATES = new Set(['Active', 'In Progress', 'Committed', 'Doing']);
+const STORY_TYPES = new Set(['user story', 'bug']);
+
+function isStarted(s: UserStoryGroup): boolean {
+  if (s.hasActiveSession) return true;
+  if (ACTIVE_STATES.has(s.state)) return true;
+  return s.tasks.some(t => !DONE_STATES.has(t.state) && ACTIVE_STATES.has(t.state));
+}
+
+export function selectCarriedStories(stories: UserStoryGroup[]): UserStoryGroup[] {
+  return stories.filter(
+    s => STORY_TYPES.has(s.type.toLowerCase()) && !DONE_STATES.has(s.state) && isStarted(s),
+  );
+}
+
+function isBlocked(s: UserStoryGroup): boolean {
+  if (s.state === 'Blocked') return true;
+  return (s.tags ?? []).some(t => t.toLowerCase() === 'blocked');
+}
+
+export function buildCards(
+  stories: UserStoryGroup[],
+  state: PrePlanState,
+  now: Date,
+): PrePlanCard[] {
+  return stories.map(s => {
+    const saved = state.stories[s.id] ?? {};
+    const blocked = isBlocked(s);
+    const lastActivityAt = s.recentActivity[0]?.createdAt ?? null;
+    const remainingHours = s.remainingHours ?? 0;
+    const suggestedCall = suggestCall({ blocked, lastActivityAt, remainingHours, now });
+    const call: PrePlanCall = saved.call ?? suggestedCall;
+    const suggestedGoal = suggestGoalIndex(s.title, state.goals);
+    const goalIndex = saved.goalIndex !== undefined ? saved.goalIndex : suggestedGoal;
+    return {
+      id: s.id,
+      displayName: `**${s.title}** (#${s.id})`,
+      remainingHours,
+      blocked,
+      lastActivityAt,
+      call,
+      callIsSuggested: saved.call === undefined,
+      goalIndex,
+    };
+  });
+}
+
+export async function buildPrePlanPayload(now: Date = new Date()): Promise<PrePlanPayload> {
+  const { payload } = await buildDashboardCached();
+  const sprintName = payload.sprint?.name ?? '';
+  const state = getPrePlanState(sprintName);
+  const carried = selectCarriedStories(payload.userStories);
+  const cards = buildCards(carried, state, now);
+  const coverage = summarizeCoverage(cards.map(c => ({ goalIndex: c.goalIndex })), state.goals);
+  const openStoriesRemainingHours = Math.round(
+    cards.reduce((acc, c) => acc + (c.remainingHours ?? 0), 0),
+  );
+  const cap = payload.outlookCapacity;
+  const room: PrePlanRoomLine = {
+    openStoriesRemainingHours,
+    roomHours: cap ? Math.round(cap.availableHoursRemaining) : 0,
+    hasCapacity: !!cap && cap.hasUrl,
+  };
+  return { sprintName, goals: state.goals, cards, coverage, room };
 }

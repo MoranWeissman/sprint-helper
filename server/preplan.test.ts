@@ -14,8 +14,11 @@ import {
   suggestGoalIndex,
   summarizeCoverage,
   workingDaysBetween,
+  selectCarriedStories,
+  buildCards,
 } from './preplan';
 import { setSetting } from './timers';
+import type { UserStoryGroup } from './dashboard';
 
 function makeDb() {
   const db = new Database(':memory:');
@@ -149,5 +152,58 @@ describe('pre-plan state I/O', () => {
     // write junk under the key via setSetting directly, then read
     setSetting(prePlanSettingsKey('26_corrupt'), '{not json');
     expect(getPrePlanState('26_corrupt')).toEqual({ goals: [], stories: {} });
+  });
+});
+
+function story(p: Partial<UserStoryGroup> & { id: string }): UserStoryGroup {
+  return {
+    id: p.id,
+    title: p.title ?? `Story ${p.id}`,
+    type: p.type ?? 'User Story',
+    state: p.state ?? 'Active',
+    url: '',
+    tasks: p.tasks ?? [],
+    totalEstimateHours: 0,
+    completedHours: 0,
+    remainingHours: p.remainingHours ?? 0,
+    counts: { inProgress: 0, upNext: 0, done: 0 },
+    recentActivity: p.recentActivity ?? [],
+    hasActiveSession: p.hasActiveSession ?? false,
+    tags: p.tags,
+  } as UserStoryGroup;
+}
+
+describe('selectCarriedStories', () => {
+  it('keeps active stories, drops done and features and never-started', () => {
+    const stories = [
+      story({ id: '1', state: 'Active' }),
+      story({ id: '2', state: 'Closed' }),
+      story({ id: '3', type: 'Feature', state: 'Active' }),
+      story({ id: '4', state: 'New', hasActiveSession: false }),
+      story({ id: '5', state: 'New', hasActiveSession: true }), // started via live session
+    ];
+    expect(selectCarriedStories(stories).map(s => s.id)).toEqual(['1', '5']);
+  });
+});
+
+describe('buildCards', () => {
+  const NOW2 = new Date('2026-06-25T12:00:00Z');
+  it('uses saved call/link when present, else suggestion', () => {
+    const stories = [
+      story({ id: '1', title: 'Rollout ArgoCD addon', state: 'Active', remainingHours: 4,
+        recentActivity: [{ id: 1, sessionId: 's', workItemId: 1, type: 'progress', text: '', createdAt: '2026-06-24T12:00:00Z' }] }),
+      story({ id: '2', state: 'Blocked', remainingHours: 3 }),
+    ];
+    const state = { goals: ['Improve ArgoCD rollout'], stories: { '1': { call: 'carries-over' as const, goalIndex: 0 } } };
+    const cards = buildCards(stories, state, NOW2);
+    // story 1: saved call wins, not suggested
+    expect(cards[0].call).toBe('carries-over');
+    expect(cards[0].callIsSuggested).toBe(false);
+    expect(cards[0].goalIndex).toBe(0);
+    // story 2: no saved state -> suggestion (blocked => at-risk), marked suggested
+    expect(cards[1].call).toBe('at-risk');
+    expect(cards[1].callIsSuggested).toBe(true);
+    expect(cards[1].blocked).toBe(true);
+    expect(cards[1].displayName).toBe('**Story 2** (#2)');
   });
 });
