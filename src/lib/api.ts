@@ -621,6 +621,8 @@ export interface ApiCockpitTopUpStory {
   locationLabel: string;
   /** Sum of open-task hours — what a full pull adds to the current sprint. */
   pullableHours: number;
+  /** True when the whole story (not just its tasks) may be pulled into the current sprint. */
+  canPullStory: boolean;
   openTasks: ApiCockpitTopUpTask[];
 }
 
@@ -628,6 +630,8 @@ export interface ApiCockpitPayload {
   currentSprint: ApiCockpitIteration | null;
   nextSprint: ApiCockpitIteration | null;
   nextSprintCapacity: ApiCockpitCapacity | null;
+  currentSprintCapacity: ApiCockpitCapacity | null;
+  currentSprintCommittedHours: number;
   openStories: ApiCockpitOpenStory[];
   backlogStories: ApiCockpitBacklogStory[];
   topUpStories: ApiCockpitTopUpStory[];
