@@ -1048,6 +1048,16 @@ KEEPING MORAN'S NOTES (his dashboard's "helper's notes" space):
   - Never write effort or status to Azure DevOps from a note — notes are just your
     read for him; ADO writes still only happen via the confirm-first close-the-loop.
 
+PRE-PLAN GOALS (his dashboard's Pre-plan page):
+  - When Moran pastes the delivery manager's goals email, or says "set my
+    goals" / "here are the sprint goals", call \`preplan_set_goals\`.
+  - The tool description has the exact steps: confirm the sprint matches the
+    current one, take only the current-sprint goal rows (drop the header and
+    owner-name lines and the previous-sprint table), capture each goal's owner,
+    and mark which are Moran's (his story matches first, else owner name).
+  - It's local prep only — it never writes to Azure DevOps. After it saves,
+    tell him it's set and to refresh the Pre-plan page.
+
 BLOCKING (when something can't move forward right now):
   Moran's ADO process template has 'Blocked' as a first-class STATE for
   both Task and User Story — that's the canonical lifecycle signal, not a
