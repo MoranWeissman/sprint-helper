@@ -4,6 +4,7 @@ import {
   savePrePlan,
   type ApiPrePlanCall,
   type ApiPrePlanCard,
+  type ApiPrePlanGoal,
   type ApiPrePlanPayload,
 } from '../lib/api';
 
@@ -29,13 +30,11 @@ function relAgo(iso: string | null): string {
 export function PrePlanView({ onOpenItem }: PrePlanViewProps) {
   const [data, setData] = useState<ApiPrePlanPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [goalsDraft, setGoalsDraft] = useState('');
 
   const load = useCallback(() => {
     fetchPrePlan()
       .then(d => {
         setData(d);
-        setGoalsDraft(d.goals.join('\n'));
         setError(null);
       })
       .catch(e => setError(e instanceof Error ? e.message : String(e)));
@@ -62,13 +61,6 @@ export function PrePlanView({ onOpenItem }: PrePlanViewProps) {
       .catch(e => { setError(e instanceof Error ? e.message : String(e)); load(); });
   };
 
-  const saveGoals = () => {
-    const goals = goalsDraft.split('\n').map(g => g.trim()).filter(Boolean);
-    savePrePlan({ goals })
-      .then(d => { setData(d); setGoalsDraft(d.goals.join('\n')); })
-      .catch(e => { setError(e instanceof Error ? e.message : String(e)); load(); });
-  };
-
   if (error) {
     return <div className="preplan-state preplan-error">Couldn't load the pre-plan page. {error}</div>;
   }
@@ -84,16 +76,22 @@ export function PrePlanView({ onOpenItem }: PrePlanViewProps) {
       </header>
 
       <section className="preplan-goals">
-        <label htmlFor="preplan-goals-box">Sprint goals (paste from the email — one per line)</label>
-        <textarea
-          id="preplan-goals-box"
-          className="preplan-goals-box"
-          value={goalsDraft}
-          onChange={e => setGoalsDraft(e.target.value)}
-          onBlur={saveGoals}
-          rows={Math.max(3, goalsDraft.split('\n').length)}
-          placeholder="e.g. Improve rollout confidence"
-        />
+        <p className="preplan-goals-hint">
+          Paste your goals email into a chat and ask me to set them up. They’ll appear here.
+        </p>
+        {data.goals.length === 0 ? (
+          <p className="preplan-goals-empty">No goals set yet.</p>
+        ) : (
+          <ul className="preplan-goals-list">
+            {data.goals.map((g, i) => (
+              <li key={i} className={`preplan-goal-item${g.isMine ? ' is-mine' : ''}`}>
+                <span className="preplan-goal-text">Goal {i + 1}: {g.text}</span>
+                {g.owner && <span className="preplan-goal-owner">{g.owner}</span>}
+                {g.isMine && <span className="preplan-goal-mine">mine</span>}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {data.cards.length === 0 ? (
@@ -145,7 +143,7 @@ export function PrePlanView({ onOpenItem }: PrePlanViewProps) {
 
 function PrePlanCardRow(props: {
   card: ApiPrePlanCard;
-  goals: string[];
+  goals: ApiPrePlanGoal[];
   onOpenItem?: (id: string) => void;
   onCall: (call: ApiPrePlanCall) => void;
   onGoal: (goalIndex: number | null) => void;
@@ -189,7 +187,7 @@ function PrePlanCardRow(props: {
           >
             <option value="">no goal</option>
             {goals.map((g, i) => (
-              <option key={i} value={i}>{`Goal ${i + 1}: ${g.length > 40 ? g.slice(0, 39) + '…' : g}`}</option>
+              <option key={i} value={i}>{`Goal ${i + 1}: ${g.text.length > 40 ? g.text.slice(0, 39) + '…' : g.text}`}</option>
             ))}
           </select>
         )}

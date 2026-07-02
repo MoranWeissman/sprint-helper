@@ -4784,8 +4784,14 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 .preplan-state { padding: 40px 0; color: var(--ink-3); text-align: center; font-size: 15px; }
 .preplan-error { color: var(--st-blocked, #d98); }
 .preplan-goals { display: flex; flex-direction: column; gap: 8px; }
-.preplan-goals label { font-size: 13px; color: var(--ink-3); }
-.preplan-goals-box { width: 100%; resize: vertical; background: var(--surface-2, #1c1c22); color: var(--ink-1); border: 1px solid var(--line, #333); border-radius: 8px; padding: 10px 12px; font: inherit; line-height: 1.5; }
+.preplan-goals-hint { margin: 0 0 10px; font-size: 13px; color: var(--ink-2); }
+.preplan-goals-empty { margin: 0; color: var(--ink-3); font-size: 14px; }
+.preplan-goals-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.preplan-goal-item { display: flex; align-items: center; gap: 10px; background: var(--surface-2, #1c1c22); border: 1px solid var(--line, #333); border-radius: 8px; padding: 8px 12px; }
+.preplan-goal-item.is-mine { border-left: 3px solid var(--accent, #5b8def); }
+.preplan-goal-text { color: var(--ink-1); font-size: 14px; flex: 1; }
+.preplan-goal-owner { color: var(--ink-2); font-size: 13px; }
+.preplan-goal-mine { color: var(--accent, #5b8def); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 .preplan-cards { display: flex; flex-direction: column; gap: 12px; }
 .preplan-card { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; background: var(--surface-2, #1c1c22); border: 1px solid var(--line, #333); border-left: 3px solid var(--st-going, #5b8def); border-radius: 10px; padding: 14px 16px; }
 .preplan-card.is-blocked { border-left-color: var(--st-blocked, #d98); }
