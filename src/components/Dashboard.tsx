@@ -9,6 +9,7 @@ import {
   useDashboardData,
   type ApiHelperNote,
   type ApiHelperNotes,
+  type ApiNeedsYou,
   type ApiOutlookCapacity,
   type ApiPayload,
   type ApiSessionEvent,
@@ -154,7 +155,17 @@ function DashboardLive({
   // R2 focus state: the Day screen morphs to the live task automatically.
   // `focalId` lets a second live task be promoted to the focus; `showBoard`
   // is the manual "show the whole board" escape while a session is still live.
-  const [focalId, setFocalId] = useState<string | null>(null);
+  // The Focus pick survives refreshes — Focus must never swap tasks on its
+  // own while the picked task is still live (multi-session rule).
+  const [focalId, setFocalIdState] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem('sh.focus.pick');
+  });
+  const setFocalId = (id: string | null) => {
+    setFocalIdState(id);
+    if (id == null) window.localStorage.removeItem('sh.focus.pick');
+    else window.localStorage.setItem('sh.focus.pick', id);
+  };
   const [showBoard, setShowBoard] = useState(false);
   // Day mode is now two-place: Daily (the board) and Focus (auto-morphs when
   // a session is live). The old "Overview" place was merged into Daily —
@@ -164,14 +175,21 @@ function DashboardLive({
     if (liveItems.length === 0) {
       setShowBoard(false);
       setFocalId(null);
+      return;
     }
-  }, [liveItems.length]);
+    // The picked task stopped being live (its session ended) but others are
+    // still going — clear the stale pick so the fallback (newest live) rules.
+    if (focalId != null && !liveItems.some(w => w.id === focalId)) {
+      setFocalId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveItems, focalId]);
   const focalTask = useMemo(
     () => liveItems.find(w => w.id === focalId) ?? liveItems[0] ?? null,
     [liveItems, focalId],
   );
-  const secondaryLive = useMemo(
-    () => liveItems.find(w => !focalTask || w.id !== focalTask.id) ?? null,
+  const otherLive = useMemo(
+    () => liveItems.filter(w => !focalTask || w.id !== focalTask.id),
     [liveItems, focalTask],
   );
   // The story the focal task belongs to (if any). Focus uses this as the
@@ -291,9 +309,9 @@ function DashboardLive({
                 <R21Focus
                   task={focalTask}
                   story={focalStory}
-                  secondary={secondaryLive}
+                  others={otherLive}
                   onOpenItem={openItem}
-                  onPromoteSecondary={() => secondaryLive && setFocalId(secondaryLive.id)}
+                  onPromote={id => setFocalId(id)}
                   helperNotes={data.helperNotes}
                   onRefresh={onRefresh}
                 />
@@ -307,6 +325,8 @@ function DashboardLive({
               onOpenItem={openItem}
               outlookCapacity={data.outlookCapacity}
               helperNotes={data.helperNotes}
+              needsYou={data.needsYou}
+              now={now}
               standup={data.standup}
               today={today}
               totalDays={sprintCtx?.totalDays ?? 0}
@@ -820,17 +840,17 @@ function priorColumnLabel(yesterdayISO: string, todayISO: string): string {
 function R21Focus({
   task,
   story,
-  secondary,
+  others,
   onOpenItem,
-  onPromoteSecondary,
+  onPromote,
   helperNotes,
   onRefresh,
 }: {
   task: ApiWorkItem;
   story: ApiUserStoryGroup | null;
-  secondary: ApiWorkItem | null;
+  others: ApiWorkItem[];
   onOpenItem: (id: string) => void;
-  onPromoteSecondary: () => void;
+  onPromote: (id: string) => void;
   helperNotes: ApiHelperNotes;
   onRefresh: () => void;
 }) {
@@ -908,6 +928,7 @@ function R21Focus({
         <div className="r21-focal-current-head">
           <span className="r21-focal-current-label">Currently running</span>
           <span className="r21-live-pill">live</span>
+          {task.activeSession?.waiting && <span className="r21-waiting-pill">waiting for you</span>}
           {startedAt && <span className="r21-since">started <span className="v">{startedAt}</span></span>}
         </div>
         <button
@@ -940,6 +961,37 @@ function R21Focus({
           </span>
         </div>
       </section>
+
+      {others.length > 0 && (
+        <section className="r21-also-live" aria-label="Also running">
+          <div className="r21-also-live-head">
+            <span className="r21-also-live-label">Also running</span>
+            <span className="r21-also-live-count">{others.length}</span>
+          </div>
+          <div className="r21-also-live-row">
+            {others.map(w => (
+              <button
+                key={w.id}
+                type="button"
+                className={`r21-also-card${w.activeSession?.waiting ? ' is-waiting' : ''}`}
+                onClick={() => onPromote(w.id)}
+                title="Make this the focus instead"
+              >
+                <span className="r21-also-card-title">{w.title}</span>
+                <span className="r21-also-card-meta">
+                  {w.parent && <span className="r21-also-card-story">{w.parent.title}</span>}
+                  {w.activeSession && (
+                    <span className="r21-also-card-since">started {fmtEventStamp(w.activeSession.startedAt)}</span>
+                  )}
+                </span>
+                {w.activeSession?.waiting && (
+                  <span className="r21-also-card-waiting">waiting for you</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {story && story.tasks.length > 0 && (
         <section className="r21-focal-tasks">
@@ -984,14 +1036,6 @@ function R21Focus({
             ))}
           </ul>
         </section>
-      )}
-
-      {secondary && (
-        <button className="r21-also" onClick={onPromoteSecondary} title="Make this the focus instead">
-          <span className="cap">ALSO LIVE</span>
-          <span className="t">{secondary.title}</span>
-          <span className="arr">→</span>
-        </button>
       )}
     </div>
   );
@@ -1147,6 +1191,8 @@ function DailyView({
   onOpenItem,
   outlookCapacity,
   helperNotes,
+  needsYou,
+  now,
   standup,
   today,
   totalDays,
@@ -1162,6 +1208,8 @@ function DailyView({
   onOpenItem: (id: string) => void;
   outlookCapacity: ApiOutlookCapacity | null;
   helperNotes: ApiHelperNotes;
+  needsYou: ApiNeedsYou;
+  now: Date;
   standup: ApiPayload['standup'];
   today: number;
   totalDays: number;
@@ -1369,6 +1417,7 @@ function DailyView({
             focalTitle={focalTitle}
             scrollerRef={storiesColRef}
           />
+          <RailNeedsYou needsYou={needsYou} now={now} />
           <RailNotes notes={helperNotes} onRefresh={onRefresh} />
         </>
       )}
@@ -1561,6 +1610,47 @@ function NoteRow({ note, onChange }: { note: ApiHelperNote; onChange: () => void
       )}
       {error && <p className="note-error">{error}</p>}
     </li>
+  );
+}
+
+function ageShort(iso: string, now: Date): string {
+  const min = Math.max(0, Math.floor((now.getTime() - new Date(iso).getTime()) / 60000));
+  if (min < 60) return `${min}m`;
+  return `${Math.floor(min / 60)}h ${min % 60}m`;
+}
+
+// displayName arrives as **title** (#id) — render the title plain.
+function plainTitle(displayName: string): string {
+  return displayName.replace(/\*\*/g, '').replace(/\s*\(#\d+\)\s*$/, '');
+}
+
+function RailNeedsYou({ needsYou, now }: { needsYou: ApiNeedsYou; now: Date }) {
+  if (needsYou.waiting.length === 0 && needsYou.recentlyFinished.length === 0) return null;
+  return (
+    <section className="r22-rail-card r22-rail-needs-you" aria-label="Needs you">
+      <div className="r22-rail-card-head">
+        <span className="r22-rail-card-label">Needs you</span>
+        {needsYou.waiting.length > 0 && (
+          <span className="r22-rail-card-meta">{needsYou.waiting.length} waiting</span>
+        )}
+      </div>
+      <ul className="needsyou-list">
+        {needsYou.waiting.map(w => (
+          <li key={`w-${w.workItemId}-${w.waitingSince}`} className="needsyou-row is-waiting">
+            <span className="needsyou-title">{plainTitle(w.displayName)}</span>
+            <span className="needsyou-question">{w.question}</span>
+            <span className="needsyou-age">waiting {ageShort(w.waitingSince, now)}</span>
+          </li>
+        ))}
+        {needsYou.recentlyFinished.map(f => (
+          <li key={`f-${f.workItemId}-${f.endedAt}`} className="needsyou-row is-finished">
+            <span className="needsyou-title">{plainTitle(f.displayName)}</span>
+            {f.summary && <span className="needsyou-summary">{f.summary}</span>}
+            <span className="needsyou-age">finished {ageShort(f.endedAt, now)} ago</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

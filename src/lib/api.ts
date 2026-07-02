@@ -24,6 +24,27 @@ export interface ApiSessionEvent {
 export interface ApiActiveSession {
   id: string;
   startedAt: string;
+  /** True when this session's chat is stopped, waiting on Moran's answer. */
+  waiting?: boolean;
+}
+
+export interface ApiNeedsYouWaiting {
+  workItemId: number;
+  displayName: string;
+  question: string;
+  waitingSince: string;
+}
+
+export interface ApiNeedsYouFinished {
+  workItemId: number;
+  displayName: string;
+  summary: string | null;
+  endedAt: string;
+}
+
+export interface ApiNeedsYou {
+  waiting: ApiNeedsYouWaiting[];
+  recentlyFinished: ApiNeedsYouFinished[];
 }
 
 export interface ApiHelperNote {
@@ -212,6 +233,7 @@ export interface ApiPayload {
     count: number;
     fromSprintLabel: string;
   } | null;
+  needsYou: ApiNeedsYou;
   ceremonies: {
     upcoming: ApiUpcomingCeremony[];
     next: ApiUpcomingCeremony | null;

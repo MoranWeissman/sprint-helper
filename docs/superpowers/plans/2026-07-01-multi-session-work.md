@@ -1275,7 +1275,7 @@ git commit -m "feat(focus): sticky pick + also-running cards + needs-you rail ca
 
 1. Two chats in two repos, a session each → each chat's greeting names its own task via `repoHint`; neither adopts the other's.
 2. Focus shows both: main + one "Also running" card; tap swaps; refresh keeps the pick.
-3. From the background chat: assistant calls `session_waiting` before asking → within ~15s the "Needs you" card shows the task + question + "waiting Xm", and the small card gets the mark. Answer in that chat → next `session_log` clears it.
+3. From the background chat: assistant calls `session_waiting` before asking → within two dashboard refreshes (~30s) the "Needs you" card shows the task + question + "waiting Xm", and the small card gets the mark. Answer in that chat → next `session_log` clears it.
 4. Cross-repo `session_log` (deliberate) → response carries the `cwdWarning` line.
 5. Finish a task in one chat (`session_end` done) → shows under finished for a while; PAUSE a task → does NOT show as finished.
 6. Board and Azure DevOps unchanged by any of the new surfaces.

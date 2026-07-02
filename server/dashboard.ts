@@ -29,9 +29,12 @@ import {
   getActiveSessionMap,
   getRecentEventsMap,
   getSessionCountMap,
+  listActiveSessions,
+  listRecentlyEnded,
   type Session,
   type SessionEvent,
 } from './sessions';
+import { buildNeedsYou, RECENTLY_FINISHED_HOURS, type NeedsYouBlock } from './needs-you';
 import {
   getLocalLoggedMap,
   getPendingChangesCount,
@@ -83,7 +86,7 @@ export interface DashboardWorkItem {
    * plugin opens these via `session_start`; the Day dashboard surfaces them so
    * Moran can see Claude Code is actively reporting in.
    */
-  activeSession?: { id: string; startedAt: string };
+  activeSession?: { id: string; startedAt: string; waiting: boolean };
   /** Newest-first session events (focus / summary / blocker / decision / note). */
   recentActivity: SessionEvent[];
   /** Number of work sessions (open or closed) recorded against this item. */
@@ -206,6 +209,12 @@ export interface DashboardPayload {
   standup: StandupBlock;
   /** Open tasks left behind in a previous sprint, for the Daily carry-forward banner. Null when none. */
   carryForward: CarryForwardSummary | null;
+  /**
+   * Which chats are waiting on Moran + which tasks finished in the last few
+   * hours. Drives the "Needs you" rail card. Always present (empty lists when
+   * quiet).
+   */
+  needsYou: NeedsYouBlock;
   fetchedAt: string;
 }
 
@@ -363,6 +372,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
       ceremonies: buildCeremonyBlock(null, null),
       standup: buildStandup({ taskMeta: new Map() }),
       carryForward: null,
+      needsYou: { waiting: [], recentlyFinished: [] },
       fetchedAt: new Date().toISOString(),
     };
   }
@@ -506,6 +516,19 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     carryForward = null;
   }
 
+  // "Needs you": waiting chats + recently finished tasks. Titles/states come
+  // from the taskMeta map built above (already covers every sprint item plus
+  // any worked items merged in from outside the sprint) — reused here instead
+  // of building a duplicate lookup. A session on an item outside taskMeta
+  // falls back to a bare #id (waiting still shows; finished is dropped since
+  // we can't confirm it's done).
+  const needsYou = buildNeedsYou({
+    activeSessions: listActiveSessions(),
+    recentlyEnded: listRecentlyEnded(RECENTLY_FINISHED_HOURS),
+    titleFor: id => taskMeta.get(id)?.title ?? null,
+    isDone: id => DONE_STATES.has(taskMeta.get(id)?.state ?? ''),
+  });
+
   return {
     user: cfg.user,
     sprint: {
@@ -530,6 +553,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     ),
     standup,
     carryForward,
+    needsYou,
     fetchedAt: new Date().toISOString(),
   };
 }
@@ -778,7 +802,9 @@ function projectWorkItem(
     localUncapturedSeconds: uncaptured.get(w.id) ?? 0,
     localLoggedSeconds: localLogged.get(w.id) ?? 0,
     runningSince: running.get(w.id),
-    activeSession: session ? { id: session.id, startedAt: session.startedAt } : undefined,
+    activeSession: session
+      ? { id: session.id, startedAt: session.startedAt, waiting: session.waitingSince != null }
+      : undefined,
     recentActivity: recentEvents.get(w.id) ?? [],
     sessionCount: sessionCounts.get(w.id) ?? 0,
     tags: w.tags,

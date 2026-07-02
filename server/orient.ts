@@ -14,7 +14,13 @@ import { buildDashboardCached } from './dashboard-cache';
 import { getDb } from './db';
 import { ensureCapacityNudge, getHelperNotes, scanStaleRemaining } from './helper-notes';
 import { getPlanningHome } from './planning-home';
-import { getLastEventTimestampMap, listActiveSessions, type SessionRow } from './sessions';
+import {
+  chatCwdBasename,
+  getLastEventTimestampMap,
+  listActiveSessions,
+  sessionOwnershipHint,
+  type SessionRow,
+} from './sessions';
 
 /**
  * Minutes of no activity (no session_log event) before an open session looks
@@ -60,6 +66,14 @@ export interface OrientLiveSession {
    * has no parent. Echo verbatim — don't assemble.
    */
   parentStoryDisplayName: string | null;
+  /** Repo folder the session's chat was started in; null on older sessions. */
+  cwd: string | null;
+  /**
+   * Pre-shipped plain-English read on whose session this is, compared against
+   * THIS chat's repo. Echo verbatim — don't assemble your own phrasing. See
+   * SERVER_INSTRUCTIONS → PARALLEL CHATS.
+   */
+  repoHint: string;
 }
 
 export interface OrientPlanningHome {
@@ -164,6 +178,17 @@ export function sessionReminderFor(liveSessionCount: number): string | null {
   return "You don't have a work session open. When you start working a task, call session_start on it so your progress gets recorded.";
 }
 
+/**
+ * Plain-English label for a live session's home repo, from this chat's point
+ * of view. 'unknown' sides never warn and never claim a match.
+ */
+export function repoHintFor(sessionCwd: string | null, chatCwd: string | null): string {
+  const ownership = sessionOwnershipHint(sessionCwd, chatCwd);
+  if (ownership === 'mine') return `started from \`${sessionCwd}\` — matches this chat`;
+  if (ownership === 'other-repo') return `started from \`${sessionCwd}\` — a different chat's work`;
+  return sessionCwd ? `started from \`${sessionCwd}\`` : 'repo unknown (older session)';
+}
+
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 const MS_PER_MIN = 1000 * 60;
 
@@ -234,6 +259,7 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
 
   const activeSessions = listActiveSessions();
   const lastEventBySession = getLastEventTimestampMap(activeSessions.map(s => s.id));
+  const chatCwd = chatCwdBasename();
   const liveNow: OrientLiveSession[] = activeSessions.map(s => {
     const title = titleById.get(s.workItemId) ?? `#${s.workItemId}`;
     const lastActivity = lastEventBySession.get(s.id) ?? s.startedAt;
@@ -250,6 +276,8 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
       mayBeStale: idleMinutes >= STALE_IDLE_MINUTES,
       parentStoryId: parent?.id ?? null,
       parentStoryDisplayName: parent ? displayNameFor(parent.id, parent.title) : null,
+      cwd: s.cwd,
+      repoHint: repoHintFor(s.cwd, chatCwd),
     };
   });
 

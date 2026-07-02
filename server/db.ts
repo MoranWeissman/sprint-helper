@@ -144,6 +144,32 @@ function migrate(db: DB) {
   if (!hasWorkItemId) {
     db.exec('ALTER TABLE helper_notes ADD COLUMN work_item_id INTEGER');
   }
+
+  // Idempotent ADD COLUMNs for multi-session work (2026-07-01).
+  // cwd: the repo folder name (basename) of the chat that started the session
+  //   — with several chats running in parallel, this is how each chat
+  //   recognizes its OWN session instead of adopting another chat's.
+  // waiting_note / waiting_since: set (via session_waiting) when a chat stops
+  //   mid-task to ask Moran a question; the dashboard's "Needs you" card reads
+  //   them. Cleared automatically by the session's next log or end.
+  const hasSessionCwd = db
+    .prepare("SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'cwd'")
+    .get();
+  if (!hasSessionCwd) {
+    db.exec('ALTER TABLE sessions ADD COLUMN cwd TEXT');
+  }
+  const hasWaitingNote = db
+    .prepare("SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'waiting_note'")
+    .get();
+  if (!hasWaitingNote) {
+    db.exec('ALTER TABLE sessions ADD COLUMN waiting_note TEXT');
+  }
+  const hasWaitingSince = db
+    .prepare("SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'waiting_since'")
+    .get();
+  if (!hasWaitingSince) {
+    db.exec('ALTER TABLE sessions ADD COLUMN waiting_since TEXT');
+  }
 }
 
 /** For tests or graceful shutdown. */
