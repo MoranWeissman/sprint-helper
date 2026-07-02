@@ -44,12 +44,17 @@ import {
   type SprintStory,
 } from '../server/story-match.js';
 import {
+  chatCwdBasename,
   endSession,
+  getSession,
   isSessionEventType,
   listActiveSessions,
   listEventsForSession,
   logEvent,
+  sessionOwnershipHint,
+  setSessionWaiting,
   startSession,
+  type Session,
 } from '../server/sessions.js';
 import { getSetting, setSetting } from '../server/timers.js';
 import * as timerService from '../server/timer-service.js';
@@ -400,6 +405,20 @@ On his answer:
 Never end a session silently because it looks abandoned. The open
 session is a real signal — sometimes he's still on it and just
 hasn't typed. Always ask.
+
+PARALLEL CHATS — several sessions can be live at once, one per chat:
+  - Every \`orient\` liveNow entry carries \`repoHint\` — echo it, don't
+    rephrase. A session that "matches this chat" is probably this chat's
+    own work; a "different chat's work" session belongs to another window.
+  - Pick up ONLY a session whose repo matches this chat. If MORE than one
+    live session matches, ask Moran by task title which one this chat is
+    on. Never assume.
+  - Never pick up, log against, or close a different chat's session
+    without asking Moran first. \`session_log\` / \`session_end\` return a
+    \`cwdWarning\` when you cross that line — if you see one, stop and
+    check with him before continuing.
+  - Never switch this chat to a different session mid-conversation unless
+    Moran asks for it.
 
 ORIENT IS POINT-IN-TIME — re-read live state after writes:
 The orient packet is a snapshot from when you called orient.
@@ -799,6 +818,15 @@ DO NOT write a session_log for:
   - Internal deliberation that didn't change anything.
   - Routine commits with no narrative value — though most real
     commits ARE worth logging, so when in doubt, log.
+
+WAITING ON MORAN — his dashboard can show that a chat needs him:
+  - When you are about to STOP mid-task because you need Moran's answer
+    (a real question, not the session_end close-out), call
+    \`session_waiting\` with the open sessionId and the question as one
+    short plain sentence. His dashboard then shows the task under
+    "Needs you" until you're working again.
+  - No cleanup: your next \`session_log\` or \`session_end\` clears it.
+  - Local only — nothing reaches Azure DevOps.
 
 STANDUP BLURB — what Moran reads tomorrow:
 Every \`progress\` and \`blocker\` event MUST also include
@@ -2092,6 +2120,7 @@ server.registerTool(
         `remainingHoursAfter must be > 0. If the task is done, call session_end with done=true instead — that's the only path that pushes CompletedWork and closes the task properly. Setting RemainingWork to 0 via session_log leaves the task in a broken state (Remaining=0, session still open, CompletedWork not pushed).`,
       );
     }
+    const cwdWarning = buildCwdWarning(getSession(sessionId));
     const event = logEvent({ sessionId, type, text, standupSummary });
     if (!event) return errorResult(`Session not found: ${sessionId}`);
     void mirrorTaskFile(event.workItemId); // background — keep the archive file fresh
@@ -2110,7 +2139,11 @@ server.registerTool(
         : buildBlockNudge(await readBlockState(event.workItemId));
 
     if (remainingHoursAfter == null) {
-      return jsonResult({ event, ...(blockNudge ? { blockNudge } : {}) });
+      return jsonResult({
+        event,
+        ...(blockNudge ? { blockNudge } : {}),
+        ...(cwdWarning ? { cwdWarning } : {}),
+      });
     }
     try {
       await setRemaining(event.workItemId, remainingHoursAfter);
@@ -2125,6 +2158,7 @@ server.registerTool(
           workItemId: event.workItemId,
         },
         ...(blockNudge ? { blockNudge } : {}),
+        ...(cwdWarning ? { cwdWarning } : {}),
       });
     } catch (e) {
       // Event was already logged; surface the partial success + the write error.
@@ -2136,6 +2170,7 @@ server.registerTool(
           error: e instanceof Error ? e.message : String(e),
         },
         ...(blockNudge ? { blockNudge } : {}),
+        ...(cwdWarning ? { cwdWarning } : {}),
       });
     }
   },
@@ -2144,6 +2179,17 @@ server.registerTool(
 // How long a session can run with nothing logged before session_end requires
 // a catch-up note (Rule 1). Matches the stale-log nudge window. Tune here.
 const SESSION_LOG_REQUIRED_AFTER_MINUTES = 45;
+
+/**
+ * Cross-repo speed bump (not a wall): when a chat logs against a session that
+ * a chat in a DIFFERENT repo started, warn — but let the call through.
+ * 'unknown' (old sessions, odd launch dirs) never warns.
+ */
+function buildCwdWarning(session: Session | null): string | null {
+  if (!session) return null;
+  if (sessionOwnershipHint(session.cwd, chatCwdBasename()) !== 'other-repo') return null;
+  return `⚠️ This session was started from \`${session.cwd}\` — a different chat's work. Make sure you're in the right chat before logging here.`;
+}
 
 server.registerTool(
   'session_end',
@@ -2180,6 +2226,7 @@ server.registerTool(
     // Computed once up here: used by the no-open-session warning below (Move 3)
     // and saved as the closing summary when the session does close.
     const haveSummary = summary != null && summary.trim() !== '';
+    const cwdWarning = buildCwdWarning(getSession(sessionId));
 
     // ---- Pre-close speed bumps (run BEFORE the session is closed) ----
     // The session is still open here, so we can read what happened during it.
@@ -2265,6 +2312,7 @@ server.registerTool(
           remainingHoursPushed: 0,
           newState,
           ...(storyCloseSuggestion ? { storyCloseSuggestion } : {}),
+          ...(cwdWarning ? { cwdWarning } : {}),
         });
       }
       // Pause-only path. Stop the local timer. The only ADO write here is the
@@ -2277,12 +2325,40 @@ server.registerTool(
           done: false,
           timer,
           remainingHoursPushed: remainingHoursAfter,
+          ...(cwdWarning ? { cwdWarning } : {}),
         });
       }
-      return jsonResult({ session, done: false, timer });
+      return jsonResult({ session, done: false, timer, ...(cwdWarning ? { cwdWarning } : {}) });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
+  },
+);
+
+server.registerTool(
+  'session_waiting',
+  {
+    title: "Flag that you're waiting on Moran",
+    description:
+      "Call this right BEFORE you stop mid-task to ask Moran a question, so his dashboard shows the task is waiting for him (the 'Needs you' card). Pass the open sessionId and the question as ONE short plain-English sentence — write it like you'd text him, no file paths or tool names. The flag clears itself on this session's next session_log or session_end; no cleanup call needed. Local only — never writes to Azure DevOps. Don't call it for the final 'is this task done?' close-out question at session end — session_end itself covers that moment.",
+    inputSchema: {
+      sessionId: z.string().describe('Session id returned by session_start.'),
+      question: z
+        .string()
+        .min(1)
+        .describe('The question Moran needs to answer. One short plain sentence.'),
+    },
+  },
+  async ({ sessionId, question }) => {
+    const session = setSessionWaiting({ sessionId, question });
+    if (!session) {
+      return errorResult(
+        `No open session matched ${sessionId} — nothing was flagged. The 'Needs you' card only tracks open sessions.`,
+      );
+    }
+    // The dashboard reads waiting_note/waiting_since via /api/dashboard.
+    invalidateDashboardCache();
+    return jsonResult({ waiting: true, question, sessionId: session.id });
   },
 );
 
