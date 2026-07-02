@@ -58,6 +58,21 @@ describe('buildNeedsYou', () => {
     ]);
   });
 
+  it('shows a task once even when an earlier pause session also ended in the window', () => {
+    const got = buildNeedsYou({
+      activeSessions: [],
+      recentlyEnded: [
+        sess({ id: 'fin', workItemId: 40, endedAt: '2026-07-01T15:00:00.000Z', summary: 'shipped it' }),
+        sess({ id: 'pause', workItemId: 40, endedAt: '2026-07-01T12:00:00.000Z', summary: 'paused for lunch' }),
+      ],
+      titleFor: () => 'Deploy ArgoCD',
+      isDone: () => true,
+    });
+    expect(got.recentlyFinished).toHaveLength(1);
+    expect(got.recentlyFinished[0].summary).toBe('shipped it');
+    expect(got.recentlyFinished[0].endedAt).toBe('2026-07-01T15:00:00.000Z');
+  });
+
   it('falls back to a bare #id displayName when the title is unknown', () => {
     const got = buildNeedsYou({
       activeSessions: [sess({ workItemId: 30, waitingNote: 'q', waitingSince: '2026-07-01T09:00:00.000Z' })],

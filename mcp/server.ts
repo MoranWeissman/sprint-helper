@@ -1647,7 +1647,11 @@ server.registerTool(
     try {
       const stateChange = await transitionToBlocked(workItemId);
       const tags = await updateTags(workItemId, { add: ['Blocked'] });
-      const session = startSession({ workItemId });
+      // A block can be called from any chat window, not necessarily the one
+      // actually working the task — so don't let this window's cwd stamp
+      // the session's home. Leave cwd unknown; the first working chat's
+      // session_start backfills it (never-overwrite keeps it honest).
+      const session = startSession({ workItemId, cwd: null });
       // Blocked ≠ working. If a stopwatch was running on this item, stop it;
       // never start a new one from the block action. The session row is kept
       // so the structured 'blocker' event has a container to live in.
@@ -1697,7 +1701,10 @@ server.registerTool(
     try {
       const stateChange = await transitionFromBlocked(workItemId);
       const tags = await updateTags(workItemId, { remove: ['Blocked'] });
-      const session = startSession({ workItemId });
+      // Same constraint as workitem_block: an unblock can come from any
+      // window, so don't stamp this chat's cwd onto the session. Leave it
+      // unknown and let the first working chat's session_start backfill it.
+      const session = startSession({ workItemId, cwd: null });
       timerService.start(workItemId);
 
       const restoredNote = stateChange.restored ? '' : ', prior state not captured';
@@ -2120,6 +2127,8 @@ server.registerTool(
         `remainingHoursAfter must be > 0. If the task is done, call session_end with done=true instead — that's the only path that pushes CompletedWork and closes the task properly. Setting RemainingWork to 0 via session_log leaves the task in a broken state (Remaining=0, session still open, CompletedWork not pushed).`,
       );
     }
+    // buildCwdWarning is a hoisted function declaration defined just below
+    // this handler — it's in scope here even though it appears later in the file.
     const cwdWarning = buildCwdWarning(getSession(sessionId));
     const event = logEvent({ sessionId, type, text, standupSummary });
     if (!event) return errorResult(`Session not found: ${sessionId}`);
@@ -2356,7 +2365,12 @@ server.registerTool(
         `No open session matched ${sessionId} — nothing was flagged. The 'Needs you' card only tracks open sessions.`,
       );
     }
-    // The dashboard reads waiting_note/waiting_since via /api/dashboard.
+    // This only clears THIS process's (the MCP server's) own cache, so its
+    // own orient/snapshot reads see the flag right away. It does nothing for
+    // the dashboard — that's a separate process that reads waiting_note/
+    // waiting_since straight from SQLite on its own poll+rebuild cycle
+    // (~15-30s), regardless of this call. Don't add more invalidation here
+    // to chase dashboard latency — it can't reach across processes.
     invalidateDashboardCache();
     return jsonResult({ waiting: true, question, sessionId: session.id });
   },

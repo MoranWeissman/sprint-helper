@@ -52,7 +52,7 @@ export function buildNeedsYou(opts: {
 
   // A pause also ends a session — only tasks that are REALLY done now count
   // as finished. Everything else ages out silently.
-  const recentlyFinished = opts.recentlyEnded
+  const finishedRows = opts.recentlyEnded
     .filter(s => s.endedAt != null && opts.isDone(s.workItemId))
     .map(s => ({
       workItemId: s.workItemId,
@@ -60,6 +60,21 @@ export function buildNeedsYou(opts: {
       summary: s.summary,
       endedAt: s.endedAt as string,
     }));
+
+  // A task can end more than one session in the window (e.g. a lunch pause
+  // then the real finish). Only the newest ended session per work item
+  // should show — otherwise the same task appears twice, and an older
+  // pause's summary can display as if it were the finish.
+  const newestByWorkItem = new Map<number, (typeof finishedRows)[number]>();
+  for (const row of finishedRows) {
+    const current = newestByWorkItem.get(row.workItemId);
+    if (!current || row.endedAt > current.endedAt) {
+      newestByWorkItem.set(row.workItemId, row);
+    }
+  }
+  const recentlyFinished = [...newestByWorkItem.values()].sort((a, b) =>
+    a.endedAt < b.endedAt ? 1 : a.endedAt > b.endedAt ? -1 : 0,
+  );
 
   return { waiting, recentlyFinished };
 }
