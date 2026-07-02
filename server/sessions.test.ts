@@ -6,7 +6,10 @@ import Database from 'better-sqlite3';
 const h = vi.hoisted(() => ({ db: { value: null as null | InstanceType<typeof Database> } }));
 vi.mock('./db', () => ({ getDb: () => h.db.value }));
 
-import { startSession, sessionOwnershipHint } from './sessions';
+import {
+  startSession, sessionOwnershipHint, setSessionWaiting, logEvent, endSession,
+  listRecentlyEnded, getSession,
+} from './sessions';
 
 function makeDb() {
   const db = new Database(':memory:');
@@ -82,5 +85,52 @@ describe('sessionOwnershipHint', () => {
     expect(sessionOwnershipHint(null, 'repo-x')).toBe('unknown');
     expect(sessionOwnershipHint('repo-x', null)).toBe('unknown');
     expect(sessionOwnershipHint(null, null)).toBe('unknown');
+  });
+});
+
+describe('waiting flag', () => {
+  it('sets the question and timestamp on an open session', () => {
+    const s = startSession({ workItemId: 10, cwd: 'repo-x' });
+    const w = setSessionWaiting({ sessionId: s.id, question: 'Which cluster should I target?' });
+    expect(w?.waitingNote).toBe('Which cluster should I target?');
+    expect(w?.waitingSince).not.toBeNull();
+  });
+
+  it('returns null for a missing or ended session (nothing stored)', () => {
+    expect(setSessionWaiting({ sessionId: 'nope', question: 'q' })).toBeNull();
+    const s = startSession({ workItemId: 11, cwd: 'repo-x' });
+    endSession({ sessionId: s.id });
+    expect(setSessionWaiting({ sessionId: s.id, question: 'q' })).toBeNull();
+  });
+
+  it('clears on the next session_log event', () => {
+    const s = startSession({ workItemId: 12, cwd: 'repo-x' });
+    setSessionWaiting({ sessionId: s.id, question: 'q' });
+    logEvent({ sessionId: s.id, type: 'progress', text: 'he answered; moving on' });
+    expect(getSession(s.id)?.waitingNote).toBeNull();
+    expect(getSession(s.id)?.waitingSince).toBeNull();
+  });
+
+  it('clears on session end', () => {
+    const s = startSession({ workItemId: 13, cwd: 'repo-x' });
+    setSessionWaiting({ sessionId: s.id, question: 'q' });
+    endSession({ sessionId: s.id, summary: 'done for now' });
+    expect(getSession(s.id)?.waitingNote).toBeNull();
+    expect(getSession(s.id)?.waitingSince).toBeNull();
+  });
+});
+
+describe('listRecentlyEnded', () => {
+  it('returns sessions ended inside the window and skips older or open ones', () => {
+    const now = new Date('2026-07-01T12:00:00.000Z');
+    const db = h.db.value!;
+    const ins = db.prepare(
+      `INSERT INTO sessions (id, work_item_id, started_at, ended_at, client) VALUES (?, ?, ?, ?, 'claude-code')`,
+    );
+    ins.run('recent', 20, '2026-07-01T09:00:00.000Z', '2026-07-01T10:30:00.000Z'); // 1.5h ago — in
+    ins.run('old', 21, '2026-07-01T01:00:00.000Z', '2026-07-01T02:00:00.000Z');    // 10h ago — out
+    ins.run('open', 22, '2026-07-01T11:00:00.000Z', null);                          // open — out
+    const got = listRecentlyEnded(4, now);
+    expect(got.map(s => s.id)).toEqual(['recent']);
   });
 });

@@ -190,15 +190,71 @@ export function endSession({
   if (!row || row.ended_at != null) return row ? toSession(row) : null;
 
   const endedAt = new Date().toISOString();
-  db.prepare(`UPDATE sessions SET ended_at = ?, summary = ? WHERE id = ?`).run(
-    endedAt,
-    summary ?? row.summary,
-    sessionId,
-  );
+  db.prepare(
+    `UPDATE sessions SET ended_at = ?, summary = ?, waiting_note = NULL, waiting_since = NULL WHERE id = ?`,
+  ).run(endedAt, summary ?? row.summary, sessionId);
   if (summary && summary.trim().length > 0) {
     logEvent({ sessionId, type: 'progress', text: summary });
   }
   return { ...toSession(row), endedAt, summary: summary ?? row.summary };
+}
+
+/**
+ * Flag an open session as waiting on Moran (the chat stopped mid-task to ask
+ * him a question). The dashboard's "Needs you" card reads this. Returns null
+ * for a missing or already-ended session — nothing is stored. Cleared
+ * automatically by the session's next logEvent or endSession.
+ */
+export function setSessionWaiting({
+  sessionId,
+  question,
+}: {
+  sessionId: string;
+  question: string;
+}): Session | null {
+  const db = getDb();
+  const row = db
+    .prepare<[string], SessionRow>(`SELECT * FROM sessions WHERE id = ?`)
+    .get(sessionId);
+  if (!row || row.ended_at != null) return null;
+  const since = new Date().toISOString();
+  db.prepare(`UPDATE sessions SET waiting_note = ?, waiting_since = ? WHERE id = ?`).run(
+    question,
+    since,
+    sessionId,
+  );
+  return toSession({ ...row, waiting_note: question, waiting_since: since });
+}
+
+/** The chat is active again — whatever it was waiting on is stale. */
+function clearSessionWaiting(sessionId: string): void {
+  getDb()
+    .prepare(`UPDATE sessions SET waiting_note = NULL, waiting_since = NULL WHERE id = ?`)
+    .run(sessionId);
+}
+
+export function getSession(sessionId: string): Session | null {
+  const row = getDb()
+    .prepare<[string], SessionRow>(`SELECT * FROM sessions WHERE id = ?`)
+    .get(sessionId);
+  return row ? toSession(row) : null;
+}
+
+/**
+ * Sessions that ENDED within the last `hoursBack` hours, newest first. NOTE:
+ * a pause also ends a session — callers deciding "finished" must additionally
+ * check the work item's real state (see server/needs-you.ts).
+ */
+export function listRecentlyEnded(hoursBack: number, now: Date = new Date()): Session[] {
+  const cutoff = new Date(now.getTime() - hoursBack * 3_600_000).toISOString();
+  return getDb()
+    .prepare<[string], SessionRow>(
+      `SELECT * FROM sessions
+       WHERE ended_at IS NOT NULL AND datetime(ended_at) >= datetime(?)
+       ORDER BY datetime(ended_at) DESC`,
+    )
+    .all(cutoff)
+    .map(toSession);
 }
 
 /**
@@ -238,6 +294,7 @@ export function logEvent({
        VALUES (?, ?, ?, ?, ?, ?)`,
     )
     .run(sessionId, session.work_item_id, type, text, createdAt, standupSummary ?? null);
+  clearSessionWaiting(sessionId);
   return {
     id: Number(info.lastInsertRowid),
     sessionId,
