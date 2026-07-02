@@ -189,6 +189,21 @@ export function savePrePlanState(sprintName: string, state: PrePlanState): void 
   setSetting(prePlanSettingsKey(sprintName), JSON.stringify(state));
 }
 
+/**
+ * Replace a sprint's goals. Per-story call choices are untouched; a story's
+ * goalIndex link is kept when it still points at a valid goal, else reset to
+ * null (the goal set was replaced, so stale links drop). Pure — returns a new
+ * state, does not mutate the input.
+ */
+export function setGoals(state: PrePlanState, goals: PrePlanGoal[]): PrePlanState {
+  const stories: PrePlanState['stories'] = {};
+  for (const [id, s] of Object.entries(state.stories)) {
+    const keep = s.goalIndex != null && s.goalIndex < goals.length;
+    stories[id] = { call: s.call, goalIndex: keep ? s.goalIndex : null };
+  }
+  return { goals, stories };
+}
+
 const DONE_STATES = new Set(['Done', 'Closed', 'Resolved', 'Completed', 'Removed']);
 const ACTIVE_STATES = new Set(['Active', 'In Progress', 'Committed', 'Doing']);
 const STORY_TYPES = new Set(['user story', 'bug']);

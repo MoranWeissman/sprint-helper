@@ -17,6 +17,7 @@ import {
   selectCarriedStories,
   buildCards,
   normalizeGoals,
+  setGoals,
   type PrePlanGoal,
 } from './preplan';
 import { setSetting } from './timers';
@@ -260,5 +261,37 @@ describe('buildCards', () => {
     const cards = buildCards(stories, state, NOW2);
     expect(cards[0].blocked).toBe(true);
     expect(cards[0].call).toBe('at-risk');
+  });
+});
+
+describe('setGoals (replace + link safety)', () => {
+  const base = {
+    goals: [{ text: 'old', owner: null, isMine: false }],
+    stories: {
+      '1': { call: 'on-track' as const, goalIndex: 0 },
+      '2': { call: 'at-risk' as const, goalIndex: 2 }, // points past a shorter new list
+      '3': { call: 'on-track' as const, goalIndex: null },
+    },
+  };
+  it('replaces goals and keeps in-range links, resets out-of-range to null', () => {
+    const next = setGoals(base, [
+      { text: 'g0', owner: 'Gleb', isMine: false },
+      { text: 'g1', owner: 'Moran', isMine: true },
+    ]);
+    expect(next.goals).toHaveLength(2);
+    expect(next.stories['1'].goalIndex).toBe(0);   // 0 < 2 → kept
+    expect(next.stories['2'].goalIndex).toBeNull(); // 2 >= 2 → reset
+    expect(next.stories['3'].goalIndex).toBeNull(); // already null
+    expect(next.stories['1'].call).toBe('on-track'); // calls untouched
+  });
+  it('resets all links when goals cleared', () => {
+    const next = setGoals(base, []);
+    expect(next.goals).toEqual([]);
+    expect(next.stories['1'].goalIndex).toBeNull();
+  });
+  it('does not mutate the input state', () => {
+    const snapshot = JSON.stringify(base);
+    setGoals(base, []);
+    expect(JSON.stringify(base)).toBe(snapshot);
   });
 });
