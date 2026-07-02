@@ -665,6 +665,12 @@ export interface ApiPrePlanRoomLine {
   hasCapacity: boolean;
 }
 
+export interface ApiPrePlanGoal {
+  text: string;
+  owner: string | null;
+  isMine: boolean;
+}
+
 export interface ApiPrePlanCoverageGoal {
   index: number;
   text: string;
@@ -673,7 +679,7 @@ export interface ApiPrePlanCoverageGoal {
 
 export interface ApiPrePlanPayload {
   sprintName: string;
-  goals: string[];
+  goals: ApiPrePlanGoal[];
   cards: ApiPrePlanCard[];
   coverage: ApiPrePlanCoverageGoal[];
   room: ApiPrePlanRoomLine;
@@ -687,7 +693,6 @@ export async function fetchPrePlan(): Promise<ApiPrePlanPayload> {
 }
 
 export async function savePrePlan(body: {
-  goals?: string[];
   story?: { id: string; call?: ApiPrePlanCall; goalIndex?: number | null };
 }): Promise<ApiPrePlanPayload> {
   const r = await fetch('/api/preplan', {

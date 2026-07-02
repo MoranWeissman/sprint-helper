@@ -35,6 +35,7 @@ import { checkStaleLogNudge } from '../server/log-nudge.js';
 import { buildOrientPacket } from '../server/orient.js';
 import { getPlanningHome, isPlanningHomeCwd, setPlanningHome } from '../server/planning-home.js';
 import { findGaps } from '../server/planning.js';
+import { buildPrePlanPayload, getPrePlanState, savePrePlanState, setGoals, normalizeGoals } from '../server/preplan.js';
 import { catchUpLogRequired } from '../server/session-close.js';
 import {
   resolveStoryMatch,
@@ -1047,6 +1048,16 @@ KEEPING MORAN'S NOTES (his dashboard's "helper's notes" space):
   - Never write effort or status to Azure DevOps from a note — notes are just your
     read for him; ADO writes still only happen via the confirm-first close-the-loop.
 
+PRE-PLAN GOALS (his dashboard's Pre-plan page):
+  - When Moran pastes the delivery manager's goals email, or says "set my
+    goals" / "here are the sprint goals", call \`preplan_set_goals\`.
+  - The tool description has the exact steps: confirm the sprint matches the
+    current one, take only the current-sprint goal rows (drop the header and
+    owner-name lines and the previous-sprint table), capture each goal's owner,
+    and mark which are Moran's (his story matches first, else owner name).
+  - It's local prep only — it never writes to Azure DevOps. After it saves,
+    tell him it's set and to refresh the Pre-plan page.
+
 BLOCKING (when something can't move forward right now):
   Moran's ADO process template has 'Blocked' as a first-class STATE for
   both Task and User Story — that's the canonical lifecycle signal, not a
@@ -1860,6 +1871,37 @@ server.registerTool(
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
+  },
+);
+
+server.registerTool(
+  'preplan_set_goals',
+  {
+    title: 'Set the pre-plan goals from the PM email',
+    description:
+      "Set the sprint goals on Moran's PRIVATE pre-plan page (local only — never writes to Azure DevOps). Use this when Moran pastes the delivery manager's goals email (or says 'set my goals'). BEFORE calling: (1) confirm the email's sprint matches the current sprint — if it names a different sprint, ask Moran rather than mis-filing; (2) take ONLY the current-sprint goal rows — drop the table header row ('Goal'/'Status'/'Owner'), drop owner-name-only lines, and IGNORE any previous-sprint 'Is Achieved' table; (3) for each goal capture its `text` and `owner` (from the Owner column; null if none); (4) set `isMine`: a goal is Moran's if it lines up with one of HIS stories in the current sprint (check via sprint_snapshot / list_my_work_items) — if no story of his matches, fall back to whether the owner name is Moran (you know his name). If the pasted text doesn't actually look like a goals email — no recognizable goal rows, no sprint context, random unrelated text — say so and don't call this tool at all; never save junk just because Moran pasted something. This REPLACES the whole goal set for the current sprint each call, so always pass the full cleaned list. Returns how many were saved and the sprint name. After saving, tell Moran it's set and remind him to refresh the Pre-plan page.",
+    inputSchema: {
+      goals: z
+        .array(
+          z.object({
+            text: z.string().min(1).describe('The goal itself, e.g. "GitOps - finish Phase 1".'),
+            owner: z.string().nullish().describe('The Owner column value, e.g. "Gleb" or "Maxim + Vis". Null/omit when none.'),
+            isMine: z.boolean().optional().describe("True when this goal is Moran's (story-match first, owner-name fallback). Defaults false."),
+          }),
+        )
+        .describe('The full, cleaned list of current-sprint goals. Replaces any existing goals for the sprint.'),
+    },
+  },
+  async ({ goals }) => {
+    const payload = await buildPrePlanPayload();
+    const sprintName = payload.sprintName;
+    if (!sprintName) return errorResult('No current sprint — set a sprint first.');
+    const cleaned = normalizeGoals(
+      goals.map(g => ({ text: g.text, owner: g.owner ?? null, isMine: g.isMine ?? false })),
+    );
+    const next = setGoals(getPrePlanState(sprintName), cleaned);
+    savePrePlanState(sprintName, next);
+    return jsonResult({ saved: cleaned.length, sprintName });
   },
 );
 

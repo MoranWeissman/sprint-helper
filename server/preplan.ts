@@ -12,6 +12,12 @@ import type { UserStoryGroup } from './dashboard';
 
 export type PrePlanCall = 'on-track' | 'at-risk' | 'carries-over';
 
+export interface PrePlanGoal {
+  text: string;
+  owner: string | null;
+  isMine: boolean;
+}
+
 export interface PrePlanCard {
   id: string;
   displayName: string;
@@ -37,14 +43,14 @@ export interface PrePlanCoverageGoal {
 
 export interface PrePlanPayload {
   sprintName: string;
-  goals: string[];
+  goals: PrePlanGoal[];
   cards: PrePlanCard[];
   coverage: PrePlanCoverageGoal[];
   room: PrePlanRoomLine;
 }
 
 export interface PrePlanState {
-  goals: string[];
+  goals: PrePlanGoal[];
   stories: Record<string, { call?: PrePlanCall; goalIndex?: number | null }>;
 }
 
@@ -104,14 +110,14 @@ function tokenize(s: string): Set<string> {
  * Suggest which pasted goal a story serves, by token overlap. Returns null when
  * the best overlap is weak — a wrong link is worse than none (suggest-then-confirm).
  */
-export function suggestGoalIndex(storyTitle: string, goals: string[]): number | null {
+export function suggestGoalIndex(storyTitle: string, goals: PrePlanGoal[]): number | null {
   if (goals.length === 0) return null;
   const titleTokens = tokenize(storyTitle);
   if (titleTokens.size === 0) return null;
   let bestIdx = -1;
   let bestOverlap = 0;
   goals.forEach((g, i) => {
-    const gTokens = tokenize(g);
+    const gTokens = tokenize(g.text);
     let overlap = 0;
     for (const t of gTokens) if (titleTokens.has(t)) overlap++;
     if (overlap > bestOverlap) {
@@ -126,11 +132,11 @@ export function suggestGoalIndex(storyTitle: string, goals: string[]): number | 
 /** Per-goal story counts, in goal order. Empty when there are no goals. */
 export function summarizeCoverage(
   cards: Array<{ goalIndex: number | null }>,
-  goals: string[],
+  goals: PrePlanGoal[],
 ): PrePlanCoverageGoal[] {
-  return goals.map((text, index) => ({
+  return goals.map((g, index) => ({
     index,
-    text,
+    text: g.text,
     storyCount: cards.filter(c => c.goalIndex === index).length,
   }));
 }
@@ -139,13 +145,39 @@ export function prePlanSettingsKey(sprintName: string): string {
   return `preplan_${sprintName}`;
 }
 
+/**
+ * Coerce stored goals into PrePlanGoal[]. Accepts the legacy `string[]` shape
+ * (each string → {text, owner:null, isMine:false}) and partial/full records.
+ * Drops entries with empty text. Anything not an array → [].
+ */
+export function normalizeGoals(raw: unknown): PrePlanGoal[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PrePlanGoal[] = [];
+  for (const g of raw) {
+    if (typeof g === 'string') {
+      const text = g.trim();
+      if (text) out.push({ text, owner: null, isMine: false });
+    } else if (g && typeof g === 'object' && typeof (g as { text?: unknown }).text === 'string') {
+      const text = (g as { text: string }).text.trim();
+      if (!text) continue;
+      const owner = (g as { owner?: unknown }).owner;
+      out.push({
+        text,
+        owner: typeof owner === 'string' && owner.trim() ? owner.trim() : null,
+        isMine: (g as { isMine?: unknown }).isMine === true,
+      });
+    }
+  }
+  return out;
+}
+
 export function getPrePlanState(sprintName: string): PrePlanState {
   const raw = getSetting(prePlanSettingsKey(sprintName));
   if (!raw) return { goals: [], stories: {} };
   try {
     const parsed = JSON.parse(raw) as Partial<PrePlanState>;
     return {
-      goals: Array.isArray(parsed.goals) ? parsed.goals : [],
+      goals: normalizeGoals(parsed.goals),
       stories: parsed.stories && typeof parsed.stories === 'object' ? parsed.stories : {},
     };
   } catch {
@@ -155,6 +187,25 @@ export function getPrePlanState(sprintName: string): PrePlanState {
 
 export function savePrePlanState(sprintName: string, state: PrePlanState): void {
   setSetting(prePlanSettingsKey(sprintName), JSON.stringify(state));
+}
+
+/**
+ * Replace a sprint's goals. Per-story call choices are untouched; a story's
+ * goalIndex link is kept when it still points at a valid goal, else reset to
+ * null (the goal set was replaced, so stale links drop). Pure — returns a new
+ * state, does not mutate the input.
+ */
+export function setGoals(state: PrePlanState, goals: PrePlanGoal[]): PrePlanState {
+  const stories: PrePlanState['stories'] = {};
+  for (const [id, s] of Object.entries(state.stories)) {
+    const entry: PrePlanState['stories'][string] = {};
+    if (s.call !== undefined) entry.call = s.call;
+    if (s.goalIndex !== undefined) {
+      entry.goalIndex = s.goalIndex !== null && s.goalIndex < goals.length ? s.goalIndex : null;
+    }
+    stories[id] = entry;
+  }
+  return { goals, stories };
 }
 
 const DONE_STATES = new Set(['Done', 'Closed', 'Resolved', 'Completed', 'Removed']);
