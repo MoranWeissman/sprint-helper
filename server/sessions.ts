@@ -6,6 +6,7 @@
  * This is the storage + read layer. The MCP server (slice 2.1b) wraps these.
  */
 import { randomUUID } from 'node:crypto';
+import { basename } from 'node:path';
 import { getDb } from './db';
 
 export type SessionEventType = 'focus' | 'progress' | 'blocker' | 'decision' | 'note';
@@ -23,6 +24,9 @@ export interface SessionRow {
   ended_at: string | null;
   client: string;
   summary: string | null;
+  cwd: string | null;
+  waiting_note: string | null;
+  waiting_since: string | null;
 }
 
 export interface SessionEventRow {
@@ -41,6 +45,12 @@ export interface Session {
   endedAt: string | null;
   client: string;
   summary: string | null;
+  /** Repo folder name of the chat that started this session; null on old rows. */
+  cwd: string | null;
+  /** The question this session's chat is waiting on Moran for; null = not waiting. */
+  waitingNote: string | null;
+  /** When the chat started waiting (ISO); null = not waiting. */
+  waitingSince: string | null;
 }
 
 export interface SessionEvent {
@@ -60,6 +70,9 @@ function toSession(r: SessionRow): Session {
     endedAt: r.ended_at,
     client: r.client,
     summary: r.summary,
+    cwd: r.cwd ?? null,
+    waitingNote: r.waiting_note ?? null,
+    waitingSince: r.waiting_since ?? null,
   };
 }
 
@@ -79,17 +92,50 @@ function toEvent(r: SessionEventRow): SessionEvent {
 /* ============================================================ */
 
 /**
+ * The repo folder name this MCP process was started in. Each Claude Code chat
+ * launches its own server process in the chat's working directory, so this
+ * identifies the chat's repo. Null when it can't be determined — matching is
+ * skipped for null, never guessed.
+ */
+export function chatCwdBasename(): string | null {
+  try {
+    const b = basename(process.cwd());
+    return b && b !== '/' && b !== '.' ? b : null;
+  } catch {
+    return null;
+  }
+}
+
+export type SessionOwnership = 'mine' | 'other-repo' | 'unknown';
+
+/**
+ * Whose session is this, from THIS chat's point of view? 'unknown' (either
+ * side null) must never warn and never claim a match.
+ */
+export function sessionOwnershipHint(
+  sessionCwd: string | null,
+  chatCwd: string | null,
+): SessionOwnership {
+  if (sessionCwd == null || chatCwd == null) return 'unknown';
+  return sessionCwd === chatCwd ? 'mine' : 'other-repo';
+}
+
+/**
  * Start a new session for a work item. If one is already active, returns it
  * unchanged (idempotent) — Claude Code can call this on every reconnect.
  */
 export function startSession({
   workItemId,
   client = 'claude-code',
+  cwd,
 }: {
   workItemId: number;
   client?: string;
+  /** Repo folder of the calling chat. Omit to auto-detect from process.cwd(). */
+  cwd?: string | null;
 }): Session {
   const db = getDb();
+  const chatCwd = cwd !== undefined ? cwd : chatCwdBasename();
   const existing = db
     .prepare<[number], SessionRow>(
       `SELECT * FROM sessions
@@ -97,14 +143,22 @@ export function startSession({
        ORDER BY started_at DESC LIMIT 1`,
     )
     .get(workItemId);
-  if (existing) return toSession(existing);
+  if (existing) {
+    // Old (pre-migration) sessions learn their home on first touch. Never
+    // overwrite a known cwd — the first chat to open the session owns it.
+    if (existing.cwd == null && chatCwd != null) {
+      db.prepare(`UPDATE sessions SET cwd = ? WHERE id = ?`).run(chatCwd, existing.id);
+      return toSession({ ...existing, cwd: chatCwd });
+    }
+    return toSession(existing);
+  }
 
   const id = randomUUID();
   const startedAt = new Date().toISOString();
   db.prepare(
-    `INSERT INTO sessions (id, work_item_id, started_at, client)
-     VALUES (?, ?, ?, ?)`,
-  ).run(id, workItemId, startedAt, client);
+    `INSERT INTO sessions (id, work_item_id, started_at, client, cwd)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(id, workItemId, startedAt, client, chatCwd);
   return {
     id,
     workItemId,
@@ -112,6 +166,9 @@ export function startSession({
     endedAt: null,
     client,
     summary: null,
+    cwd: chatCwd,
+    waitingNote: null,
+    waitingSince: null,
   };
 }
 
