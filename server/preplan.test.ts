@@ -16,6 +16,8 @@ import {
   workingDaysBetween,
   selectCarriedStories,
   buildCards,
+  normalizeGoals,
+  type PrePlanGoal,
 } from './preplan';
 import { setSetting } from './timers';
 import type { UserStoryGroup } from './dashboard';
@@ -41,6 +43,26 @@ beforeEach(() => {
 });
 
 const NOW = new Date('2026-06-25T12:00:00Z'); // a Thursday
+
+describe('normalizeGoals (legacy migration)', () => {
+  it('turns a legacy string[] into goal records (owner null, isMine false)', () => {
+    expect(normalizeGoals(['Ship X', 'Finish Y'])).toEqual([
+      { text: 'Ship X', owner: null, isMine: false },
+      { text: 'Finish Y', owner: null, isMine: false },
+    ]);
+  });
+  it('passes through proper goal records', () => {
+    const recs: PrePlanGoal[] = [{ text: 'A', owner: 'Gleb', isMine: false }];
+    expect(normalizeGoals(recs)).toEqual(recs);
+  });
+  it('fills missing owner/isMine on partial records', () => {
+    expect(normalizeGoals([{ text: 'A' }])).toEqual([{ text: 'A', owner: null, isMine: false }]);
+  });
+  it('returns [] for non-arrays and drops empty/blank text', () => {
+    expect(normalizeGoals(undefined)).toEqual([]);
+    expect(normalizeGoals([{ owner: 'x' }, '', '  '])).toEqual([]);
+  });
+});
 
 describe('workingDaysBetween', () => {
   it('counts Sun-Thu and skips Fri/Sat', () => {
@@ -101,7 +123,10 @@ describe('suggestCall', () => {
 });
 
 describe('suggestGoalIndex', () => {
-  const goals = ['Improve ArgoCD rollout confidence', 'Migrate Datadog helm values'];
+  const goals: PrePlanGoal[] = [
+    { text: 'Improve ArgoCD rollout confidence', owner: null, isMine: false },
+    { text: 'Migrate Datadog helm values', owner: null, isMine: false },
+  ];
   it('matches the obvious goal by shared words', () => {
     expect(suggestGoalIndex('Validate addon rollout from prod ArgoCD', goals)).toBe(0);
   });
@@ -114,7 +139,11 @@ describe('suggestGoalIndex', () => {
 });
 
 describe('summarizeCoverage', () => {
-  const goals = ['Goal A', 'Goal B', 'Goal C'];
+  const goals: PrePlanGoal[] = [
+    { text: 'Goal A', owner: null, isMine: false },
+    { text: 'Goal B', owner: null, isMine: false },
+    { text: 'Goal C', owner: null, isMine: false },
+  ];
   it('counts stories per goal and flags uncovered goals', () => {
     const cards = [{ goalIndex: 0 }, { goalIndex: 0 }, { goalIndex: 2 }];
     const cov = summarizeCoverage(cards, goals);
@@ -136,11 +165,17 @@ describe('pre-plan state I/O', () => {
 
   it('round-trips goals and per-story calls/links', () => {
     savePrePlanState('26_99', {
-      goals: ['Goal A', 'Goal B'],
+      goals: [
+        { text: 'Goal A', owner: null, isMine: false },
+        { text: 'Goal B', owner: null, isMine: false },
+      ],
       stories: { '443697': { call: 'carries-over', goalIndex: 1 } },
     });
     const back = getPrePlanState('26_99');
-    expect(back.goals).toEqual(['Goal A', 'Goal B']);
+    expect(back.goals).toEqual([
+      { text: 'Goal A', owner: null, isMine: false },
+      { text: 'Goal B', owner: null, isMine: false },
+    ]);
     expect(back.stories['443697']).toEqual({ call: 'carries-over', goalIndex: 1 });
   });
 
@@ -194,7 +229,7 @@ describe('buildCards', () => {
         recentActivity: [{ id: 1, sessionId: 's', workItemId: 1, type: 'progress', text: '', createdAt: '2026-06-24T12:00:00Z' }] }),
       story({ id: '2', state: 'Blocked', remainingHours: 3 }),
     ];
-    const state = { goals: ['Improve ArgoCD rollout'], stories: { '1': { call: 'carries-over' as const, goalIndex: 0 } } };
+    const state = { goals: [{ text: 'Improve ArgoCD rollout', owner: null, isMine: false }], stories: { '1': { call: 'carries-over' as const, goalIndex: 0 } } };
     const cards = buildCards(stories, state, NOW2);
     // story 1: saved call wins, not suggested
     expect(cards[0].call).toBe('carries-over');
@@ -211,7 +246,7 @@ describe('buildCards', () => {
     const stories = [
       story({ id: '10', title: 'Improve ArgoCD rollout confidence', state: 'Active', remainingHours: 2 }),
     ];
-    const state = { goals: ['Improve ArgoCD rollout confidence'], stories: { '10': { goalIndex: null } } };
+    const state = { goals: [{ text: 'Improve ArgoCD rollout confidence', owner: null, isMine: false }], stories: { '10': { goalIndex: null } } };
     const cards = buildCards(stories, state, NOW2);
     // The title strongly matches the goal, but saved null must be preserved (user chose "no goal")
     expect(cards[0].goalIndex).toBeNull();

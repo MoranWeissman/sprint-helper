@@ -390,6 +390,7 @@ function adoApiPlugin() {
             buildPrePlanPayload,
             getPrePlanState,
             savePrePlanState,
+            normalizeGoals,
           } = await import('./server/preplan');
 
           if (req.method === 'POST') {
@@ -402,7 +403,7 @@ function adoApiPlugin() {
             const sprintName = current.sprintName;
             const state = getPrePlanState(sprintName);
             if (Array.isArray(body.goals)) {
-              state.goals = body.goals.filter((g: unknown) => typeof g === 'string');
+              state.goals = normalizeGoals(body.goals);
             }
             if (body.story && typeof body.story.id === 'string') {
               const prev = state.stories[body.story.id];
