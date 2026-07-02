@@ -198,8 +198,12 @@ export function savePrePlanState(sprintName: string, state: PrePlanState): void 
 export function setGoals(state: PrePlanState, goals: PrePlanGoal[]): PrePlanState {
   const stories: PrePlanState['stories'] = {};
   for (const [id, s] of Object.entries(state.stories)) {
-    const keep = s.goalIndex != null && s.goalIndex < goals.length;
-    stories[id] = { call: s.call, goalIndex: keep ? s.goalIndex : null };
+    const entry: PrePlanState['stories'][string] = {};
+    if (s.call !== undefined) entry.call = s.call;
+    if (s.goalIndex !== undefined) {
+      entry.goalIndex = s.goalIndex !== null && s.goalIndex < goals.length ? s.goalIndex : null;
+    }
+    stories[id] = entry;
   }
   return { goals, stories };
 }

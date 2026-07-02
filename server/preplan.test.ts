@@ -294,4 +294,12 @@ describe('setGoals (replace + link safety)', () => {
     setGoals(base, []);
     expect(JSON.stringify(base)).toBe(snapshot);
   });
+  it('keeps goalIndex ABSENT for stories that never had one (suggestions stay live)', () => {
+    const state = {
+      goals: [],
+      stories: { '9': { call: 'at-risk' as const } },
+    };
+    const next = setGoals(state, [{ text: 'g0', owner: null, isMine: false }]);
+    expect('goalIndex' in next.stories['9']).toBe(false);
+  });
 });

@@ -390,21 +390,16 @@ function adoApiPlugin() {
             buildPrePlanPayload,
             getPrePlanState,
             savePrePlanState,
-            normalizeGoals,
           } = await import('./server/preplan');
 
           if (req.method === 'POST') {
             const body = (await readJsonBody(req)) as {
-              goals?: string[];
               story?: { id: string; call?: unknown; goalIndex?: number | null };
             };
             // Resolve the current sprint name server-side (don't trust the client).
             const current = await buildPrePlanPayload();
             const sprintName = current.sprintName;
             const state = getPrePlanState(sprintName);
-            if (Array.isArray(body.goals)) {
-              state.goals = normalizeGoals(body.goals);
-            }
             if (body.story && typeof body.story.id === 'string') {
               const prev = state.stories[body.story.id];
               state.stories[body.story.id] = {
