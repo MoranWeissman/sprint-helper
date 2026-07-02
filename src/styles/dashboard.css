@@ -2368,12 +2368,32 @@ html, body {
 .r21-num .cap { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; }
 .r21-num .val { font-family: var(--font-mono); font-feature-settings: "tnum" 1; font-size: 18px; color: var(--ink-0); font-weight: 400; letter-spacing: -0.01em; }
 .r21-num .sub { font-size: 13px; color: var(--ink-3); }
-.r21-also { display: inline-flex; align-items: center; gap: 10px; padding: 8px 12px 8px 10px; background: transparent; border: 1px solid var(--line-soft); border-radius: 999px; font-family: inherit; font-size: 14px; color: var(--ink-2); cursor: pointer; letter-spacing: 0.02em; transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease; align-self: flex-start; margin-top: 20px; }
-.r21-also:hover { color: var(--ink-0); border-color: var(--accent-hair); background: oklch(0.165 0.026 258); }
-.r21-also::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--ink-3); }
-.r21-also .cap { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-4); }
-.r21-also .t { color: var(--ink-1); }
-.r21-also .arr { color: var(--ink-3); font-family: var(--font-mono); margin-left: 2px; }
+/* Also-running strip — other live tasks under the main focal card. Calm. */
+.r21-also-live { margin-top: 14px; }
+.r21-also-live-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.r21-also-live-label { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
+.r21-also-live-count { font-size: 12px; color: var(--ink-2); }
+.r21-also-live-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.r21-also-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 14px; cursor: pointer; text-align: left; max-width: 320px;
+}
+.r21-also-card:hover { border-color: var(--accent); }
+.r21-also-card.is-waiting { border-left: 3px solid var(--accent); }
+.r21-also-card-title { font-size: 14px; color: var(--ink-1); }
+.r21-also-card-meta { display: flex; gap: 8px; font-size: 12px; color: var(--ink-2); }
+.r21-also-card-waiting { font-size: 12px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+.r21-waiting-pill { font-size: 12px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Needs-you rail card rows */
+.needsyou-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.needsyou-row { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); }
+.needsyou-row.is-waiting { border-left: 3px solid var(--accent); }
+.needsyou-title { font-size: 13px; font-weight: 600; color: var(--ink-1); }
+.needsyou-question { font-size: 13px; color: var(--ink-1); }
+.needsyou-summary { font-size: 13px; color: var(--ink-2); }
+.needsyou-age { font-size: 12px; color: var(--ink-2); }
 .r21-feed { margin-top: 28px; display: flex; flex-direction: column; }
 .r21-feed-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
 .r21-feed-title { font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
