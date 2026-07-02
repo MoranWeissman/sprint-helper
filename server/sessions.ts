@@ -196,7 +196,7 @@ export function endSession({
   if (summary && summary.trim().length > 0) {
     logEvent({ sessionId, type: 'progress', text: summary });
   }
-  return { ...toSession(row), endedAt, summary: summary ?? row.summary };
+  return { ...toSession(row), endedAt, summary: summary ?? row.summary, waitingNote: null, waitingSince: null };
 }
 
 /**

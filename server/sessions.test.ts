@@ -118,6 +118,14 @@ describe('waiting flag', () => {
     expect(getSession(s.id)?.waitingNote).toBeNull();
     expect(getSession(s.id)?.waitingSince).toBeNull();
   });
+
+  it('returns cleared waiting fields from endSession itself (not just in the DB)', () => {
+    const s = startSession({ workItemId: 14, cwd: 'repo-x' });
+    setSessionWaiting({ sessionId: s.id, question: 'q' });
+    const ended = endSession({ sessionId: s.id });
+    expect(ended?.waitingNote).toBeNull();
+    expect(ended?.waitingSince).toBeNull();
+  });
 });
 
 describe('listRecentlyEnded', () => {
