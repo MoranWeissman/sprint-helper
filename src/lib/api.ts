@@ -47,6 +47,28 @@ export interface ApiNeedsYou {
   recentlyFinished: ApiNeedsYouFinished[];
 }
 
+export interface ApiWrapOpenSession {
+  workItemId: number;
+  /** Pre-formatted `**title** (#id)` — same shape as needs-you rows. */
+  displayName: string;
+  startedAt: string;
+}
+
+export interface ApiWrapFirstMove {
+  workItemId: number;
+  displayName: string;
+  /** Hours left on the item; null = unknown, render without the hours part. */
+  remainingHours: number | null;
+}
+
+export interface ApiWrap {
+  isWorkingDay: boolean;
+  /** Newest session activity today (ISO); null = nothing happened today. */
+  lastActivityAt: string | null;
+  stillOpen: ApiWrapOpenSession[];
+  firstMove: ApiWrapFirstMove | null;
+}
+
 export interface ApiHelperNote {
   id: number;
   body: string;
@@ -234,6 +256,8 @@ export interface ApiPayload {
     fromSprintLabel: string;
   } | null;
   needsYou: ApiNeedsYou;
+  /** End-of-day wrap facts; absent on older server payloads. */
+  wrap?: ApiWrap;
   ceremonies: {
     upcoming: ApiUpcomingCeremony[];
     next: ApiUpcomingCeremony | null;
