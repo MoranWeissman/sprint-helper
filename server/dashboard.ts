@@ -35,6 +35,7 @@ import {
   type SessionEvent,
 } from './sessions';
 import { buildNeedsYou, RECENTLY_FINISHED_HOURS, type NeedsYouBlock } from './needs-you';
+import { buildWrap, todayActivityRows, isWorkingDayFor, type WrapBlock } from './wrap';
 import {
   getLocalLoggedMap,
   getPendingChangesCount,
@@ -215,6 +216,8 @@ export interface DashboardPayload {
    * quiet).
    */
   needsYou: NeedsYouBlock;
+  /** End-of-day wrap facts. Show/hide is decided client-side (WrapCard). */
+  wrap: WrapBlock;
   fetchedAt: string;
 }
 
@@ -373,6 +376,12 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
       standup: buildStandup({ taskMeta: new Map() }),
       carryForward: null,
       needsYou: { waiting: [], recentlyFinished: [] },
+      wrap: {
+        isWorkingDay: isWorkingDayFor(new Date()),
+        lastActivityAt: null,
+        stillOpen: [],
+        firstMove: null,
+      },
       fetchedAt: new Date().toISOString(),
     };
   }
@@ -484,11 +493,22 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
   // are absent from `taskMeta`, so without help the recap shows a bare `#id`.
   // Fetch just the missing worked items (+ their parents) and fold them in so
   // the recap reads real names regardless of which sprint the work lives in.
+  // RemainingWork lookup for the wrap card's "first move" line. Sprint items
+  // first; out-of-sprint worked items are folded in below, best-effort.
+  const remainingById = new Map<number, number>();
+  for (const w of items) {
+    if (w.remainingWork != null) remainingById.set(w.id, w.remainingWork);
+  }
   const missingWorkedIds = workedItemIdsForStandup().filter(id => !taskMeta.has(id));
   if (missingWorkedIds.length > 0) {
     try {
       const extra = await getWorkItemsWithParents(missingWorkedIds);
       mergeIntoTaskMeta(taskMeta, extra);
+      for (const w of extra) {
+        if (w.remainingWork != null && !remainingById.has(w.id)) {
+          remainingById.set(w.id, w.remainingWork);
+        }
+      }
     } catch {
       // Best-effort enrichment — if the fetch fails the recap still renders
       // with bare ids rather than breaking the whole dashboard.
@@ -522,11 +542,23 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
   // of building a duplicate lookup. A session on an item outside taskMeta
   // falls back to a bare #id (waiting still shows; finished is dropped since
   // we can't confirm it's done).
+  const liveSessions = listActiveSessions();
   const needsYou = buildNeedsYou({
-    activeSessions: listActiveSessions(),
+    activeSessions: liveSessions,
     recentlyEnded: listRecentlyEnded(RECENTLY_FINISHED_HOURS),
     titleFor: id => taskMeta.get(id)?.title ?? null,
     isDone: id => DONE_STATES.has(taskMeta.get(id)?.state ?? ''),
+  });
+
+  // End-of-day wrap facts. Local SQLite only — no ADO calls, nothing to
+  // swallow; titles/states reuse the enriched taskMeta like needsYou does.
+  const wrap = buildWrap({
+    activityRows: todayActivityRows(),
+    activeSessions: liveSessions,
+    titleFor: id => taskMeta.get(id)?.title ?? null,
+    isDone: id => DONE_STATES.has(taskMeta.get(id)?.state ?? ''),
+    remainingFor: id => remainingById.get(id) ?? null,
+    isWorkingDay: isWorkingDayFor(new Date()),
   });
 
   return {
@@ -554,6 +586,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     standup,
     carryForward,
     needsYou,
+    wrap,
     fetchedAt: new Date().toISOString(),
   };
 }

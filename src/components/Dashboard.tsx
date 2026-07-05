@@ -37,6 +37,7 @@ import { PlanView } from './PlanView';
 import { PrePlanView } from './PrePlanView';
 import { ScheduleModal } from './ScheduleModal';
 import { WorkItemDrawer } from './WorkItemDrawer';
+import { WrapCard } from './WrapCard';
 
 export function Dashboard() {
   const [selectedSprintName, setSelectedSprintName] = useState<string | undefined>(undefined);
@@ -326,6 +327,7 @@ function DashboardLive({
               outlookCapacity={data.outlookCapacity}
               helperNotes={data.helperNotes}
               needsYou={data.needsYou}
+              wrap={data.wrap}
               now={now}
               standup={data.standup}
               today={today}
@@ -1192,6 +1194,7 @@ function DailyView({
   outlookCapacity,
   helperNotes,
   needsYou,
+  wrap,
   now,
   standup,
   today,
@@ -1209,6 +1212,7 @@ function DailyView({
   outlookCapacity: ApiOutlookCapacity | null;
   helperNotes: ApiHelperNotes;
   needsYou: ApiNeedsYou;
+  wrap: ApiPayload['wrap'];
   now: Date;
   standup: ApiPayload['standup'];
   today: number;
@@ -1293,6 +1297,10 @@ function DailyView({
           )}
         </div>
       </div>
+
+      {/* End-of-day wrap — appears only after work goes quiet in the
+          afternoon. The evening twin of the standup card below it. */}
+      <WrapCard wrap={wrap} standupToday={standup.today} now={now} onOpenItem={onOpenItem} />
 
       {/* Standup card — Daily-only. The first thing Moran wants on the screen
           when the delivery manager opens the board: yesterday's work + today's
