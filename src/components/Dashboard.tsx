@@ -1624,7 +1624,11 @@ function plainTitle(displayName: string): string {
   return displayName.replace(/\*\*/g, '').replace(/\s*\(#\d+\)\s*$/, '');
 }
 
-function RailNeedsYou({ needsYou, now }: { needsYou: ApiNeedsYou; now: Date }) {
+function RailNeedsYou({ needsYou, now }: { needsYou: ApiNeedsYou | undefined; now: Date }) {
+  // A long-running dev server can serve an older payload shape than the page
+  // code expects (server modules bake at process start; page files load fresh
+  // per request). Missing block → render nothing, never crash.
+  if (!needsYou) return null;
   if (needsYou.waiting.length === 0 && needsYou.recentlyFinished.length === 0) return null;
   return (
     <section className="r22-rail-card r22-rail-needs-you" aria-label="Needs you">
