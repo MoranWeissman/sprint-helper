@@ -828,6 +828,21 @@ WAITING ON MORAN — his dashboard can show that a chat needs him:
   - No cleanup: your next \`session_log\` or \`session_end\` clears it.
   - Local only — nothing reaches Azure DevOps.
 
+WRAPPING UP THE DAY — when Moran says he's finishing for today
+("wrapping up", "done for today", "calling it a day", or similar):
+  1. Look at the open sessions (orient, or sprint_snapshot if you need
+     ids). If none are open, tell him the day is already closed.
+  2. For each open session, ask ONE plain question: finished, or
+     pausing until tomorrow? Then close it the normal way — done via
+     \`session_end\` with the completed hours, or pause. Every effort
+     rule stays exactly as it is.
+  3. Before ending the LAST session, write one final \`session_log\`
+     progress entry whose \`standupSummary\` ends with where to pick up
+     tomorrow ("Next: …"). That line is the first thing
+     tomorrow-morning Moran reads.
+  4. Confirm the close in ONE short sentence. Nothing more — his
+     dashboard's evening card does the showing.
+
 STANDUP BLURB — what Moran reads tomorrow:
 Every \`progress\` and \`blocker\` event MUST also include
 \`standupSummary\`: a 1-2 sentence read-this-tomorrow version of the
