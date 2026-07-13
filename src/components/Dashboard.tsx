@@ -169,7 +169,6 @@ function DashboardLive({
     setPicksState(ids);
     writeFocusPicks(ids);
   };
-  void MAX_FOCUS_PANELS; // Task 6 uses this; keeping tsc happy.
   const [showBoard, setShowBoard] = useState(false);
   // Day mode is now two-place: Daily (the board) and Focus (auto-morphs when
   // a session is live). The old "Overview" place was merged into Daily —
@@ -192,9 +191,8 @@ function DashboardLive({
   const panelIds = picks.length > 0 ? picks : liveItems.slice(0, 1).map(w => w.id);
   const panelTasks = panelIds.map(id => liveItems.find(w => w.id === id)).filter(Boolean) as ApiWorkItem[];
   const offPanel = liveItems.filter(w => !panelIds.includes(w.id)); // the "also running" strip
-  // Backwards-compatible single-task focal view (Task 6 transitions to multi-panel).
+  // Backwards-compatible single-task focal view for isFocus check.
   const focalTask = panelTasks[0] ?? null;
-  const otherLive = offPanel;
   // Generalized story resolver: given a task, find its parent story (if any).
   const storyFor = (task: ApiWorkItem | null) => {
     if (!task) return null;
@@ -203,7 +201,6 @@ function DashboardLive({
     const pid = String(parentId);
     return stories.find(s => String(s.id) === pid) ?? null;
   };
-  const focalStory = storyFor(focalTask);
   // Focus has top precedence — if a session is live and Moran hasn't asked to
   // see the whole board, the screen morphs to Focus.
   const isFocus = mode === 'day' && !!focalTask && !showBoard;
@@ -309,17 +306,17 @@ function DashboardLive({
             <ModePlaceholder mode={mode} />
           ) : isFocus ? (
             <div className="r21-body is-focus">
-              {focalTask && (
-                <R21Focus
-                  task={focalTask}
-                  story={focalStory}
-                  others={otherLive}
-                  onOpenItem={openItem}
-                  onPromote={id => setPicks([id])}
-                  helperNotes={data.helperNotes}
-                  onRefresh={onRefresh}
-                />
-              )}
+              <R21FocusGrid
+                tasks={panelTasks}
+                offPanel={offPanel}
+                storyFor={storyFor}
+                picks={picks}
+                onSetPicks={setPicks}
+                maxPanels={MAX_FOCUS_PANELS}
+                onOpenItem={openItem}
+                helperNotes={data.helperNotes}
+                onRefresh={onRefresh}
+              />
             </div>
           ) : (
             <DailyView
@@ -841,27 +838,139 @@ function priorColumnLabel(yesterdayISO: string, todayISO: string): string {
   return 'Yesterday';
 }
 
+/**
+ * State mark: text label for working/waiting/stale. Never glyph/color alone
+ * (accessibility + functional-color rule).
+ */
+function StateMark({ state }: { state?: 'working' | 'waiting' | 'stale' }) {
+  if (state === 'waiting') {
+    return <span className="r21-mark is-waiting">waiting for you</span>;
+  }
+  if (state === 'stale') {
+    return (
+      <span className="r21-mark is-stale">
+        <span aria-hidden="true">🌙</span> quiet a while
+      </span>
+    );
+  }
+  return <span className="r21-mark is-working">working</span>;
+}
 
-function R21Focus({
+/**
+ * Multi-panel Focus grid: renders 1–4 self-chosen panels of running tasks.
+ * Each panel shows a compact view of the task (story header, "currently
+ * running", metrics, drill-in arrow). Tasks left out show in "Also running".
+ */
+function R21FocusGrid({
+  tasks,
+  offPanel,
+  storyFor,
+  picks,
+  onSetPicks,
+  maxPanels,
+  onOpenItem,
+  helperNotes,
+  onRefresh,
+}: {
+  tasks: ApiWorkItem[];
+  offPanel: ApiWorkItem[];
+  storyFor: (task: ApiWorkItem) => ApiUserStoryGroup | null;
+  picks: string[];
+  onSetPicks: (ids: string[]) => void;
+  maxPanels: number;
+  onOpenItem: (id: string) => void;
+  helperNotes: ApiHelperNotes;
+  onRefresh: () => void;
+}) {
+  const count = Math.max(1, tasks.length);
+  const canAdd = offPanel.length > 0 && count < maxPanels;
+
+  const addPanel = (id: string) => {
+    const next = [...new Set([...picks.filter(Boolean), id])].slice(0, maxPanels);
+    onSetPicks(next);
+  };
+  const removePanel = (id: string) => {
+    onSetPicks(picks.filter(p => p !== id));
+  };
+
+  return (
+    <div className={`r21-focusgrid is-count-${count}`}>
+      {/* Header: count + which-tasks control */}
+      <div className="r21-focusgrid-head">
+        <span className="r21-focusgrid-label">Focus</span>
+        {tasks.length > 1 && (
+          <span className="r21-focusgrid-count">
+            {count} of {tasks.length + offPanel.length} running
+          </span>
+        )}
+      </div>
+
+      <div className="r21-focusgrid-panels">
+        {tasks.map(task => (
+          <FocusPanel
+            key={task.id}
+            task={task}
+            story={storyFor(task)}
+            state={task.activeSession?.state}
+            onOpenItem={onOpenItem}
+            onRemove={tasks.length > 1 ? () => removePanel(task.id) : undefined}
+            helperNotes={helperNotes}
+            onRefresh={onRefresh}
+          />
+        ))}
+      </div>
+
+      {offPanel.length > 0 && (
+        <section className="r21-also-live" aria-label="Also running">
+          <div className="r21-also-live-head">
+            <span className="r21-also-live-label">Also running</span>
+            <span className="r21-also-live-count">{offPanel.length}</span>
+          </div>
+          <div className="r21-also-live-row">
+            {offPanel.map(w => (
+              <button
+                key={w.id}
+                type="button"
+                className={`r21-also-card${w.activeSession?.state === 'waiting' ? ' is-waiting' : ''}${w.activeSession?.state === 'stale' ? ' is-stale' : ''}`}
+                onClick={() => (canAdd ? addPanel(w.id) : onOpenItem(w.id))}
+                title={canAdd ? 'Add to Focus' : `Focus is full (${maxPanels}) — open it instead`}
+              >
+                <StateMark state={w.activeSession?.state} />
+                <span className="r21-also-card-title">{w.title}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Single Focus panel: story header, "currently running" section with the
+ * task, LOGGED/COMPLETED/ESTIMATE/REMAINING metrics, and drill-in arrow.
+ * Refactored from the original R21Focus component body.
+ */
+function FocusPanel({
   task,
   story,
-  others,
+  state,
   onOpenItem,
-  onPromote,
+  onRemove,
   helperNotes,
   onRefresh,
 }: {
   task: ApiWorkItem;
   story: ApiUserStoryGroup | null;
-  others: ApiWorkItem[];
+  state?: 'working' | 'waiting' | 'stale';
   onOpenItem: (id: string) => void;
-  onPromote: (id: string) => void;
+  onRemove?: () => void;
   helperNotes: ApiHelperNotes;
   onRefresh: () => void;
 }) {
-  // null = story view (default); a task id = drilled into that task's
-  // activity feed. Click a task in the list to drill in; click "Back"
-  // to return.
+  // Drill-in state: null = story view (default); a task id = drilled into
+  // that task's activity feed. Click a task in the list to drill in; click
+  // "Back" to return.
   const [drilledTaskId, setDrilledTaskId] = useState<string | null>(null);
 
   const drilledTask =
@@ -881,7 +990,10 @@ function R21Focus({
   }
 
   const focusNotes = helperNotes.notes.filter(
-    n => n.pinnedAt != null || n.workItemId === Number(task.id) || (story != null && n.workItemId === Number(story.id)),
+    n =>
+      n.pinnedAt != null ||
+      n.workItemId === Number(task.id) ||
+      (story != null && n.workItemId === Number(story.id)),
   );
 
   const parent = task.parent;
@@ -899,23 +1011,44 @@ function R21Focus({
   const taskIdStr = String(task.id);
 
   return (
-    <div className="r21-focal">
+    <div className="r21-focuspanel">
+      {onRemove && (
+        <button
+          type="button"
+          className="r21-focuspanel-remove"
+          onClick={onRemove}
+          title="Remove this panel"
+        >
+          ✕
+        </button>
+      )}
+
+      <div className="r21-focuspanel-mark">
+        <StateMark state={state} />
+      </div>
+
       {story ? (
         <header className="r21-focal-story">
           <div className="r21-focal-story-meta">
             <span className={`r21-daily-kind kind-${kindSlug(story.type)}`}>{story.type}</span>
             <Mono className="r21-focal-story-id">#{story.id}</Mono>
             {storyDominant && (
-              <span className={`r21-daily-state state-${storyDominant}`}>{storyStateLabel(storyDominant)}</span>
+              <span className={`r21-daily-state state-${storyDominant}`}>
+                {storyStateLabel(storyDominant)}
+              </span>
             )}
           </div>
           <h1 className="r21-focal-story-title">
-            <button type="button" onClick={() => onOpenItem(story.id)}>{story.title}</button>
+            <button type="button" onClick={() => onOpenItem(story.id)}>
+              {story.title}
+            </button>
           </h1>
         </header>
       ) : (
         <>
-          <div className="r21-focal-id"><Mono>#{task.id}</Mono></div>
+          <div className="r21-focal-id">
+            <Mono>#{task.id}</Mono>
+          </div>
           <h1 className="r21-focal-title">{task.title}</h1>
         </>
       )}
@@ -933,8 +1066,11 @@ function R21Focus({
         <div className="r21-focal-current-head">
           <span className="r21-focal-current-label">Currently running</span>
           <span className="r21-live-pill">live</span>
-          {task.activeSession?.waiting && <span className="r21-waiting-pill">waiting for you</span>}
-          {startedAt && <span className="r21-since">started <span className="v">{startedAt}</span></span>}
+          {startedAt && (
+            <span className="r21-since">
+              started <span className="v">{startedAt}</span>
+            </span>
+          )}
         </div>
         <button
           type="button"
@@ -944,17 +1080,25 @@ function R21Focus({
         >
           <Mono className="r21-focal-current-id">#{task.id}</Mono>
           <span className="r21-focal-current-title">{task.title}</span>
-          <span className="r21-focal-current-arr" aria-hidden="true">→</span>
+          <span className="r21-focal-current-arr" aria-hidden="true">
+            →
+          </span>
         </button>
         <div className="r21-focal-meta">
           <span className="r21-num">
             <span className="cap">LOGGED</span>
             <span className="val">{logged}</span>
-            {task.sessionCount > 0 && <span className="sub">· {task.sessionCount} sitting{task.sessionCount === 1 ? '' : 's'}</span>}
+            {task.sessionCount > 0 && (
+              <span className="sub">
+                · {task.sessionCount} sitting{task.sessionCount === 1 ? '' : 's'}
+              </span>
+            )}
           </span>
           <span className="r21-num">
             <span className="cap">COMPLETED</span>
-            <span className={`val ${task.completedWork == null ? 'is-missing' : ''}`}>{completed}</span>
+            <span className={`val ${task.completedWork == null ? 'is-missing' : ''}`}>
+              {completed}
+            </span>
           </span>
           <span className="r21-num">
             <span className="cap">ESTIMATE</span>
@@ -962,41 +1106,12 @@ function R21Focus({
           </span>
           <span className="r21-num">
             <span className="cap">REMAINING</span>
-            <span className={`val ${task.remainingWork == null ? 'is-missing' : ''}`}>{remaining}</span>
+            <span className={`val ${task.remainingWork == null ? 'is-missing' : ''}`}>
+              {remaining}
+            </span>
           </span>
         </div>
       </section>
-
-      {others.length > 0 && (
-        <section className="r21-also-live" aria-label="Also running">
-          <div className="r21-also-live-head">
-            <span className="r21-also-live-label">Also running</span>
-            <span className="r21-also-live-count">{others.length}</span>
-          </div>
-          <div className="r21-also-live-row">
-            {others.map(w => (
-              <button
-                key={w.id}
-                type="button"
-                className={`r21-also-card${w.activeSession?.waiting ? ' is-waiting' : ''}`}
-                onClick={() => onPromote(w.id)}
-                title="Make this the focus instead"
-              >
-                <span className="r21-also-card-title">{w.title}</span>
-                <span className="r21-also-card-meta">
-                  {w.parent && <span className="r21-also-card-story">{w.parent.title}</span>}
-                  {w.activeSession && (
-                    <span className="r21-also-card-since">started {fmtEventStamp(w.activeSession.startedAt)}</span>
-                  )}
-                </span>
-                {w.activeSession?.waiting && (
-                  <span className="r21-also-card-waiting">waiting for you</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
 
       {story && story.tasks.length > 0 && (
         <section className="r21-focal-tasks">
@@ -1010,8 +1125,15 @@ function R21Focus({
               const stateClass = standupTaskStateClass(t.state);
               const tRem = t.remainingWork != null ? `${Math.round(t.remainingWork)}h` : '—';
               return (
-                <li key={t.id} className={`r21-focal-task is-state-${stateClass} ${isLive ? 'is-live' : ''}`}>
-                  <button type="button" onClick={() => setDrilledTaskId(String(t.id))} title="See this task's activity feed">
+                <li
+                  key={t.id}
+                  className={`r21-focal-task is-state-${stateClass} ${isLive ? 'is-live' : ''}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setDrilledTaskId(String(t.id))}
+                    title="See this task's activity feed"
+                  >
                     <span className={`r21-focal-task-state state-${stateClass}`}>{t.state}</span>
                     <span className="r21-focal-task-title">{t.title}</span>
                     {isLive && <span className="r21-focal-task-live">live</span>}
@@ -1022,7 +1144,9 @@ function R21Focus({
                     </span>
                     <span className="r21-num is-compact">
                       <span className="cap">REM</span>
-                      <span className={`val ${t.remainingWork == null ? 'is-missing' : ''}`}>{tRem}</span>
+                      <span className={`val ${t.remainingWork == null ? 'is-missing' : ''}`}>
+                        {tRem}
+                      </span>
                     </span>
                   </button>
                 </li>
@@ -1045,6 +1169,8 @@ function R21Focus({
     </div>
   );
 }
+
+// Legacy R21Focus removed — Dashboard now calls R21FocusGrid directly.
 
 function FocusTaskDrill({
   task,
