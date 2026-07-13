@@ -37,6 +37,7 @@ import { getPlanningHome, isPlanningHomeCwd, setPlanningHome } from '../server/p
 import { findGaps } from '../server/planning.js';
 import { buildPrePlanPayload, getPrePlanState, savePrePlanState, setGoals, normalizeGoals } from '../server/preplan.js';
 import { catchUpLogRequired } from '../server/session-close.js';
+import { maxParallelSessions, parallelCapExceeded } from '../server/session-cap.js';
 import {
   resolveStoryMatch,
   setLearnedStoryId,
@@ -419,6 +420,14 @@ PARALLEL CHATS — several sessions can be live at once, one per chat:
     check with him before continuing.
   - Never switch this chat to a different session mid-conversation unless
     Moran asks for it.
+
+SESSION LIMIT — Moran caps how many tasks run at once (default 4):
+  - If \`session_start\` is refused because the limit is reached, DO NOT
+    work around it. Read the running tasks it listed back to Moran by
+    name and ask which one to pause or finish first, then retry.
+  - The limit is a real guard against losing track of parallel work,
+    not a suggestion. Never open a session outside \`session_start\` to
+    dodge it.
 
 ORIENT IS POINT-IN-TIME — re-read live state after writes:
 The orient packet is a snapshot from when you called orient.
@@ -2045,6 +2054,27 @@ server.registerTool(
       const list = openTasks.map(t => `  • **${t.title}** (#${t.id}) — ${t.state}`).join('\n');
       return errorResult(
         `${storyName} is a ${detail.type}, not a unit of work — open the session on a task under it (that's why a session on a story leaves Focus with nothing to show). Pick one of its open tasks, or ask Moran which, then call session_start again with that task's id:\n${list}`,
+      );
+    }
+
+    // Cap parallel work. Refuse a genuinely NEW session past the limit and
+    // name what's already running so Moran picks one to pause/finish. Re-opening
+    // an item that already has a session is never blocked (handled in the predicate).
+    const runningSessions = listActiveSessions();
+    const max = maxParallelSessions();
+    if (parallelCapExceeded({ activeSessions: runningSessions, workItemId, max })) {
+      const names = await Promise.all(
+        runningSessions.map(async s => {
+          try {
+            const w = await getWorkItem(s.workItemId);
+            return `  • ${displayNameFor(w.id, w.title)}`;
+          } catch {
+            return `  • #${s.workItemId}`;
+          }
+        }),
+      );
+      return errorResult(
+        `You already have ${max} tasks running — that's your limit. Pause or finish one before starting another. Running now:\n${names.join('\n')}`,
       );
     }
 
