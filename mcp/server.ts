@@ -22,6 +22,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+// SPIKE (throwaway): Claude Code Channels experiment — see mcp/channel.ts.
+import { channelSpikeEnabled, registerChannelCapability, pushChannel } from './channel.js';
 
 import { mirrorSprintSummary, mirrorStandupForToday, mirrorTaskFile } from '../server/archive.js';
 import { getCalendarUrl, setCalendarUrl } from '../server/calendar.js';
@@ -2665,6 +2667,9 @@ server.registerTool(
 /* ============================================================ */
 
 async function main() {
+  // SPIKE: declare the channel capability BEFORE connect when the flag is on.
+  if (channelSpikeEnabled()) registerChannelCapability(server);
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // Pre-warm the dashboard cache so the first orient/capacity_check
@@ -2674,6 +2679,21 @@ async function main() {
     // eslint-disable-next-line no-console
     console.error('sprint-helper: dashboard pre-warm failed (will lazy-load on first call).');
   });
+
+  // SPIKE: fire ONE unprompted nudge 60s after connect, so you can FEEL an
+  // event arriving in an idle chat. Throwaway — remove after the experiment.
+  if (channelSpikeEnabled()) {
+    setTimeout(() => {
+      void pushChannel(
+        server,
+        'Channel spike: this line arrived on its own, no tool call — this is what an unprompted in-chat nudge feels like.',
+        { kind: 'spike-test' },
+      ).catch(() => {
+        // eslint-disable-next-line no-console
+        console.error('sprint-helper: channel push failed (chat may not have loaded the channel).');
+      });
+    }, 60_000);
+  }
   // stdio transport keeps the process alive; nothing else needed.
 }
 
