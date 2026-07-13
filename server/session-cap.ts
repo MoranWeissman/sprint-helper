@@ -11,8 +11,12 @@ import type { Session } from './sessions';
 export const DEFAULT_MAX_PARALLEL_SESSIONS = 4;
 
 export function maxParallelSessions(): number {
-  const raw = process.env.SH_MAX_PARALLEL_SESSIONS ?? getSetting('max_parallel_sessions') ?? '';
-  const n = Number.parseInt(String(raw).trim(), 10);
+  const env = process.env.SH_MAX_PARALLEL_SESSIONS;
+  const envVal = env && env.trim() ? env.trim() : undefined;
+  const setting = getSetting('max_parallel_sessions');
+  const settingVal = setting && setting.trim() ? setting.trim() : undefined;
+  const raw = envVal ?? settingVal ?? '';
+  const n = Number.parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_PARALLEL_SESSIONS;
 }
 

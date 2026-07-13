@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // maxParallelSessions reads a setting + env; mock the settings store and control env.
 const h = vi.hoisted(() => ({ settings: new Map<string, string>() }));
 vi.mock('./timers', () => ({
-  getSetting: (k: string) => h.settings.get(k) ?? null,
+  getSetting: (k: string) => h.settings.get(k),
 }));
 
 import { maxParallelSessions, parallelCapExceeded } from './session-cap';
@@ -39,6 +39,11 @@ describe('maxParallelSessions', () => {
     expect(maxParallelSessions()).toBe(4);
     process.env.SH_MAX_PARALLEL_SESSIONS = '-1';
     expect(maxParallelSessions()).toBe(4);
+  });
+  it('empty-string env var falls through to the setting', () => {
+    h.settings.set('max_parallel_sessions', '3');
+    process.env.SH_MAX_PARALLEL_SESSIONS = '';
+    expect(maxParallelSessions()).toBe(3);
   });
 });
 
