@@ -23,7 +23,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 // SPIKE (throwaway): Claude Code Channels experiment — see mcp/channel.ts.
-import { channelSpikeEnabled, registerChannelCapability, pushChannel } from './channel.js';
+import { channelSpikeEnabled, registerChannelCapability, pushChannel, spikeLog } from './channel.js';
 
 import { mirrorSprintSummary, mirrorStandupForToday, mirrorTaskFile } from '../server/archive.js';
 import { getCalendarUrl, setCalendarUrl } from '../server/calendar.js';
@@ -2667,6 +2667,10 @@ server.registerTool(
 /* ============================================================ */
 
 async function main() {
+  // SPIKE: log EVERY boot so we can tell if the env var reached this child
+  // process at all (Claude Code spawns the MCP server separately).
+  spikeLog(`boot: SH_CHANNEL_SPIKE=${JSON.stringify(process.env.SH_CHANNEL_SPIKE)} enabled=${channelSpikeEnabled()}`);
+
   // SPIKE: declare the channel capability BEFORE connect when the flag is on.
   if (channelSpikeEnabled()) registerChannelCapability(server);
 
@@ -2680,19 +2684,20 @@ async function main() {
     console.error('sprint-helper: dashboard pre-warm failed (will lazy-load on first call).');
   });
 
-  // SPIKE: fire ONE unprompted nudge 60s after connect, so you can FEEL an
+  // SPIKE: fire ONE unprompted nudge 15s after connect, so you can FEEL an
   // event arriving in an idle chat. Throwaway — remove after the experiment.
   if (channelSpikeEnabled()) {
+    spikeLog('armed: nudge in 15s');
     setTimeout(() => {
+      spikeLog('firing: pushChannel now');
       void pushChannel(
         server,
         'Channel spike: this line arrived on its own, no tool call — this is what an unprompted in-chat nudge feels like.',
         { kind: 'spike-test' },
-      ).catch(() => {
-        // eslint-disable-next-line no-console
-        console.error('sprint-helper: channel push failed (chat may not have loaded the channel).');
-      });
-    }, 60_000);
+      )
+        .then(() => spikeLog('push resolved (written to transport)'))
+        .catch(e => spikeLog(`push FAILED: ${e instanceof Error ? e.message : String(e)}`));
+    }, 15_000);
   }
   // stdio transport keeps the process alive; nothing else needed.
 }

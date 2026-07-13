@@ -14,11 +14,30 @@
  *    --dangerously-load-development-channels` or the event is dropped silently.
  */
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 /** On when the env flag is set — keeps the spike out of real work chats. */
 export function channelSpikeEnabled(): boolean {
   const v = process.env.SH_CHANNEL_SPIKE;
   return !!v && v.trim() !== '' && v.trim() !== '0' && v.trim().toLowerCase() !== 'false';
+}
+
+/**
+ * SPIKE observability — append a timestamped line to ~/.sprint-helper/channel-spike.log
+ * so we can see whether the code armed/fired even when nothing shows in the chat.
+ * Tells apart "env var never reached the MCP child process" from "fired but the
+ * chat dropped it". Best-effort; never throws.
+ */
+export function spikeLog(line: string): void {
+  try {
+    const dir = join(homedir(), '.sprint-helper');
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(join(dir, 'channel-spike.log'), `${new Date().toISOString()} pid=${process.pid} ${line}\n`);
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Declare the channel capability. MUST run before server.connect(). */
