@@ -28,6 +28,12 @@ import {
   useNow,
 } from '../lib/time';
 import { useMode } from '../lib/useMode';
+import {
+  loadFocusPicks,
+  writeFocusPicks,
+  reconcilePicks,
+  MAX_FOCUS_PANELS,
+} from '../lib/focusPicks';
 import { buildNotePrompt } from '../lib/notePrompt';
 import type { SprintContext } from '../lib/types';
 import { Dot } from './Dot';
@@ -154,53 +160,50 @@ function DashboardLive({
   );
 
   // R2 focus state: the Day screen morphs to the live task automatically.
-  // `focalId` lets a second live task be promoted to the focus; `showBoard`
-  // is the manual "show the whole board" escape while a session is still live.
-  // The Focus pick survives refreshes — Focus must never swap tasks on its
-  // own while the picked task is still live (multi-session rule).
-  const [focalId, setFocalIdState] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return window.localStorage.getItem('sh.focus.pick');
-  });
-  const setFocalId = (id: string | null) => {
-    setFocalIdState(id);
-    if (id == null) window.localStorage.removeItem('sh.focus.pick');
-    else window.localStorage.setItem('sh.focus.pick', id);
+  // Focus can now show 1–4 self-chosen panels (picks list). The pick survives
+  // refreshes — Focus must never swap tasks on its own while the picked task
+  // is still live (multi-session rule). MAX_FOCUS_PANELS is the upper limit;
+  // Task 6 consumes it when building the panel grid UI.
+  const [picks, setPicksState] = useState<string[]>(() => loadFocusPicks());
+  const setPicks = (ids: string[]) => {
+    setPicksState(ids);
+    writeFocusPicks(ids);
   };
+  void MAX_FOCUS_PANELS; // Task 6 uses this; keeping tsc happy.
   const [showBoard, setShowBoard] = useState(false);
   // Day mode is now two-place: Daily (the board) and Focus (auto-morphs when
   // a session is live). The old "Overview" place was merged into Daily —
   // helper notes, capacity, and the stat strip all live at the top of Daily.
   const pickMode = (m: ModeId) => setMode(m);
+  // Reconcile picks against live tasks — drop any that stopped being live.
   useEffect(() => {
     if (liveItems.length === 0) {
       setShowBoard(false);
-      setFocalId(null);
+      setPicks([]);
       return;
     }
-    // The picked task stopped being live (its session ended) but others are
-    // still going — clear the stale pick so the fallback (newest live) rules.
-    if (focalId != null && !liveItems.some(w => w.id === focalId)) {
-      setFocalId(null);
-    }
+    const liveIds = liveItems.map(w => w.id);
+    const next = reconcilePicks(picks, liveIds);
+    if (next.length !== picks.length) setPicks(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveItems, focalId]);
-  const focalTask = useMemo(
-    () => liveItems.find(w => w.id === focalId) ?? liveItems[0] ?? null,
-    [liveItems, focalId],
-  );
-  const otherLive = useMemo(
-    () => liveItems.filter(w => !focalTask || w.id !== focalTask.id),
-    [liveItems, focalTask],
-  );
-  // The story the focal task belongs to (if any). Focus uses this as the
-  // headline + lists every sibling task underneath.
-  const focalStory = useMemo(() => {
-    const parentId = focalTask?.parent?.id;
+  }, [liveItems]);
+  // Derive what the panels show: the reconciled picks, or — when empty — an
+  // auto-pick of the first live task (preserves today's "opens on one" behaviour).
+  const panelIds = picks.length > 0 ? picks : liveItems.slice(0, 1).map(w => w.id);
+  const panelTasks = panelIds.map(id => liveItems.find(w => w.id === id)).filter(Boolean) as ApiWorkItem[];
+  const offPanel = liveItems.filter(w => !panelIds.includes(w.id)); // the "also running" strip
+  // Backwards-compatible single-task focal view (Task 6 transitions to multi-panel).
+  const focalTask = panelTasks[0] ?? null;
+  const otherLive = offPanel;
+  // Generalized story resolver: given a task, find its parent story (if any).
+  const storyFor = (task: ApiWorkItem | null) => {
+    if (!task) return null;
+    const parentId = task.parent?.id;
     if (parentId == null) return null;
     const pid = String(parentId);
     return stories.find(s => String(s.id) === pid) ?? null;
-  }, [focalTask, stories]);
+  };
+  const focalStory = storyFor(focalTask);
   // Focus has top precedence — if a session is live and Moran hasn't asked to
   // see the whole board, the screen morphs to Focus.
   const isFocus = mode === 'day' && !!focalTask && !showBoard;
@@ -312,7 +315,7 @@ function DashboardLive({
                   story={focalStory}
                   others={otherLive}
                   onOpenItem={openItem}
-                  onPromote={id => setFocalId(id)}
+                  onPromote={id => setPicks([id])}
                   helperNotes={data.helperNotes}
                   onRefresh={onRefresh}
                 />
