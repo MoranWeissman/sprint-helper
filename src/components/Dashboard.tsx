@@ -190,7 +190,6 @@ function DashboardLive({
   // auto-pick of the first live task (preserves today's "opens on one" behaviour).
   const panelIds = picks.length > 0 ? picks : liveItems.slice(0, 1).map(w => w.id);
   const panelTasks = panelIds.map(id => liveItems.find(w => w.id === id)).filter(Boolean) as ApiWorkItem[];
-  const offPanel = liveItems.filter(w => !panelIds.includes(w.id)); // the "also running" strip
   // Backwards-compatible single-task focal view for isFocus check.
   const focalTask = panelTasks[0] ?? null;
   // Generalized story resolver: given a task, find its parent story (if any).
@@ -308,9 +307,8 @@ function DashboardLive({
             <div className="r21-body is-focus">
               <R21FocusGrid
                 tasks={panelTasks}
-                offPanel={offPanel}
+                allLive={liveItems}
                 storyFor={storyFor}
-                picks={picks}
                 onSetPicks={setPicks}
                 maxPanels={MAX_FOCUS_PANELS}
                 onOpenItem={openItem}
@@ -863,19 +861,19 @@ function StateMark({ state }: { state?: 'working' | 'waiting' | 'stale' }) {
  */
 function R21FocusGrid({
   tasks,
-  offPanel,
+  allLive,
   storyFor,
-  picks,
   onSetPicks,
   maxPanels,
   onOpenItem,
   helperNotes,
   onRefresh,
 }: {
+  /** The tasks currently shown as panels (1–maxPanels). */
   tasks: ApiWorkItem[];
-  offPanel: ApiWorkItem[];
+  /** Every live session's task — drives the split bar. */
+  allLive: ApiWorkItem[];
   storyFor: (task: ApiWorkItem) => ApiUserStoryGroup | null;
-  picks: string[];
   onSetPicks: (ids: string[]) => void;
   maxPanels: number;
   onOpenItem: (id: string) => void;
@@ -883,27 +881,60 @@ function R21FocusGrid({
   onRefresh: () => void;
 }) {
   const count = Math.max(1, tasks.length);
-  const canAdd = offPanel.length > 0 && count < maxPanels;
+  const shownIds = new Set(tasks.map(t => t.id));
 
-  const addPanel = (id: string) => {
-    const next = [...new Set([...picks.filter(Boolean), id])].slice(0, maxPanels);
-    onSetPicks(next);
-  };
-  const removePanel = (id: string) => {
-    onSetPicks(picks.filter(p => p !== id));
+  // Toggle a running task in/out of the panels. Never drop below 1 panel;
+  // never exceed maxPanels (a full grid ignores an add — the chip shows why).
+  const toggle = (id: string) => {
+    if (shownIds.has(id)) {
+      if (tasks.length <= 1) return; // keep at least one panel
+      onSetPicks(tasks.map(t => t.id).filter(x => x !== id));
+    } else {
+      if (tasks.length >= maxPanels) return; // grid full
+      onSetPicks([...tasks.map(t => t.id), id].slice(0, maxPanels));
+    }
   };
 
   return (
     <div className={`r21-focusgrid is-count-${count}`}>
-      {/* Header: count + which-tasks control */}
-      <div className="r21-focusgrid-head">
-        <span className="r21-focusgrid-label">Focus</span>
-        {tasks.length > 1 && (
+      {/* Split bar — visible whenever more than one session runs. Each running
+          task is a chip; click to show/hide it as a panel. This is the front
+          door to splitting Focus (the old bottom "also running" strip hid it). */}
+      {allLive.length > 1 && (
+        <div className="r21-focusgrid-head">
+          <span className="r21-focusgrid-label">Focus</span>
           <span className="r21-focusgrid-count">
-            {count} of {tasks.length + offPanel.length} running
+            showing {count} of {allLive.length} running — tap to split
           </span>
-        )}
-      </div>
+          <div className="r21-splitbar">
+            {allLive.map(w => {
+              const on = shownIds.has(w.id);
+              const full = !on && tasks.length >= maxPanels;
+              return (
+                <button
+                  key={w.id}
+                  type="button"
+                  className={`r21-splitchip${on ? ' is-on' : ''}${full ? ' is-full' : ''}`}
+                  aria-pressed={on}
+                  onClick={() => toggle(w.id)}
+                  title={
+                    on
+                      ? tasks.length <= 1
+                        ? 'The only panel — add another before hiding this'
+                        : 'Hide this panel'
+                      : full
+                        ? `Focus is full (${maxPanels}) — hide one first`
+                        : 'Show as a panel'
+                  }
+                >
+                  <StateMark state={w.activeSession?.state} />
+                  <span className="r21-splitchip-title">{w.title}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="r21-focusgrid-panels">
         {tasks.map(task => (
@@ -913,35 +944,12 @@ function R21FocusGrid({
             story={storyFor(task)}
             state={task.activeSession?.state}
             onOpenItem={onOpenItem}
-            onRemove={tasks.length > 1 ? () => removePanel(task.id) : undefined}
+            onRemove={tasks.length > 1 ? () => toggle(task.id) : undefined}
             helperNotes={helperNotes}
             onRefresh={onRefresh}
           />
         ))}
       </div>
-
-      {offPanel.length > 0 && (
-        <section className="r21-also-live" aria-label="Also running">
-          <div className="r21-also-live-head">
-            <span className="r21-also-live-label">Also running</span>
-            <span className="r21-also-live-count">{offPanel.length}</span>
-          </div>
-          <div className="r21-also-live-row">
-            {offPanel.map(w => (
-              <button
-                key={w.id}
-                type="button"
-                className={`r21-also-card${w.activeSession?.state === 'waiting' ? ' is-waiting' : ''}${w.activeSession?.state === 'stale' ? ' is-stale' : ''}`}
-                onClick={() => (canAdd ? addPanel(w.id) : onOpenItem(w.id))}
-                title={canAdd ? 'Add to Focus' : `Focus is full (${maxPanels}) — open it instead`}
-              >
-                <StateMark state={w.activeSession?.state} />
-                <span className="r21-also-card-title">{w.title}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }
@@ -1057,7 +1065,13 @@ function FocusPanel({
         <div className="r21-focal-blocked">
           <span className="r21-blocked-pill">blocked</span>
           <span className="r21-focal-blocked-meta">
-            {taskBlocked ? 'this task is blocked' : 'parent story is blocked'}
+            {/* Name what's blocked — the panel's h1 is the STORY, so a bare
+                "this task is blocked" points at nothing. Say the task/story. */}
+            {taskBlocked ? (
+              <>the task <span className="v">{task.title}</span> is blocked</>
+            ) : (
+              <>the story <span className="v">{parent?.title ?? story?.title}</span> is blocked</>
+            )}
           </span>
         </div>
       )}
