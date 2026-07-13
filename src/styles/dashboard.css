@@ -2391,7 +2391,7 @@ html, body {
 /* The grid is the scroll container (the old single-panel .r21-focal was —
    the body wrapper is overflow:hidden, so without this a story taller than
    the viewport gets clipped and can't scroll). */
-.r21-focusgrid { display: flex; flex-direction: column; gap: clamp(16px, 2vw, 24px); height: 100%; overflow-y: auto; padding: 32px 40px; box-sizing: border-box; }
+.r21-focusgrid { display: flex; flex-direction: column; gap: clamp(16px, 2vw, 24px); height: 100%; overflow-y: auto; padding: 32px 40px; box-sizing: border-box; container-type: inline-size; }
 .r21-focusgrid-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin-bottom: 4px; }
 .r21-focusgrid-label { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
 .r21-focusgrid-count { font-size: 12px; color: var(--ink-3); }
@@ -2414,23 +2414,27 @@ html, body {
 .r21-focusgrid-panels {
   display: grid;
   gap: clamp(16px, 2vw, 24px);
+  /* minmax(0, 1fr) lets columns SHRINK below content width — plain 1fr refused
+     to, so wide panels bled off the right edge. */
+  grid-template-columns: minmax(0, 1fr);
 }
 
-/* Grid layouts by count */
-.r21-focusgrid.is-count-1 .r21-focusgrid-panels { grid-template-columns: 1fr; }
-.r21-focusgrid.is-count-2 .r21-focusgrid-panels { grid-template-columns: repeat(2, 1fr); }
-.r21-focusgrid.is-count-3 .r21-focusgrid-panels,
-.r21-focusgrid.is-count-4 .r21-focusgrid-panels { grid-template-columns: repeat(2, 1fr); }
-
-/* Responsive: stack to single column on narrow screens */
-@media (max-width: 1200px) {
-  .r21-focusgrid-panels { grid-template-columns: 1fr !important; }
+/* Multi-column only when the FOCUS AREA itself is wide enough — a container
+   query, so it reflows on window resize AND when the side panels collapse
+   (which a viewport @media query ignored). Single panel always fills. */
+.r21-focusgrid.is-count-1 .r21-focusgrid-panels { grid-template-columns: minmax(0, 1fr); }
+@container (min-width: 820px) {
+  .r21-focusgrid.is-count-2 .r21-focusgrid-panels,
+  .r21-focusgrid.is-count-3 .r21-focusgrid-panels,
+  .r21-focusgrid.is-count-4 .r21-focusgrid-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* Focus panel — the card wrapper */
 .r21-focuspanel {
   position: relative;
-  padding: 48px 64px 32px;
+  /* Padding scales with panel width so a half-width panel doesn't waste its
+     room on margins. */
+  padding: clamp(28px, 4cqi, 48px) clamp(24px, 5cqi, 64px) 32px;
   background: var(--surface-2);
   border: 1px solid var(--line-soft);
   border-radius: 14px;
@@ -2438,6 +2442,7 @@ html, body {
   flex-direction: column;
   gap: 18px;
   min-height: 400px;
+  min-width: 0;
 }
 
 /* Remove button (✕) — only shown when >1 panel */
@@ -2496,9 +2501,12 @@ html, body {
   font-size: 12px;
 }
 
-/* Ensure existing r21-focal classes still work inside panels */
+/* Ensure existing r21-focal classes still work inside panels. Titles scale
+   with the panel width (cqi = 1% of the container's inline size) so a
+   half-width panel's heading shrinks instead of overflowing. */
 .r21-focuspanel .r21-focal-story { margin-bottom: 0; }
-.r21-focuspanel .r21-focal-title { font-size: 28px; max-width: 20ch; }
+.r21-focuspanel .r21-focal-title,
+.r21-focuspanel .r21-focal-story-title { font-size: clamp(22px, 5cqi, 34px); max-width: none; }
 .r21-focuspanel .r21-focal-current { margin-top: 12px; }
 .r21-focuspanel .r21-focal-tasks { margin-top: 18px; }
 

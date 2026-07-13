@@ -1004,16 +1004,11 @@ function FocusPanel({
       (story != null && n.workItemId === Number(story.id)),
   );
 
-  const parent = task.parent;
   const loggedSec = task.localLoggedSeconds;
   const logged = fmtHM(loggedSec, 0);
   const startedAt = task.activeSession ? fmtEventStamp(task.activeSession.startedAt) : '';
   const remaining = task.remainingWork != null ? `${Math.round(task.remainingWork)}h` : '—';
   const completed = task.completedWork != null ? `${Math.round(task.completedWork)}h` : '—';
-  const taskBlocked = isBlockedState(task.state) || (task.type === 'Bug' && isBlocked(task.tags));
-  const parentBlocked = parent
-    ? isBlockedState(parent.state) || (parent.type === 'Bug' && isBlocked(task.parentTags))
-    : false;
 
   const storyDominant = story ? storyDominantState(story) : null;
   const taskIdStr = String(task.id);
@@ -1061,20 +1056,10 @@ function FocusPanel({
         </>
       )}
 
-      {(taskBlocked || parentBlocked) && (
-        <div className="r21-focal-blocked">
-          <span className="r21-blocked-pill">blocked</span>
-          <span className="r21-focal-blocked-meta">
-            {/* Name what's blocked — the panel's h1 is the STORY, so a bare
-                "this task is blocked" points at nothing. Say the task/story. */}
-            {taskBlocked ? (
-              <>the task <span className="v">{task.title}</span> is blocked</>
-            ) : (
-              <>the story <span className="v">{parent?.title ?? story?.title}</span> is blocked</>
-            )}
-          </span>
-        </div>
-      )}
+      {/* No separate "blocked" line here: the story header + the TASKS IN THIS
+          STORY list below each carry their own blocked chip, so a line under
+          the story title only repeated it (and read as if the STORY was the
+          blocked task). Removed as noise. */}
 
       <section className="r21-focal-current">
         <div className="r21-focal-current-head">
