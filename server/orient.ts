@@ -14,6 +14,7 @@ import { buildDashboardCached } from './dashboard-cache';
 import { getDb } from './db';
 import { ensureCapacityNudge, getHelperNotes, scanStaleRemaining } from './helper-notes';
 import { getPlanningHome } from './planning-home';
+import { STALE_IDLE_MINUTES } from './session-activity';
 import {
   chatCwdBasename,
   getLastEventTimestampMap,
@@ -21,13 +22,6 @@ import {
   sessionOwnershipHint,
   type SessionRow,
 } from './sessions';
-
-/**
- * Minutes of no activity (no session_log event) before an open session looks
- * quiet enough to ask Moran whether it's still going. Tuned to "left for
- * lunch / a meeting / a context switch" but not "stepped away for 20 min".
- */
-const STALE_IDLE_MINUTES = 120;
 
 export interface OrientLiveSession {
   /**

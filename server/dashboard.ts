@@ -27,6 +27,7 @@ import { getHelperNotes, type HelperNotes } from './helper-notes';
 import { buildStandup, workedItemIdsForStandup, type StandupBlock } from './standup';
 import {
   getActiveSessionMap,
+  getLastEventTimestampMap,
   getRecentEventsMap,
   getSessionCountMap,
   listActiveSessions,
@@ -34,6 +35,7 @@ import {
   type Session,
   type SessionEvent,
 } from './sessions';
+import { sessionActivityState, type SessionActivityState } from './session-activity';
 import { buildNeedsYou, RECENTLY_FINISHED_HOURS, type NeedsYouBlock } from './needs-you';
 import { buildWrap, todayActivityRows, isWorkingDayFor, type WrapBlock } from './wrap';
 import {
@@ -87,7 +89,13 @@ export interface DashboardWorkItem {
    * plugin opens these via `session_start`; the Day dashboard surfaces them so
    * Moran can see Claude Code is actively reporting in.
    */
-  activeSession?: { id: string; startedAt: string; waiting: boolean };
+  activeSession?: {
+    id: string;
+    startedAt: string;
+    waiting: boolean;
+    idleMinutes: number;
+    state: SessionActivityState;
+  };
   /** Newest-first session events (focus / summary / blocker / decision / note). */
   recentActivity: SessionEvent[];
   /** Number of work sessions (open or closed) recorded against this item. */
@@ -400,12 +408,17 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
   const recentEvents = getRecentEventsMap(itemIds, 5);
   const sessionCounts = getSessionCountMap(itemIds);
 
+  // Build last-activity map for computing session state (working / waiting / stale).
+  const activeSessionList = [...activeSessions.values()];
+  const lastEventBySession = getLastEventTimestampMap(activeSessionList.map(s => s.id));
+  const now = new Date();
+
   const inProgress: DashboardWorkItem[] = [];
   const upNext: DashboardWorkItem[] = [];
   const done: DashboardWorkItem[] = [];
 
   for (const w of items) {
-    const projected = projectWorkItem(w, uncaptured, localLogged, running, activeSessions, recentEvents, sessionCounts);
+    const projected = projectWorkItem(w, uncaptured, localLogged, running, activeSessions, recentEvents, sessionCounts, lastEventBySession, now);
     if (shCreatedIds.has(w.id)) projected.wasSHCreated = true;
     if (DONE_STATES.has(w.state)) done.push(projected);
     else if (ACTIVE_STATES.has(w.state)) inProgress.push(projected);
@@ -806,6 +819,8 @@ function projectWorkItem(
   activeSessions: Map<number, Session>,
   recentEvents: Map<number, SessionEvent[]>,
   sessionCounts: Map<number, number>,
+  lastEventBySession: Map<string, string>,
+  now: Date,
 ): DashboardWorkItem {
   const lastIterSegment = w.iterationPath.split('\\').pop() ?? w.iterationPath;
   const story = w.parentTitle
@@ -836,7 +851,18 @@ function projectWorkItem(
     localLoggedSeconds: localLogged.get(w.id) ?? 0,
     runningSince: running.get(w.id),
     activeSession: session
-      ? { id: session.id, startedAt: session.startedAt, waiting: session.waitingSince != null }
+      ? (() => {
+          const waiting = session.waitingSince != null;
+          const lastActivity = lastEventBySession.get(session.id) ?? session.startedAt;
+          const idleMinutes = Math.max(0, Math.round((now.getTime() - Date.parse(lastActivity)) / 60000));
+          return {
+            id: session.id,
+            startedAt: session.startedAt,
+            waiting,
+            idleMinutes,
+            state: sessionActivityState({ idleMinutes, waiting }),
+          };
+        })()
       : undefined,
     recentActivity: recentEvents.get(w.id) ?? [],
     sessionCount: sessionCounts.get(w.id) ?? 0,

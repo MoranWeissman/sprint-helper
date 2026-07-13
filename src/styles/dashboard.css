@@ -2381,10 +2381,108 @@ html, body {
 }
 .r21-also-card:hover { border-color: var(--accent); }
 .r21-also-card.is-waiting { border-left: 3px solid var(--accent); }
+.r21-also-card.is-stale { border-left: 3px solid var(--line-soft); }
 .r21-also-card-title { font-size: 14px; color: var(--ink-1); }
 .r21-also-card-meta { display: flex; gap: 8px; font-size: 12px; color: var(--ink-2); }
 .r21-also-card-waiting { font-size: 12px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
 .r21-waiting-pill { font-size: 12px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Focus grid — 1 to 4 panels, responsive */
+.r21-focusgrid { display: flex; flex-direction: column; gap: clamp(16px, 2vw, 24px); }
+.r21-focusgrid-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.r21-focusgrid-label { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
+.r21-focusgrid-count { font-size: 12px; color: var(--ink-3); }
+
+.r21-focusgrid-panels {
+  display: grid;
+  gap: clamp(16px, 2vw, 24px);
+}
+
+/* Grid layouts by count */
+.r21-focusgrid.is-count-1 .r21-focusgrid-panels { grid-template-columns: 1fr; }
+.r21-focusgrid.is-count-2 .r21-focusgrid-panels { grid-template-columns: repeat(2, 1fr); }
+.r21-focusgrid.is-count-3 .r21-focusgrid-panels,
+.r21-focusgrid.is-count-4 .r21-focusgrid-panels { grid-template-columns: repeat(2, 1fr); }
+
+/* Responsive: stack to single column on narrow screens */
+@media (max-width: 1200px) {
+  .r21-focusgrid-panels { grid-template-columns: 1fr !important; }
+}
+
+/* Focus panel — the card wrapper */
+.r21-focuspanel {
+  position: relative;
+  padding: 48px 64px 32px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 400px;
+}
+
+/* Remove button (✕) — only shown when >1 panel */
+.r21-focuspanel-remove {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: none;
+  border: 0;
+  padding: 4px 8px;
+  font-size: 16px;
+  color: var(--ink-3);
+  cursor: pointer;
+  border-radius: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.r21-focuspanel-remove:hover { background: var(--surface-3); color: var(--ink-1); }
+
+/* State mark (working / waiting / stale) */
+.r21-focuspanel-mark {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+}
+
+.r21-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.r21-mark.is-working {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-hair);
+  color: var(--accent);
+}
+
+.r21-mark.is-waiting {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+
+.r21-mark.is-stale {
+  background: var(--surface-3);
+  border: 1px solid var(--line-soft);
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+/* Ensure existing r21-focal classes still work inside panels */
+.r21-focuspanel .r21-focal-story { margin-bottom: 0; }
+.r21-focuspanel .r21-focal-title { font-size: 28px; max-width: 20ch; }
+.r21-focuspanel .r21-focal-current { margin-top: 12px; }
+.r21-focuspanel .r21-focal-tasks { margin-top: 18px; }
 
 /* Needs-you rail card rows */
 .needsyou-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }

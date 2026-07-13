@@ -26,6 +26,10 @@ export interface ApiActiveSession {
   startedAt: string;
   /** True when this session's chat is stopped, waiting on Moran's answer. */
   waiting?: boolean;
+  /** Minutes since the session's last logged activity. */
+  idleMinutes?: number;
+  /** At-a-glance mark for a Focus panel. Absent on older payloads. */
+  state?: 'working' | 'waiting' | 'stale';
 }
 
 export interface ApiNeedsYouWaiting {
