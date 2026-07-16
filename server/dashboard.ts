@@ -46,6 +46,7 @@ import {
 } from './timers';
 import { getSHCreatedIdSet } from './sh-created';
 import { isSprintLevel } from './iteration-paths';
+import { getManagedFeatureIds } from './workspace';
 
 export type { SessionEvent, SessionEventType, Session } from './sessions';
 
@@ -226,6 +227,8 @@ export interface DashboardPayload {
   needsYou: NeedsYouBlock;
   /** End-of-day wrap facts. Show/hide is decided client-side (WrapCard). */
   wrap: WrapBlock;
+  /** PM-owned features Moran chose to manage, not already shown in assigned sprint work. */
+  managedFeatures: ManagedFeature[];
   fetchedAt: string;
 }
 
@@ -260,6 +263,43 @@ export interface CarryForwardSummary {
   count: number;
   /** The sprint label most stranded tasks sit in, e.g. "26_12". */
   fromSprintLabel: string;
+}
+
+export interface ManagedFeature {
+  id: number;
+  title: string;
+  displayName: string;
+  state: string;
+  url: string;
+  assignedTo: string | null;
+}
+
+const MANAGED_CLOSED_STATES = new Set(['Closed', 'Removed', 'Done']);
+
+/** Pure: pick open, not-already-shown, deduped managed features. */
+export function selectManagedFeatures(args: {
+  managedIds: number[];
+  alreadyShownIds: Set<number>;
+  fetched: { id: number; title: string; type: string; state: string; assignedTo?: string; url: string }[];
+}): ManagedFeature[] {
+  const { managedIds, alreadyShownIds, fetched } = args;
+  const wanted = new Set(managedIds.filter(id => !alreadyShownIds.has(id)));
+  const seen = new Set<number>();
+  const out: ManagedFeature[] = [];
+  for (const w of fetched) {
+    if (!wanted.has(w.id) || seen.has(w.id)) continue;
+    if (MANAGED_CLOSED_STATES.has(w.state)) continue;
+    seen.add(w.id);
+    out.push({
+      id: w.id,
+      title: w.title,
+      displayName: `**${w.title}** (#${w.id})`,
+      state: w.state,
+      url: w.url,
+      assignedTo: w.assignedTo ?? null,
+    });
+  }
+  return out;
 }
 
 /**
@@ -390,6 +430,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
         stillOpen: [],
         firstMove: null,
       },
+      managedFeatures: [],
       fetchedAt: new Date().toISOString(),
     };
   }
@@ -574,6 +615,23 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     isWorkingDay: isWorkingDayFor(new Date()),
   });
 
+  // Managed features (PM-owned features Moran chose to manage). Best-effort.
+  let managedFeatures: ManagedFeature[] = [];
+  try {
+    const managedIds = getManagedFeatureIds();
+    if (managedIds.length > 0) {
+      // Collect numeric ids already present in the payload (DashboardWorkItem.id is a string).
+      const alreadyShown = new Set<number>(
+        [...inProgress, ...upNext, ...done].map(w => Number(w.id))
+      );
+      // errorPolicy: 'omit' so that a deleted managed id doesn't wipe the whole list
+      const fetched = await getWorkItemsWithParents(managedIds, { errorPolicy: 'omit' });
+      managedFeatures = selectManagedFeatures({ managedIds, alreadyShownIds: alreadyShown, fetched });
+    }
+  } catch {
+    managedFeatures = [];
+  }
+
   return {
     user: cfg.user,
     sprint: {
@@ -600,6 +658,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     carryForward,
     needsYou,
     wrap,
+    managedFeatures,
     fetchedAt: new Date().toISOString(),
   };
 }

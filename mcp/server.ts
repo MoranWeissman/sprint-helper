@@ -22,6 +22,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { readdirSync } from 'node:fs';
 
 import { mirrorSprintSummary, mirrorStandupForToday, mirrorTaskFile } from '../server/archive.js';
 import { getCalendarUrl, setCalendarUrl } from '../server/calendar.js';
@@ -61,6 +62,18 @@ import { getSetting, setSetting } from '../server/timers.js';
 import * as timerService from '../server/timer-service.js';
 import { getWorkItem, addWorkItemComment } from '../server/ado.js';
 import { markSHCreated } from '../server/sh-created.js';
+import {
+  registerWorkspace,
+  declineWorkspace,
+  getWorkspaces,
+  isKnownWorkspace,
+  isDeclinedPath,
+  createFeatureFolder,
+  addManagedFeatureId,
+  removeManagedFeatureId,
+  workspaceOfferFor,
+  type OrientWorkspaceOffer,
+} from '../server/workspace.js';
 import {
   createStory,
   createBug,
@@ -328,6 +341,33 @@ which exists only if he (or this tool) created it. So
 \`orient.planningHome.isExplicitlyConfigured: false\` plus the cwd not
 matching means: he hasn't opted into planning home yet. Don't volunteer
 to set it for him unless he asks — confirm-before-write applies.
+
+WORKSPACE — Moran's home for non-code work (discovery, design, small demos):
+
+  A "workspace" is a visible folder Moran opens Claude Code in for work that
+  isn't writing code. BMAD, a planning CLAUDE.md, and an enforcement hook live
+  once at its root. Each feature he works gets its own subfolder inside it for
+  design docs.
+
+  - OFFER on an empty folder: at the start of a chat, read your current working
+    directory from your environment (the same cwd you use for story_match). Call
+    \`workspace_status\` with that \`cwd\`. If the returned \`offer.shouldOffer\`
+    is true, this is an empty folder that isn't one of Moran's workspaces — ask
+    him once: "This is an empty folder and it's not one of your workspaces —
+    want to make it your sprint-helper workspace?" On yes → call \`workspace_set\`
+    with the folder path. On no → call \`workspace_decline\` with the cwd (it
+    won't ask about that folder again).
+  - START A FEATURE: when Moran names a feature to work on ("let's work on
+    feature #NNNNNN"), call \`workspace_feature_folder\` with the feature id
+    AND your current \`cwd\`. That one call makes the feature's folder AND
+    makes the feature show on his board (his "Features you're managing"
+    section) — this is how a PM-owned feature he doesn't own becomes
+    manageable. Then write his discovery/design docs into the returned folder
+    path. He stays in the workspace root chat.
+  - Stories he breaks out go on the board through the usual sprint-helper tools,
+    parented under the feature, and pulled into his sprint.
+  - This generalizes PLANNING HOME above — a workspace is a planning home he can
+    grow feature folders inside.
 
 REGARDLESS of whether there's a live session, do a CONTEXT CROSS-CHECK
 by calling \`story_match\` with the chat's cwd:
@@ -2552,6 +2592,139 @@ server.registerTool(
       const status = getPlanningHome();
       const match = cwd ? isPlanningHomeCwd(cwd) : null;
       return jsonResult({ ...status, match });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'workspace_set',
+  {
+    title: "Set a sprint-helper workspace folder",
+    description:
+      "Register the folder Moran launches Claude Code in for non-code work (discovery, design, small demos) as a WORKSPACE. Creates the folder if needed and fills it once with BMAD, a planning CLAUDE.md, and the enforcement hook (copied from the seed). Fire when Moran says 'this is my workspace' or accepts the empty-folder offer from orient. Returns which scaffold pieces were created; if the seed is missing, says so plainly.",
+    inputSchema: {
+      path: z.string().min(1).describe('Absolute path to the workspace folder. `~` expands to home.'),
+    },
+  },
+  async ({ path }) => {
+    try {
+      const r = registerWorkspace(path);
+      return jsonResult(r);
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'workspace_decline',
+  {
+    title: 'Remember that a folder is not a workspace',
+    description:
+      "Record that Moran said NO to making the current folder a workspace, so the model never offers it again. Fire when he declines the empty-folder workspace offer.",
+    inputSchema: {
+      cwd: z.string().min(1).describe('Folder to remember as declined (the chat cwd from your environment).'),
+    },
+  },
+  async ({ cwd }) => {
+    try {
+      declineWorkspace(cwd);
+      return jsonResult({ declined: cwd });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'workspace_status',
+  {
+    title: 'List sprint-helper workspaces and offer signal',
+    description:
+      "Return Moran's registered workspaces and whether the current folder is a known or declined workspace. When the model passes its `cwd`, also returns an `offer` deciding whether to offer making it a workspace (empty-folder signal). Use at chat start to check if you should offer.",
+    inputSchema: {
+      cwd: z.string().min(1).optional().describe('Optional: the chat cwd from your environment. When provided, the response includes an offer signal.'),
+    },
+  },
+  async ({ cwd }) => {
+    try {
+      const workspaces = getWorkspaces();
+      let offer: OrientWorkspaceOffer = { shouldOffer: false, cwd: null, reason: null };
+      let current = null;
+      if (cwd) {
+        const known = isKnownWorkspace(cwd);
+        const declined = isDeclinedPath(cwd);
+        current = { cwd, known, declined };
+        try {
+          const entries = readdirSync(cwd);
+          offer = workspaceOfferFor({ cwd, entries, known, declined });
+        } catch {
+          offer = { shouldOffer: false, cwd, reason: null };
+        }
+      }
+      return jsonResult({ ...workspaces, current, offer });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'workspace_feature_folder',
+  {
+    title: 'Start work on a feature (folder + board visibility)',
+    description:
+      "Fire when Moran names a feature to start non-code work on ('let's work on feature #NNNNNN'). Reads the feature title, creates a subfolder for it inside his workspace, AND records the feature as managed so it shows on his board (needed when the feature is the PM's, not assigned to him). Returns the folder path — write discovery/design docs there. Moran stays in the workspace root chat.",
+    inputSchema: {
+      workItemId: z.number().int().positive().describe('The Azure DevOps feature id.'),
+      cwd: z.string().min(1).describe('The chat cwd from your environment.'),
+    },
+  },
+  async ({ workItemId, cwd }) => {
+    try {
+      const { paths } = getWorkspaces();
+      let workspacePath: string | null = null;
+      if (isKnownWorkspace(cwd)) workspacePath = cwd;
+      else if (paths.length === 1) workspacePath = paths[0];
+      if (!workspacePath) {
+        return errorResult(
+          paths.length === 0
+            ? 'No workspace is set. Ask Moran to open his workspace folder (or set one with workspace_set) first.'
+            : 'More than one workspace is registered and this chat is not inside one. Ask Moran which workspace to use.',
+        );
+      }
+      let title = '';
+      try {
+        const item = await getWorkItem(workItemId);
+        title = item.title ?? '';
+      } catch {
+        title = ''; // fall back to id-only folder name
+      }
+      const folder = createFeatureFolder(workspacePath, workItemId, title);
+      addManagedFeatureId(workItemId);
+      return jsonResult({ ...folder, featureTitle: title || null });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'feature_unmanage',
+  {
+    title: 'Stop showing a feature on the board',
+    description:
+      "Drop a feature from Moran's 'Features you're managing' board section. The folder on disk is left alone; only the board mark is removed. Fire when he says he's done managing feature #NNNNNN.",
+    inputSchema: {
+      workItemId: z.number().int().positive().describe('The Azure DevOps feature id to stop managing.'),
+    },
+  },
+  async ({ workItemId }) => {
+    try {
+      removeManagedFeatureId(workItemId);
+      return jsonResult({ unmanaged: workItemId });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }

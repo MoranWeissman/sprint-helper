@@ -4921,6 +4921,70 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 }
 .r21-carryforward-task-id { color: var(--ink-3); font-size: 12px; flex: none; }
 
+/* ============================ Managed features section ============================ */
+.r21-managed {
+  margin-top: 24px;
+  padding: 20px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.r21-managed-head {
+  font-size: 15px;
+  color: var(--ink-2);
+  margin: 0 0 2px;
+  font-weight: 500;
+}
+.r21-managed-sub {
+  font-size: 13px;
+  color: var(--ink-3);
+  margin: 0 0 14px;
+}
+.r21-managed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.r21-managed-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--surface-1);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.r21-managed-row:hover {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+.r21-managed-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-color: var(--accent);
+}
+.r21-managed-title {
+  font-size: 14px;
+  color: var(--ink-1);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.r21-managed-meta {
+  font-size: 12px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  flex: none;
+}
+
 /* ============================ Pre-plan page ============================ */
 .preplan { max-width: 880px; margin: 0 auto; padding: 24px clamp(16px, 4vw, 40px); display: flex; flex-direction: column; gap: 24px; }
 .preplan-head h1 { margin: 0 0 4px; font-size: 22px; }

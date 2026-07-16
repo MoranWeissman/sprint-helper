@@ -390,13 +390,15 @@ function humanWorkItemUrl(restUrl: string, id: number): string {
   return `${m[1]}/_workitems/edit/${id}`;
 }
 
-async function getWorkItemBatch(ids: number[]): Promise<WorkItem[]> {
+async function getWorkItemBatch(ids: number[], options?: { errorPolicy?: 'fail' | 'omit' }): Promise<WorkItem[]> {
   const cfg = await loadAdoConfig();
   const uri = `${cfg.organization}/${encodeURIComponent(cfg.project)}/_apis/wit/workitemsbatch?api-version=7.1`;
+  const body: any = { ids, fields: WORK_ITEM_FIELDS };
+  if (options?.errorPolicy) body.errorPolicy = options.errorPolicy;
   const parsed = await getAdoClient().rest<{ value: RawWorkItem[] }>({
     method: 'POST',
     uri,
-    body: { ids, fields: WORK_ITEM_FIELDS },
+    body,
     contentKind: 'json',
   });
   return (parsed.value ?? []).map(w => mapWorkItem(w));
@@ -410,11 +412,11 @@ async function getWorkItemBatch(ids: number[]): Promise<WorkItem[]> {
  * current-sprint query never returns), so the morning recap shows real names
  * instead of bare `#id`s. Returns [] for an empty id list.
  */
-export async function getWorkItemsWithParents(ids: number[]): Promise<WorkItem[]> {
+export async function getWorkItemsWithParents(ids: number[], options?: { errorPolicy?: 'fail' | 'omit' }): Promise<WorkItem[]> {
   if (ids.length === 0) return [];
-  const items = await getWorkItemBatch(ids);
+  const items = await getWorkItemBatch(ids, options);
   const parentIds = [...new Set(items.map(i => i.parentId).filter((x): x is number => !!x))];
-  const parents = parentIds.length > 0 ? await getWorkItemBatch(parentIds) : [];
+  const parents = parentIds.length > 0 ? await getWorkItemBatch(parentIds, options) : [];
   const parentMap = new Map(parents.map(p => [p.id, p]));
   for (const i of items) {
     if (i.parentId == null) continue;
