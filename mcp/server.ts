@@ -62,6 +62,13 @@ import * as timerService from '../server/timer-service.js';
 import { getWorkItem, addWorkItemComment } from '../server/ado.js';
 import { markSHCreated } from '../server/sh-created.js';
 import {
+  registerWorkspace,
+  declineWorkspace,
+  getWorkspaces,
+  isKnownWorkspace,
+  isDeclinedPath,
+} from '../server/workspace.js';
+import {
   createStory,
   createBug,
   createTask,
@@ -2552,6 +2559,65 @@ server.registerTool(
       const status = getPlanningHome();
       const match = cwd ? isPlanningHomeCwd(cwd) : null;
       return jsonResult({ ...status, match });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'workspace_set',
+  {
+    title: "Set a sprint-helper workspace folder",
+    description:
+      "Register the folder Moran launches Claude Code in for non-code work (discovery, design, small demos) as a WORKSPACE. Creates the folder if needed and fills it once with BMAD, a planning CLAUDE.md, and the enforcement hook (copied from the seed). Fire when Moran says 'this is my workspace' or accepts the empty-folder offer from orient. Returns which scaffold pieces were created; if the seed is missing, says so plainly.",
+    inputSchema: {
+      path: z.string().min(1).describe('Absolute path to the workspace folder. `~` expands to home.'),
+    },
+  },
+  async ({ path }) => {
+    try {
+      const r = registerWorkspace(path);
+      return jsonResult(r);
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'workspace_decline',
+  {
+    title: 'Remember that a folder is not a workspace',
+    description:
+      "Record that Moran said NO to making the current folder a workspace, so orient never offers it again. Fire when he declines the empty-folder workspace offer.",
+    inputSchema: {
+      cwd: z.string().optional().describe('Folder to remember as declined. Defaults to the current working directory.'),
+    },
+  },
+  async ({ cwd }) => {
+    try {
+      const target = cwd ?? process.cwd();
+      declineWorkspace(target);
+      return jsonResult({ declined: target });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'workspace_status',
+  {
+    title: 'List sprint-helper workspaces',
+    description:
+      "Return Moran's registered workspaces and whether the current folder is a known or declined workspace. Use to answer 'where are my workspaces?' or to check state before offering.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const cwd = process.cwd();
+      return jsonResult({ ...getWorkspaces(), current: { cwd, known: isKnownWorkspace(cwd), declined: isDeclinedPath(cwd) } });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
