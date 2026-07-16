@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 const { store } = vi.hoisted(() => ({ store: new Map<string, string>() }));
 vi.mock('./timers', () => ({
@@ -14,6 +14,7 @@ import {
   getManagedFeatureIds, addManagedFeatureId, removeManagedFeatureId,
   WORKSPACE_PATHS_KEY, MANAGED_FEATURES_KEY,
   featureFolderName, createFeatureFolder,
+  registerWorkspace, ensureWorkspaceScaffold, SEED_KEY,
 } from './workspace';
 
 beforeEach(() => store.clear());
@@ -88,6 +89,73 @@ describe('createFeatureFolder', () => {
       expect(second.created).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+function makeSeed(): string {
+  const seed = mkdtempSync(join(tmpdir(), 'sh-seed-'));
+  mkdirSync(join(seed, '_bmad'), { recursive: true });
+  writeFileSync(join(seed, '_bmad', 'config.yaml'), 'x');
+  mkdirSync(join(seed, '.claude', 'skills', 'bmad-x'), { recursive: true });
+  writeFileSync(join(seed, '.claude', 'skills', 'bmad-x', 'SKILL.md'), 'x');
+  mkdirSync(join(seed, '.claude', 'hooks'), { recursive: true });
+  writeFileSync(join(seed, '.claude', 'hooks', 'user-prompt-submit.sh'), '#!/bin/bash\n');
+  writeFileSync(join(seed, 'CLAUDE.md'), '# rules');
+  return seed;
+}
+
+describe('ensureWorkspaceScaffold', () => {
+  it('copies bmad, claude-md, hook into an empty workspace; skips on repeat', () => {
+    const seed = makeSeed();
+    const ws = mkdtempSync(join(tmpdir(), 'sh-ws2-'));
+    try {
+      store.set(SEED_KEY, seed);
+      const first = ensureWorkspaceScaffold(ws);
+      expect(first.seedMissing).toBe(false);
+      expect(first.created.sort()).toEqual(['bmad', 'claude-md', 'hook'].sort());
+      expect(existsSync(join(ws, '_bmad', 'config.yaml'))).toBe(true);
+      expect(existsSync(join(ws, 'CLAUDE.md'))).toBe(true);
+      expect(existsSync(join(ws, '.claude', 'hooks', 'user-prompt-submit.sh'))).toBe(true);
+      expect(existsSync(join(ws, '.claude', 'settings.json'))).toBe(true);
+      const second = ensureWorkspaceScaffold(ws);
+      expect(second.created).toEqual([]); // nothing re-copied
+    } finally {
+      rmSync(seed, { recursive: true, force: true });
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('reports seedMissing when the seed has no _bmad', () => {
+    const emptySeed = mkdtempSync(join(tmpdir(), 'sh-noseed-'));
+    const ws = mkdtempSync(join(tmpdir(), 'sh-ws3-'));
+    try {
+      store.set(SEED_KEY, emptySeed);
+      const r = ensureWorkspaceScaffold(ws);
+      expect(r.seedMissing).toBe(true);
+      expect(r.created).toEqual([]);
+    } finally {
+      rmSync(emptySeed, { recursive: true, force: true });
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('registerWorkspace', () => {
+  it('adds the path, dedups, and scaffolds', () => {
+    const seed = makeSeed();
+    const ws = mkdtempSync(join(tmpdir(), 'sh-ws4-'));
+    try {
+      store.set(SEED_KEY, seed);
+      const r = registerWorkspace(ws);
+      expect(r.path).toBe(resolve(ws));
+      expect(r.scaffolded.length).toBe(3);
+      expect(getWorkspaces().paths).toContain(resolve(ws));
+      registerWorkspace(ws); // dedup
+      expect(getWorkspaces().paths.filter(p => p === resolve(ws)).length).toBe(1);
+    } finally {
+      rmSync(seed, { recursive: true, force: true });
+      rmSync(ws, { recursive: true, force: true });
     }
   });
 });

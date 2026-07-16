@@ -10,7 +10,7 @@
  * Everything here is LOCAL — no Azure DevOps access.
  */
 import { join, resolve } from 'node:path';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, cpSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { getSetting, setSetting } from './timers';
 
@@ -120,4 +120,74 @@ export function createFeatureFolder(
   const existed = existsSync(abs);
   mkdirSync(abs, { recursive: true });
   return { path: abs, created: !existed };
+}
+
+export const SEED_KEY = 'workspace_seed_path';
+const DEFAULT_SEED = join(homedir(), 'projects', 'github-moran', 'features');
+
+export function getSeedPath(): string {
+  return getSetting(SEED_KEY) ?? DEFAULT_SEED;
+}
+
+const SETTINGS_JSON = JSON.stringify(
+  {
+    hooks: {
+      UserPromptSubmit: [
+        { hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR"/.claude/hooks/user-prompt-submit.sh' }] },
+      ],
+    },
+  },
+  null,
+  2,
+) + '\n';
+
+export function ensureWorkspaceScaffold(
+  workspacePath: string,
+): { created: string[]; seedMissing: boolean } {
+  const ws = resolve(expandHome(workspacePath));
+  mkdirSync(ws, { recursive: true });
+  const seed = resolve(getSeedPath());
+  const created: string[] = [];
+
+  // Seed must have _bmad to be usable.
+  if (!existsSync(join(seed, '_bmad'))) {
+    return { created, seedMissing: true };
+  }
+
+  if (!existsSync(join(ws, '_bmad'))) {
+    cpSync(join(seed, '_bmad'), join(ws, '_bmad'), { recursive: true });
+    cpSync(join(seed, '.claude', 'skills'), join(ws, '.claude', 'skills'), { recursive: true });
+    created.push('bmad');
+  }
+  if (!existsSync(join(ws, 'CLAUDE.md')) && existsSync(join(seed, 'CLAUDE.md'))) {
+    cpSync(join(seed, 'CLAUDE.md'), join(ws, 'CLAUDE.md'));
+    created.push('claude-md');
+  }
+  if (!existsSync(join(ws, '.claude', 'hooks', 'user-prompt-submit.sh'))) {
+    mkdirSync(join(ws, '.claude', 'hooks'), { recursive: true });
+    cpSync(
+      join(seed, '.claude', 'hooks', 'user-prompt-submit.sh'),
+      join(ws, '.claude', 'hooks', 'user-prompt-submit.sh'),
+    );
+    if (!existsSync(join(ws, '.claude', 'settings.json'))) {
+      writeFileSync(join(ws, '.claude', 'settings.json'), SETTINGS_JSON);
+    }
+    created.push('hook');
+  }
+  return { created, seedMissing: false };
+}
+
+export function registerWorkspace(
+  path: string,
+): { path: string; scaffolded: string[]; seedMissing: boolean } {
+  const abs = resolve(expandHome(path));
+  const state = getWorkspaces();
+  if (!state.paths.map(p => resolve(p)).includes(abs)) {
+    writeJsonArray(WORKSPACE_PATHS_KEY, [...state.paths, abs]);
+  }
+  // Un-decline if it was previously declined.
+  const declined = state.declined.map(d => resolve(d)).filter(d => d !== abs);
+  if (declined.length !== state.declined.length) writeJsonArray(WORKSPACE_DECLINED_KEY, declined);
+  const scaffold = ensureWorkspaceScaffold(abs);
+  return { path: abs, scaffolded: scaffold.created, seedMissing: scaffold.seedMissing };
 }
