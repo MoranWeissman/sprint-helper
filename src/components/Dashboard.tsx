@@ -1442,35 +1442,6 @@ function DailyView({
         <CarryForwardBanner info={carryForward} onOpenItem={onOpenItem} onDone={onRefresh} />
       )}
 
-      {data.managedFeatures && data.managedFeatures.length > 0 && (
-        <section className="r21-managed">
-          <h3 className="r21-managed-head">Features you're managing</h3>
-          <p className="r21-managed-sub">Not assigned to you — you're driving the stories under them.</p>
-          <ul className="r21-managed-list">
-            {data.managedFeatures.map(f => (
-              <li
-                key={f.id}
-                className="r21-managed-row"
-                role="button"
-                tabIndex={0}
-                onClick={() => onOpenItem(String(f.id))}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onOpenItem(String(f.id));
-                  }
-                }}
-              >
-                <span className="r21-managed-title">{f.title}</span>
-                <span className="r21-managed-meta">
-                  #{f.id} · {f.state} · {f.assignedTo ?? 'unassigned'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
       {stories.length === 0 ? (
         <p className="r21-daily-empty">No stories in this sprint yet.</p>
       ) : (
