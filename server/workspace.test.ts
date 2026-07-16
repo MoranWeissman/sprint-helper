@@ -139,6 +139,43 @@ describe('ensureWorkspaceScaffold', () => {
       rmSync(ws, { recursive: true, force: true });
     }
   });
+
+  it('writes settings.json even when hook already exists (FINDING A)', () => {
+    const seed = makeSeed();
+    const ws = mkdtempSync(join(tmpdir(), 'sh-ws-settings-'));
+    try {
+      store.set(SEED_KEY, seed);
+      // Pre-populate workspace with hook but no settings.json
+      mkdirSync(join(ws, '.claude', 'hooks'), { recursive: true });
+      writeFileSync(join(ws, '.claude', 'hooks', 'user-prompt-submit.sh'), '#!/bin/bash\n');
+      const r = ensureWorkspaceScaffold(ws);
+      expect(existsSync(join(ws, '.claude', 'settings.json'))).toBe(true);
+      expect(r.created).not.toContain('hook'); // hook wasn't created this time
+    } finally {
+      rmSync(seed, { recursive: true, force: true });
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('handles incomplete seed with _bmad but no hook (FINDING B)', () => {
+    const incompleteSeed = mkdtempSync(join(tmpdir(), 'sh-incomplete-'));
+    const ws = mkdtempSync(join(tmpdir(), 'sh-ws-incomplete-'));
+    try {
+      mkdirSync(join(incompleteSeed, '_bmad'), { recursive: true });
+      writeFileSync(join(incompleteSeed, '_bmad', 'config.yaml'), 'x');
+      // No hook in seed
+      store.set(SEED_KEY, incompleteSeed);
+      const r = ensureWorkspaceScaffold(ws);
+      expect(r.seedMissing).toBe(false);
+      expect(r.created).toContain('bmad');
+      expect(r.created).not.toContain('hook'); // hook wasn't in seed, so not created
+      expect(existsSync(join(ws, '_bmad', 'config.yaml'))).toBe(true);
+      expect(existsSync(join(ws, '.claude', 'hooks', 'user-prompt-submit.sh'))).toBe(false);
+    } finally {
+      rmSync(incompleteSeed, { recursive: true, force: true });
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('registerWorkspace', () => {
@@ -153,6 +190,22 @@ describe('registerWorkspace', () => {
       expect(getWorkspaces().paths).toContain(resolve(ws));
       registerWorkspace(ws); // dedup
       expect(getWorkspaces().paths.filter(p => p === resolve(ws)).length).toBe(1);
+    } finally {
+      rmSync(seed, { recursive: true, force: true });
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('un-declines a previously declined path', () => {
+    const seed = makeSeed();
+    const ws = mkdtempSync(join(tmpdir(), 'sh-ws5-'));
+    try {
+      store.set(SEED_KEY, seed);
+      declineWorkspace(ws);
+      expect(isDeclinedPath(ws)).toBe(true);
+      registerWorkspace(ws);
+      expect(getWorkspaces().declined).not.toContain(resolve(ws));
+      expect(isDeclinedPath(ws)).toBe(false);
     } finally {
       rmSync(seed, { recursive: true, force: true });
       rmSync(ws, { recursive: true, force: true });

@@ -156,23 +156,27 @@ export function ensureWorkspaceScaffold(
 
   if (!existsSync(join(ws, '_bmad'))) {
     cpSync(join(seed, '_bmad'), join(ws, '_bmad'), { recursive: true });
-    cpSync(join(seed, '.claude', 'skills'), join(ws, '.claude', 'skills'), { recursive: true });
+    if (existsSync(join(seed, '.claude', 'skills'))) {
+      cpSync(join(seed, '.claude', 'skills'), join(ws, '.claude', 'skills'), { recursive: true });
+    }
     created.push('bmad');
   }
   if (!existsSync(join(ws, 'CLAUDE.md')) && existsSync(join(seed, 'CLAUDE.md'))) {
     cpSync(join(seed, 'CLAUDE.md'), join(ws, 'CLAUDE.md'));
     created.push('claude-md');
   }
-  if (!existsSync(join(ws, '.claude', 'hooks', 'user-prompt-submit.sh'))) {
+  const hookPath = join(ws, '.claude', 'hooks', 'user-prompt-submit.sh');
+  const seedHookPath = join(seed, '.claude', 'hooks', 'user-prompt-submit.sh');
+  if (!existsSync(hookPath) && existsSync(seedHookPath)) {
     mkdirSync(join(ws, '.claude', 'hooks'), { recursive: true });
-    cpSync(
-      join(seed, '.claude', 'hooks', 'user-prompt-submit.sh'),
-      join(ws, '.claude', 'hooks', 'user-prompt-submit.sh'),
-    );
-    if (!existsSync(join(ws, '.claude', 'settings.json'))) {
-      writeFileSync(join(ws, '.claude', 'settings.json'), SETTINGS_JSON);
-    }
+    cpSync(seedHookPath, hookPath);
     created.push('hook');
+  }
+  // FINDING A FIX: Write settings.json whenever absent, independent of hook status
+  const settingsPath = join(ws, '.claude', 'settings.json');
+  if (!existsSync(settingsPath)) {
+    mkdirSync(join(ws, '.claude'), { recursive: true });
+    writeFileSync(settingsPath, SETTINGS_JSON);
   }
   return { created, seedMissing: false };
 }
