@@ -46,7 +46,7 @@ import {
   type SprintStory,
 } from '../server/story-match.js';
 import {
-  chatCwdBasename,
+  chatFolderName,
   endSession,
   getSession,
   isSessionEventType,
@@ -129,6 +129,14 @@ Call orient AT MOST ONCE per conversation per trigger event. If you already
 greeted him with orientation context earlier in this conversation, don't
 re-fire on every "hi" he sends — just answer normally. Compact resets that
 budget: after a compact, you may call orient again.
+
+PASS YOUR CWD: call \`orient\` with \`cwd\` set to this chat's working
+directory (read it from your environment — the same value you give
+\`story_match\`). The sprint-helper server CANNOT read the chat's folder on
+its own (it runs from a fixed path), so without \`cwd\` the greeting can't tell
+whether a still-open session is THIS chat's work or a different chat's. Pass
+that same cwd to \`session_start\`, \`session_log\`, and \`session_end\` too, so
+each session is bound to the chat that owns it.
 
 WHAT ORIENT RETURNS: a small read of where he is — a time-of-day greeting,
 what day of the sprint we're on (e.g. day 4 of 10), any work sessions still
@@ -1320,12 +1328,17 @@ server.registerTool(
   {
     title: 'Greet Moran at the start of a chat',
     description:
-      "Read where Moran left off and what's waiting in his sprint, then write a friendly 2-4 sentence greeting (don't paste the numbers). Call once when he's reorienting — new chat, after a /compact, or a greeting like 'hi' / 'where were we'. Full trigger list and how to use the packet: SERVER_INSTRUCTIONS → OPENING GREETING and → CAPACITY.",
-    inputSchema: {},
+      "Read where Moran left off and what's waiting in his sprint, then write a friendly 2-4 sentence greeting (don't paste the numbers). Call once when he's reorienting — new chat, after a /compact, or a greeting like 'hi' / 'where were we'. Pass `cwd` (this chat's working directory, from your environment) so the greeting can tell whether an open session belongs to THIS chat or a different one. Full trigger list and how to use the packet: SERVER_INSTRUCTIONS → OPENING GREETING and → CAPACITY.",
+    inputSchema: {
+      cwd: z
+        .string()
+        .optional()
+        .describe("This chat's current working directory (absolute path), read from your environment — same value you pass to story_match. Lets the greeting say whether a live session is this chat's work or a different chat's. Omit only if unknown."),
+    },
   },
-  async () => {
+  async ({ cwd }) => {
     try {
-      return jsonResult(await buildOrientPacket());
+      return jsonResult(await buildOrientPacket(chatFolderName(cwd)));
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
@@ -2070,9 +2083,13 @@ server.registerTool(
         .string()
         .optional()
         .describe('Optional client identifier. Defaults to "claude-code".'),
+      cwd: z
+        .string()
+        .optional()
+        .describe("This chat's current working directory (absolute path), read from your environment — the same value you pass to story_match. Binds the session to this chat's folder so other chats can tell whose session it is. Omit only if genuinely unknown."),
     },
   },
-  async ({ workItemId, client }) => {
+  async ({ workItemId, client, cwd }) => {
     // Guard: a session attaches to a workable unit (Task/Bug), never to a
     // container story. Read the item; if it's a container, refuse and hand back
     // its open tasks so the assistant picks one instead of landing on the story.
@@ -2118,7 +2135,7 @@ server.registerTool(
       );
     }
 
-    const session = startSession({ workItemId, client });
+    const session = startSession({ workItemId, client, cwd: chatFolderName(cwd) });
     timerService.start(workItemId); // silent time tracking begins with the session
     void mirrorTaskFile(workItemId); // background — keep the archive file fresh
 
@@ -2190,9 +2207,13 @@ server.registerTool(
         .describe(
           "Honest estimate of how many hours of work are LEFT on this task after this progress event. MUST be strictly > 0 — if the task is done, call session_end with done=true instead, which runs the proper close-the-loop (push CompletedWork, close the task). Setting RemainingWork to 0 via session_log leaves the task in a broken state (Remaining=0 but session still open, CompletedWork not pushed). If set, sprint-helper writes RemainingWork on the work item in the same call. Only include when the event represents a substantial chunk of work landing (not for tweaks, focus shifts, blockers, or pure notes). The whole point is keeping the burn-down honest without forcing a separate tool call.",
         ),
+      cwd: z
+        .string()
+        .optional()
+        .describe("This chat's current working directory (absolute path), read from your environment. Lets sprint-helper warn you if you're logging against a session another chat (a different repo) started. Omit only if unknown."),
     },
   },
-  async ({ sessionId, type, text, standupSummary, remainingHoursAfter }) => {
+  async ({ sessionId, type, text, standupSummary, remainingHoursAfter, cwd }) => {
     if (!isSessionEventType(type)) return errorResult(`Unknown event type: ${type}`);
     // Speed bump (not just a sign): a 'progress' or 'blocker' event is what
     // feeds Moran's standup card, so the friendly one-liner is mandatory for
@@ -2214,7 +2235,7 @@ server.registerTool(
     }
     // buildCwdWarning is a hoisted function declaration defined just below
     // this handler — it's in scope here even though it appears later in the file.
-    const cwdWarning = buildCwdWarning(getSession(sessionId));
+    const cwdWarning = buildCwdWarning(getSession(sessionId), chatFolderName(cwd));
     const event = logEvent({ sessionId, type, text, standupSummary });
     if (!event) return errorResult(`Session not found: ${sessionId}`);
     void mirrorTaskFile(event.workItemId); // background — keep the archive file fresh
@@ -2279,9 +2300,9 @@ const SESSION_LOG_REQUIRED_AFTER_MINUTES = 45;
  * a chat in a DIFFERENT repo started, warn — but let the call through.
  * 'unknown' (old sessions, odd launch dirs) never warns.
  */
-function buildCwdWarning(session: Session | null): string | null {
+function buildCwdWarning(session: Session | null, chatCwd: string | null): string | null {
   if (!session) return null;
-  if (sessionOwnershipHint(session.cwd, chatCwdBasename()) !== 'other-repo') return null;
+  if (sessionOwnershipHint(session.cwd, chatCwd) !== 'other-repo') return null;
   return `⚠️ This session was started from \`${session.cwd}\` — a different chat's work. Make sure you're in the right chat before logging here.`;
 }
 
@@ -2308,9 +2329,13 @@ server.registerTool(
         .gt(0)
         .optional()
         .describe("For the PAUSE path (done omitted/false). The current honest estimate of hours LEFT on the task. Pass this when you're stopping mid-task and the remaining work has changed since you last burned it down — sprint-helper writes RemainingWork to Azure DevOps so the board doesn't go stale. If you logged progress this session but never updated RemainingWork, session_end will REQUIRE this before it closes. Pass the same number you already have if it genuinely hasn't moved. Ignored when done=true (that path drives RemainingWork to 0)."),
+      cwd: z
+        .string()
+        .optional()
+        .describe("This chat's current working directory (absolute path), read from your environment. Lets sprint-helper warn you if you're closing a session another chat (a different repo) started. Omit only if unknown."),
     },
   },
-  async ({ sessionId, summary, done, completedHoursAfter, remainingHoursAfter }) => {
+  async ({ sessionId, summary, done, completedHoursAfter, remainingHoursAfter, cwd }) => {
     if (done && completedHoursAfter === undefined) {
       return errorResult(
         'completedHoursAfter is required when done=true. Propose the number using the burndown formula (CompletedWork = OriginalEstimate − new RemainingWork, adjusted for overrun), confirm with Moran in chat, then pass it as completedHoursAfter. Closing a task without an explicit Completed value leaves CompletedWork at its historical value on Azure DevOps — usually 0 — which is the wrong signal for the delivery manager.',
@@ -2320,7 +2345,7 @@ server.registerTool(
     // Computed once up here: used by the no-open-session warning below (Move 3)
     // and saved as the closing summary when the session does close.
     const haveSummary = summary != null && summary.trim() !== '';
-    const cwdWarning = buildCwdWarning(getSession(sessionId));
+    const cwdWarning = buildCwdWarning(getSession(sessionId), chatFolderName(cwd));
 
     // ---- Pre-close speed bumps (run BEFORE the session is closed) ----
     // The session is still open here, so we can read what happened during it.

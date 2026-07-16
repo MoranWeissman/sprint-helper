@@ -16,7 +16,6 @@ import { ensureCapacityNudge, getHelperNotes, scanStaleRemaining } from './helpe
 import { getPlanningHome } from './planning-home';
 import { STALE_IDLE_MINUTES } from './session-activity';
 import {
-  chatCwdBasename,
   getLastEventTimestampMap,
   listActiveSessions,
   sessionOwnershipHint,
@@ -226,7 +225,7 @@ function getLastEndedSession(): SessionRow | null {
   );
 }
 
-export async function buildOrientPacket(): Promise<OrientPacket> {
+export async function buildOrientPacket(chatCwd: string | null = null): Promise<OrientPacket> {
   const { payload } = await buildDashboardCached();
   if (!payload.sprint) {
     throw new Error('No current sprint — set a sprint first.');
@@ -253,7 +252,8 @@ export async function buildOrientPacket(): Promise<OrientPacket> {
 
   const activeSessions = listActiveSessions();
   const lastEventBySession = getLastEventTimestampMap(activeSessions.map(s => s.id));
-  const chatCwd = chatCwdBasename();
+  // chatCwd is the caller-supplied chat folder (from the model's cwd), already
+  // reduced to a basename by the MCP handler. Null when unknown → no repo match.
   const liveNow: OrientLiveSession[] = activeSessions.map(s => {
     const title = titleById.get(s.workItemId) ?? `#${s.workItemId}`;
     const lastActivity = lastEventBySession.get(s.id) ?? s.startedAt;
