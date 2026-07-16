@@ -8,7 +8,7 @@ vi.mock('./db', () => ({ getDb: () => h.db.value }));
 
 import {
   startSession, sessionOwnershipHint, setSessionWaiting, logEvent, endSession,
-  listRecentlyEnded, getSession,
+  listRecentlyEnded, getSession, chatFolderName,
 } from './sessions';
 
 function makeDb() {
@@ -40,6 +40,24 @@ function makeDb() {
 
 beforeEach(() => {
   h.db.value = makeDb();
+});
+
+describe('chatFolderName', () => {
+  it('takes the basename of an absolute path the model supplies', () => {
+    expect(chatFolderName('/Users/x/projects/devex-infrastructure')).toBe('devex-infrastructure');
+    expect(chatFolderName('/Users/x/projects/sprint-helper/')).toBe('sprint-helper');
+  });
+  it('returns null for null/empty/root/junk', () => {
+    expect(chatFolderName(null)).toBeNull();
+    expect(chatFolderName(undefined)).toBeNull();
+    expect(chatFolderName('')).toBeNull();
+    expect(chatFolderName('   ')).toBeNull();
+    expect(chatFolderName('/')).toBeNull();
+    expect(chatFolderName('.')).toBeNull();
+  });
+  it('accepts a bare folder name (already a basename)', () => {
+    expect(chatFolderName('sprint-helper')).toBe('sprint-helper');
+  });
 });
 
 describe('startSession cwd stamp', () => {

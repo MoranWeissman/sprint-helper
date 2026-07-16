@@ -92,14 +92,20 @@ function toEvent(r: SessionEventRow): SessionEvent {
 /* ============================================================ */
 
 /**
- * The repo folder name this MCP process was started in. Each Claude Code chat
- * launches its own server process in the chat's working directory, so this
- * identifies the chat's repo. Null when it can't be determined — matching is
- * skipped for null, never guessed.
+ * The chat's repo folder name, from a cwd the MODEL supplies (it reads its own
+ * working directory from its environment — the same value it passes to
+ * `story_match`). We CANNOT read it from `process.cwd()`: this server launches
+ * via `npm --prefix <sprint-helper> run mcp`, so the server process's cwd is
+ * always the sprint-helper repo, never the chat's folder. Takes the basename of
+ * whatever path (or bare name) the model gives; null for empty/root/junk —
+ * matching is skipped for null, never guessed.
  */
-export function chatCwdBasename(): string | null {
+export function chatFolderName(cwd: string | null | undefined): string | null {
+  if (cwd == null) return null;
+  const trimmed = cwd.trim();
+  if (!trimmed) return null;
   try {
-    const b = basename(process.cwd());
+    const b = basename(trimmed);
     return b && b !== '/' && b !== '.' ? b : null;
   } catch {
     return null;
@@ -131,11 +137,15 @@ export function startSession({
 }: {
   workItemId: number;
   client?: string;
-  /** Repo folder of the calling chat. Omit to auto-detect from process.cwd(). */
+  /** Repo folder of the calling chat (basename), supplied by the MCP handler
+   *  from the model's cwd. Omit or null when unknown — never auto-detected. */
   cwd?: string | null;
 }): Session {
   const db = getDb();
-  const chatCwd = cwd !== undefined ? cwd : chatCwdBasename();
+  // The caller (MCP handler) supplies the chat folder from the model's cwd.
+  // We can't auto-detect it — process.cwd() is always the sprint-helper repo
+  // (npm --prefix launch). Unknown → null, never guessed.
+  const chatCwd = cwd !== undefined ? cwd : null;
   const existing = db
     .prepare<[number], SessionRow>(
       `SELECT * FROM sessions
