@@ -106,7 +106,7 @@ export function chatFolderName(cwd: string | null | undefined): string | null {
   if (!trimmed) return null;
   try {
     const b = basename(trimmed);
-    return b && b !== '/' && b !== '.' ? b : null;
+    return b && b !== '/' && b !== '.' && b !== '..' ? b : null;
   } catch {
     return null;
   }

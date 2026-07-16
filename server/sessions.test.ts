@@ -54,6 +54,7 @@ describe('chatFolderName', () => {
     expect(chatFolderName('   ')).toBeNull();
     expect(chatFolderName('/')).toBeNull();
     expect(chatFolderName('.')).toBeNull();
+    expect(chatFolderName('..')).toBeNull();
   });
   it('accepts a bare folder name (already a basename)', () => {
     expect(chatFolderName('sprint-helper')).toBe('sprint-helper');
