@@ -72,6 +72,7 @@ import {
   addManagedFeatureId,
   removeManagedFeatureId,
   workspaceOfferFor,
+  setActiveFeature,
   type OrientWorkspaceOffer,
 } from '../server/workspace.js';
 import {
@@ -2701,7 +2702,7 @@ server.registerTool(
   {
     title: 'Start work on a feature (folder + board visibility)',
     description:
-      "Fire when Moran names a feature to start non-code work on ('let's work on feature #NNNNNN'). Reads the feature title, creates a subfolder for it inside his workspace, AND records the feature as managed so it shows on his board (needed when the feature is the PM's, not assigned to him). Returns the folder path — write discovery/design docs there. Moran stays in the workspace root chat.",
+      "Fire when Moran names a feature to start non-code work on ('let's work on feature #NNNNNN'). Reads the feature title, creates a subfolder for it inside his workspace, records the feature as one he's driving, AND marks it the ACTIVE feature (so a resumed or compacted session re-anchors on the right folder via orient). Naming a different feature later just calls this again — that overwrites the active feature; that's how he switches. Returns the folder path — write discovery/design docs there. Moran stays in the workspace root chat.",
     inputSchema: {
       workItemId: z.number().int().positive().describe('The Azure DevOps feature id.'),
       cwd: z.string().min(1).describe('The chat cwd from your environment.'),
@@ -2729,7 +2730,13 @@ server.registerTool(
       }
       const folder = createFeatureFolder(workspacePath, workItemId, title);
       addManagedFeatureId(workItemId);
-      return jsonResult({ ...folder, featureTitle: title || null });
+      setActiveFeature({
+        id: workItemId,
+        title: title || `#${workItemId}`,
+        folderPath: folder.path,
+        setAt: new Date().toISOString(),
+      });
+      return jsonResult({ ...folder, featureTitle: title || null, active: true });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
