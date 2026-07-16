@@ -72,6 +72,7 @@ import {
   addManagedFeatureId,
   removeManagedFeatureId,
   workspaceOfferFor,
+  setActiveFeature,
   type OrientWorkspaceOffer,
 } from '../server/workspace.js';
 import {
@@ -372,6 +373,17 @@ WORKSPACE — Moran's home for non-code work (discovery, design, small demos):
     section) — this is how a PM-owned feature he doesn't own becomes
     manageable. Then write his discovery/design docs into the returned folder
     path. He stays in the workspace root chat.
+  - ACTIVE FEATURE: orient returns \`activeFeature\` — the feature Moran is
+    working in his workspace right now (or null). When it's set, write his
+    discovery/design docs into that feature's \`folderPath\`, and nowhere else.
+    After a compact or on resume, this is how you know which folder you're in —
+    trust it over your own memory. In your greeting, if \`activeFeature\` is set,
+    tell him which feature he's on (echo its \`displayName\` verbatim).
+  - SWITCHING: only Moran decides to switch features. When he names a different
+    feature, call \`workspace_feature_folder\` for it — that moves the active
+    feature. Never infer a switch from context; wait for him to name one.
+  - DON'T write feature docs into a folder that isn't the active feature's
+    unless Moran explicitly says so.
   - Stories he breaks out go on the board through the usual sprint-helper tools,
     parented under the feature, and pulled into his sprint.
   - This generalizes PLANNING HOME above — a workspace is a planning home he can
@@ -2701,7 +2713,7 @@ server.registerTool(
   {
     title: 'Start work on a feature (folder + board visibility)',
     description:
-      "Fire when Moran names a feature to start non-code work on ('let's work on feature #NNNNNN'). Reads the feature title, creates a subfolder for it inside his workspace, AND records the feature as managed so it shows on his board (needed when the feature is the PM's, not assigned to him). Returns the folder path — write discovery/design docs there. Moran stays in the workspace root chat.",
+      "Fire when Moran names a feature to start non-code work on ('let's work on feature #NNNNNN'). Reads the feature title, creates a subfolder for it inside his workspace, records the feature as one he's driving, AND marks it the ACTIVE feature (so a resumed or compacted session re-anchors on the right folder via orient). Naming a different feature later just calls this again — that overwrites the active feature; that's how he switches. Returns the folder path — write discovery/design docs there. Moran stays in the workspace root chat.",
     inputSchema: {
       workItemId: z.number().int().positive().describe('The Azure DevOps feature id.'),
       cwd: z.string().min(1).describe('The chat cwd from your environment.'),
@@ -2729,7 +2741,13 @@ server.registerTool(
       }
       const folder = createFeatureFolder(workspacePath, workItemId, title);
       addManagedFeatureId(workItemId);
-      return jsonResult({ ...folder, featureTitle: title || null });
+      setActiveFeature({
+        id: workItemId,
+        title: title || `#${workItemId}`,
+        folderPath: folder.path,
+        setAt: new Date().toISOString(),
+      });
+      return jsonResult({ ...folder, featureTitle: title || null, active: true });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }

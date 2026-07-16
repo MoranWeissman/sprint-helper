@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { repoHintFor, sessionReminderFor } from './orient';
+import { repoHintFor, sessionReminderFor, activeFeatureField } from './orient';
 import { workspaceOfferFor } from './workspace';
 
 describe('sessionReminderFor', () => {
@@ -63,5 +63,24 @@ describe('workspaceOfferFor', () => {
   });
   it('does NOT offer when cwd is null', () => {
     expect(workspaceOfferFor({ cwd: null, entries: [], known: false, declined: false }).shouldOffer).toBe(false);
+  });
+});
+
+describe('activeFeatureField', () => {
+  it('maps a record to a names-before-numbers displayName', () => {
+    expect(activeFeatureField({
+      id: 426639,
+      title: 'Declarative CD',
+      folderPath: '/w/space/426639-declarative-cd',
+      setAt: '2026-07-16T10:00:00.000Z',
+    })).toEqual({
+      id: 426639,
+      displayName: '**Declarative CD** (#426639)',
+      folderPath: '/w/space/426639-declarative-cd',
+    });
+  });
+
+  it('returns null when there is no active feature', () => {
+    expect(activeFeatureField(null)).toBeNull();
   });
 });

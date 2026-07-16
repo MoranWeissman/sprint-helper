@@ -15,6 +15,7 @@ import {
   WORKSPACE_PATHS_KEY, MANAGED_FEATURES_KEY,
   featureFolderName, createFeatureFolder,
   registerWorkspace, ensureWorkspaceScaffold, SEED_KEY,
+  getActiveFeature, setActiveFeature, clearActiveFeature, ACTIVE_FEATURE_KEY,
 } from './workspace';
 
 beforeEach(() => store.clear());
@@ -210,5 +211,48 @@ describe('registerWorkspace', () => {
       rmSync(seed, { recursive: true, force: true });
       rmSync(ws, { recursive: true, force: true });
     }
+  });
+});
+
+describe('active feature', () => {
+  const sample = {
+    id: 426639,
+    title: 'Declarative CD',
+    folderPath: '/w/space/426639-declarative-cd',
+    setAt: '2026-07-16T10:00:00.000Z',
+  };
+
+  it('returns null when unset', () => {
+    expect(getActiveFeature()).toBeNull();
+  });
+
+  it('set then get round-trips the record', () => {
+    setActiveFeature(sample);
+    expect(getActiveFeature()).toEqual(sample);
+  });
+
+  it('set overwrites the previous active feature (overwrite is the switch)', () => {
+    setActiveFeature(sample);
+    const next = { id: 431000, title: 'Other', folderPath: '/w/space/431000-other', setAt: '2026-07-16T11:00:00.000Z' };
+    setActiveFeature(next);
+    expect(getActiveFeature()).toEqual(next);
+  });
+
+  it('clear resets to null', () => {
+    setActiveFeature(sample);
+    clearActiveFeature();
+    expect(getActiveFeature()).toBeNull();
+  });
+
+  it('parses garbage as null (never throws)', () => {
+    store.set(ACTIVE_FEATURE_KEY, '{not json');
+    expect(getActiveFeature()).toBeNull();
+  });
+
+  it('parses a non-object / wrong-shape value as null', () => {
+    store.set(ACTIVE_FEATURE_KEY, JSON.stringify([1, 2, 3]));
+    expect(getActiveFeature()).toBeNull();
+    store.set(ACTIVE_FEATURE_KEY, JSON.stringify({ id: 'nope', title: 5 }));
+    expect(getActiveFeature()).toBeNull();
   });
 });

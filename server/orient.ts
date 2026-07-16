@@ -21,6 +21,7 @@ import {
   sessionOwnershipHint,
   type SessionRow,
 } from './sessions';
+import { getActiveFeature, type ActiveFeature } from './workspace';
 
 export interface OrientLiveSession {
   /**
@@ -138,6 +139,16 @@ export interface OrientPacket {
    * → PLANNING HOME.
    */
   planningHome: OrientPlanningHome;
+  /**
+   * The feature Moran is actively working in his workspace, or null. Lets a
+   * resumed/compacted session re-anchor on the right feature folder without
+   * guessing. displayName is pre-formatted `**title** (#id)` — echo verbatim.
+   */
+  activeFeature: {
+    id: number;
+    displayName: string;
+    folderPath: string;
+  } | null;
 }
 
 function displayNameFor(workItemId: number, title: string): string {
@@ -180,6 +191,15 @@ export function repoHintFor(sessionCwd: string | null, chatCwd: string | null): 
   if (ownership === 'mine') return `started from \`${sessionCwd}\` — matches this chat`;
   if (ownership === 'other-repo') return `started from \`${sessionCwd}\` — a different chat's work`;
   return sessionCwd ? `started from \`${sessionCwd}\`` : 'repo unknown (older session)';
+}
+
+/** Map the stored active feature to orient's packet field. Pure so it's unit
+ *  tested; buildOrientPacket just calls getActiveFeature() and passes it here. */
+export function activeFeatureField(
+  af: ActiveFeature | null,
+): { id: number; displayName: string; folderPath: string } | null {
+  if (!af) return null;
+  return { id: af.id, displayName: displayNameFor(af.id, af.title), folderPath: af.folderPath };
 }
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -328,6 +348,8 @@ export async function buildOrientPacket(chatCwd: string | null = null): Promise<
 
   const planningHome = getPlanningHome();
 
+  const activeFeature = activeFeatureField(getActiveFeature());
+
   return {
     greeting: greetingFor(now),
     fetchedAt: now.toISOString(),
@@ -353,5 +375,6 @@ export async function buildOrientPacket(chatCwd: string | null = null): Promise<
       configuredPath: planningHome.configuredPath,
       isExplicitlyConfigured: planningHome.isExplicitlyConfigured,
     },
+    activeFeature,
   };
 }

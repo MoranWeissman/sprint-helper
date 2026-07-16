@@ -92,6 +92,49 @@ export function removeManagedFeatureId(id: number): void {
   writeJsonArray(MANAGED_FEATURES_KEY, ids);
 }
 
+export const ACTIVE_FEATURE_KEY = 'active_feature';
+
+/** The feature Moran is actively working in the workspace right now. A pointer,
+ *  not a source of truth — the title is a display convenience (ADO owns the
+ *  real feature). Overwritten when he names the next feature; that's the switch. */
+export interface ActiveFeature {
+  id: number;
+  title: string;
+  folderPath: string;
+  setAt: string;
+}
+
+function isActiveFeature(v: unknown): v is ActiveFeature {
+  if (v == null || typeof v !== 'object' || Array.isArray(v)) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.id === 'number' && Number.isFinite(o.id) &&
+    typeof o.title === 'string' &&
+    typeof o.folderPath === 'string' &&
+    typeof o.setAt === 'string'
+  );
+}
+
+/** The active feature, or null when unset/malformed. Never throws. */
+export function getActiveFeature(): ActiveFeature | null {
+  const raw = getSetting(ACTIVE_FEATURE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return isActiveFeature(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveFeature(f: ActiveFeature): void {
+  setSetting(ACTIVE_FEATURE_KEY, JSON.stringify(f));
+}
+
+export function clearActiveFeature(): void {
+  setSetting(ACTIVE_FEATURE_KEY, JSON.stringify(null));
+}
+
 export function expandHome(p: string): string {
   if (p === '~' || p.startsWith('~/')) return join(homedir(), p.slice(2));
   return p;
