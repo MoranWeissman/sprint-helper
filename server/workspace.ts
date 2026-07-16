@@ -9,7 +9,9 @@
  * All state lives in the settings table as JSON arrays, parsed defensively.
  * Everything here is LOCAL — no Azure DevOps access.
  */
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
+import { existsSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { getSetting, setSetting } from './timers';
 
 export const WORKSPACE_PATHS_KEY = 'workspace_paths';
@@ -88,4 +90,34 @@ export function addManagedFeatureId(id: number): void {
 export function removeManagedFeatureId(id: number): void {
   const ids = getManagedFeatureIds().filter(x => x !== id);
   writeJsonArray(MANAGED_FEATURES_KEY, ids);
+}
+
+export function expandHome(p: string): string {
+  if (p === '~' || p.startsWith('~/')) return join(homedir(), p.slice(2));
+  return p;
+}
+
+const SLUG_MAX = 40;
+
+/** `<id>-<slug>` where slug = lowercased title, non-alphanumerics → '-',
+ *  collapsed, trimmed, capped. Symbol-only title → just the id. */
+export function featureFolderName(id: number, title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, SLUG_MAX)
+    .replace(/-+$/g, ''); // re-trim after slice may leave a trailing dash
+  return slug ? `${id}-${slug}` : `${id}`;
+}
+
+export function createFeatureFolder(
+  workspacePath: string,
+  id: number,
+  title: string,
+): { path: string; created: boolean } {
+  const abs = join(resolve(expandHome(workspacePath)), featureFolderName(id, title));
+  const existed = existsSync(abs);
+  mkdirSync(abs, { recursive: true });
+  return { path: abs, created: !existed };
 }
