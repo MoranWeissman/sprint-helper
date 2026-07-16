@@ -195,3 +195,26 @@ export function registerWorkspace(
   const scaffold = ensureWorkspaceScaffold(abs);
   return { path: abs, scaffolded: scaffold.created, seedMissing: scaffold.seedMissing };
 }
+
+export interface OrientWorkspaceOffer {
+  shouldOffer: boolean;
+  cwd: string | null;
+  reason: 'empty-unknown' | null;
+}
+
+const WORKSPACE_EMPTY_ALLOWLIST = new Set(['.git', '.DS_Store', '.sprint-helper-home']);
+
+/** Pure: decide whether to offer making this cwd a workspace. Offer when the
+ *  folder is empty (ignoring harmless dotfiles), unknown, and not declined. */
+export function workspaceOfferFor(args: {
+  cwd: string | null;
+  entries: string[];
+  known: boolean;
+  declined: boolean;
+}): OrientWorkspaceOffer {
+  const { cwd, entries, known, declined } = args;
+  if (!cwd || known || declined) return { shouldOffer: false, cwd, reason: null };
+  const realEntries = entries.filter(e => !WORKSPACE_EMPTY_ALLOWLIST.has(e));
+  if (realEntries.length > 0) return { shouldOffer: false, cwd, reason: null };
+  return { shouldOffer: true, cwd, reason: 'empty-unknown' };
+}

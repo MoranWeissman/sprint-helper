@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { repoHintFor, sessionReminderFor, workspaceOfferFor } from './orient';
+import { repoHintFor, sessionReminderFor } from './orient';
+import { workspaceOfferFor } from './workspace';
 
 describe('sessionReminderFor', () => {
   it('returns a reminder when no session is open', () => {

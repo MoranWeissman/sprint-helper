@@ -22,6 +22,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { readdirSync } from 'node:fs';
 
 import { mirrorSprintSummary, mirrorStandupForToday, mirrorTaskFile } from '../server/archive.js';
 import { getCalendarUrl, setCalendarUrl } from '../server/calendar.js';
@@ -70,6 +71,8 @@ import {
   createFeatureFolder,
   addManagedFeatureId,
   removeManagedFeatureId,
+  workspaceOfferFor,
+  type OrientWorkspaceOffer,
 } from '../server/workspace.js';
 import {
   createStory,
@@ -346,18 +349,21 @@ WORKSPACE — Moran's home for non-code work (discovery, design, small demos):
   once at its root. Each feature he works gets its own subfolder inside it for
   design docs.
 
-  - OFFER on an empty folder: when \`orient.workspaceOffer.shouldOffer\` is true,
-    this chat opened in an empty folder that isn't a known workspace. Ask him
-    once: "This is an empty folder and it's not one of your workspaces — want
-    to make it your sprint-helper workspace?" On yes → call \`workspace_set\`
-    with this folder's path. On no → call \`workspace_decline\` (it won't ask
-    about this folder again).
+  - OFFER on an empty folder: at the start of a chat, read your current working
+    directory from your environment (the same cwd you use for story_match). Call
+    \`workspace_status\` with that \`cwd\`. If the returned \`offer.shouldOffer\`
+    is true, this is an empty folder that isn't one of Moran's workspaces — ask
+    him once: "This is an empty folder and it's not one of your workspaces —
+    want to make it your sprint-helper workspace?" On yes → call \`workspace_set\`
+    with the folder path. On no → call \`workspace_decline\` with the cwd (it
+    won't ask about that folder again).
   - START A FEATURE: when Moran names a feature to work on ("let's work on
-    feature #NNNNNN"), call \`workspace_feature_folder\` with its id. That one
-    call makes the feature's folder AND makes the feature show on his board
-    (his "Features you're managing" section) — this is how a PM-owned feature
-    he doesn't own becomes manageable. Then write his discovery/design docs
-    into the returned folder path. He stays in the workspace root chat.
+    feature #NNNNNN"), call \`workspace_feature_folder\` with the feature id
+    AND your current \`cwd\`. That one call makes the feature's folder AND
+    makes the feature show on his board (his "Features you're managing"
+    section) — this is how a PM-owned feature he doesn't own becomes
+    manageable. Then write his discovery/design docs into the returned folder
+    path. He stays in the workspace root chat.
   - Stories he breaks out go on the board through the usual sprint-helper tools,
     parented under the feature, and pulled into his sprint.
   - This generalizes PLANNING HOME above — a workspace is a planning home he can
@@ -2617,16 +2623,15 @@ server.registerTool(
   {
     title: 'Remember that a folder is not a workspace',
     description:
-      "Record that Moran said NO to making the current folder a workspace, so orient never offers it again. Fire when he declines the empty-folder workspace offer.",
+      "Record that Moran said NO to making the current folder a workspace, so the model never offers it again. Fire when he declines the empty-folder workspace offer.",
     inputSchema: {
-      cwd: z.string().optional().describe('Folder to remember as declined. Defaults to the current working directory.'),
+      cwd: z.string().min(1).describe('Folder to remember as declined (the chat cwd from your environment).'),
     },
   },
   async ({ cwd }) => {
     try {
-      const target = cwd ?? process.cwd();
-      declineWorkspace(target);
-      return jsonResult({ declined: target });
+      declineWorkspace(cwd);
+      return jsonResult({ declined: cwd });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
@@ -2636,15 +2641,30 @@ server.registerTool(
 server.registerTool(
   'workspace_status',
   {
-    title: 'List sprint-helper workspaces',
+    title: 'List sprint-helper workspaces and offer signal',
     description:
-      "Return Moran's registered workspaces and whether the current folder is a known or declined workspace. Use to answer 'where are my workspaces?' or to check state before offering.",
-    inputSchema: {},
+      "Return Moran's registered workspaces and whether the current folder is a known or declined workspace. When the model passes its `cwd`, also returns an `offer` deciding whether to offer making it a workspace (empty-folder signal). Use at chat start to check if you should offer.",
+    inputSchema: {
+      cwd: z.string().min(1).optional().describe('Optional: the chat cwd from your environment. When provided, the response includes an offer signal.'),
+    },
   },
-  async () => {
+  async ({ cwd }) => {
     try {
-      const cwd = process.cwd();
-      return jsonResult({ ...getWorkspaces(), current: { cwd, known: isKnownWorkspace(cwd), declined: isDeclinedPath(cwd) } });
+      const workspaces = getWorkspaces();
+      let offer: OrientWorkspaceOffer = { shouldOffer: false, cwd: null, reason: null };
+      let current = null;
+      if (cwd) {
+        const known = isKnownWorkspace(cwd);
+        const declined = isDeclinedPath(cwd);
+        current = { cwd, known, declined };
+        try {
+          const entries = readdirSync(cwd);
+          offer = workspaceOfferFor({ cwd, entries, known, declined });
+        } catch {
+          offer = { shouldOffer: false, cwd, reason: null };
+        }
+      }
+      return jsonResult({ ...workspaces, current, offer });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
@@ -2659,11 +2679,11 @@ server.registerTool(
       "Fire when Moran names a feature to start non-code work on ('let's work on feature #NNNNNN'). Reads the feature title, creates a subfolder for it inside his workspace, AND records the feature as managed so it shows on his board (needed when the feature is the PM's, not assigned to him). Returns the folder path — write discovery/design docs there. Moran stays in the workspace root chat.",
     inputSchema: {
       workItemId: z.number().int().positive().describe('The Azure DevOps feature id.'),
+      cwd: z.string().min(1).describe('The chat cwd from your environment.'),
     },
   },
-  async ({ workItemId }) => {
+  async ({ workItemId, cwd }) => {
     try {
-      const cwd = process.cwd();
       const { paths } = getWorkspaces();
       let workspacePath: string | null = null;
       if (isKnownWorkspace(cwd)) workspacePath = cwd;

@@ -624,7 +624,8 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
       const alreadyShown = new Set<number>(
         [...inProgress, ...upNext, ...done].map(w => Number(w.id))
       );
-      const fetched = await getWorkItemsWithParents(managedIds);
+      // errorPolicy: 'omit' so that a deleted managed id doesn't wipe the whole list
+      const fetched = await getWorkItemsWithParents(managedIds, { errorPolicy: 'omit' });
       managedFeatures = selectManagedFeatures({ managedIds, alreadyShownIds: alreadyShown, fetched });
     }
   } catch {
