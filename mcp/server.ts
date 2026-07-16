@@ -373,6 +373,17 @@ WORKSPACE — Moran's home for non-code work (discovery, design, small demos):
     section) — this is how a PM-owned feature he doesn't own becomes
     manageable. Then write his discovery/design docs into the returned folder
     path. He stays in the workspace root chat.
+  - ACTIVE FEATURE: orient returns \`activeFeature\` — the feature Moran is
+    working in his workspace right now (or null). When it's set, write his
+    discovery/design docs into that feature's \`folderPath\`, and nowhere else.
+    After a compact or on resume, this is how you know which folder you're in —
+    trust it over your own memory. In your greeting, if \`activeFeature\` is set,
+    tell him which feature he's on (echo its \`displayName\` verbatim).
+  - SWITCHING: only Moran decides to switch features. When he names a different
+    feature, call \`workspace_feature_folder\` for it — that moves the active
+    feature. Never infer a switch from context; wait for him to name one.
+  - DON'T write feature docs into a folder that isn't the active feature's
+    unless Moran explicitly says so.
   - Stories he breaks out go on the board through the usual sprint-helper tools,
     parented under the feature, and pulled into his sprint.
   - This generalizes PLANNING HOME above — a workspace is a planning home he can
