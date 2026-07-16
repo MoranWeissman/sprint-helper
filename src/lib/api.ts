@@ -85,6 +85,15 @@ export interface ApiHelperNotes {
   notes: ApiHelperNote[];
 }
 
+export interface ApiManagedFeature {
+  id: number;
+  title: string;
+  displayName: string;
+  state: string;
+  url: string;
+  assignedTo: string | null;
+}
+
 /** Outlook-calendar derived capacity for the current sprint. */
 export interface ApiOutlookCapacity {
   sprintStart: string;
@@ -267,6 +276,8 @@ export interface ApiPayload {
     next: ApiUpcomingCeremony | null;
     suggestedModeId: ModeId | null;
   };
+  /** PM-owned features Moran chose to manage, not already shown in assigned sprint work. Optional (version-skew guard). */
+  managedFeatures?: ApiManagedFeature[];
   fetchedAt: string;
 }
 
