@@ -67,6 +67,9 @@ import {
   getWorkspaces,
   isKnownWorkspace,
   isDeclinedPath,
+  createFeatureFolder,
+  addManagedFeatureId,
+  removeManagedFeatureId,
 } from '../server/workspace.js';
 import {
   createStory,
@@ -335,6 +338,30 @@ which exists only if he (or this tool) created it. So
 \`orient.planningHome.isExplicitlyConfigured: false\` plus the cwd not
 matching means: he hasn't opted into planning home yet. Don't volunteer
 to set it for him unless he asks — confirm-before-write applies.
+
+WORKSPACE — Moran's home for non-code work (discovery, design, small demos):
+
+  A "workspace" is a visible folder Moran opens Claude Code in for work that
+  isn't writing code. BMAD, a planning CLAUDE.md, and an enforcement hook live
+  once at its root. Each feature he works gets its own subfolder inside it for
+  design docs.
+
+  - OFFER on an empty folder: when \`orient.workspaceOffer.shouldOffer\` is true,
+    this chat opened in an empty folder that isn't a known workspace. Ask him
+    once: "This is an empty folder and it's not one of your workspaces — want
+    to make it your sprint-helper workspace?" On yes → call \`workspace_set\`
+    with this folder's path. On no → call \`workspace_decline\` (it won't ask
+    about this folder again).
+  - START A FEATURE: when Moran names a feature to work on ("let's work on
+    feature #NNNNNN"), call \`workspace_feature_folder\` with its id. That one
+    call makes the feature's folder AND makes the feature show on his board
+    (his "Features you're managing" section) — this is how a PM-owned feature
+    he doesn't own becomes manageable. Then write his discovery/design docs
+    into the returned folder path. He stays in the workspace root chat.
+  - Stories he breaks out go on the board through the usual sprint-helper tools,
+    parented under the feature, and pulled into his sprint.
+  - This generalizes PLANNING HOME above — a workspace is a planning home he can
+    grow feature folders inside.
 
 REGARDLESS of whether there's a live session, do a CONTEXT CROSS-CHECK
 by calling \`story_match\` with the chat's cwd:
@@ -2618,6 +2645,66 @@ server.registerTool(
     try {
       const cwd = process.cwd();
       return jsonResult({ ...getWorkspaces(), current: { cwd, known: isKnownWorkspace(cwd), declined: isDeclinedPath(cwd) } });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'workspace_feature_folder',
+  {
+    title: 'Start work on a feature (folder + board visibility)',
+    description:
+      "Fire when Moran names a feature to start non-code work on ('let's work on feature #NNNNNN'). Reads the feature title, creates a subfolder for it inside his workspace, AND records the feature as managed so it shows on his board (needed when the feature is the PM's, not assigned to him). Returns the folder path — write discovery/design docs there. Moran stays in the workspace root chat.",
+    inputSchema: {
+      workItemId: z.number().int().positive().describe('The Azure DevOps feature id.'),
+    },
+  },
+  async ({ workItemId }) => {
+    try {
+      const cwd = process.cwd();
+      const { paths } = getWorkspaces();
+      let workspacePath: string | null = null;
+      if (isKnownWorkspace(cwd)) workspacePath = cwd;
+      else if (paths.length === 1) workspacePath = paths[0];
+      if (!workspacePath) {
+        return errorResult(
+          paths.length === 0
+            ? 'No workspace is set. Ask Moran to open his workspace folder (or set one with workspace_set) first.'
+            : 'More than one workspace is registered and this chat is not inside one. Ask Moran which workspace to use.',
+        );
+      }
+      let title = '';
+      try {
+        const item = await getWorkItem(workItemId);
+        title = item.title ?? '';
+      } catch {
+        title = ''; // fall back to id-only folder name
+      }
+      const folder = createFeatureFolder(workspacePath, workItemId, title);
+      addManagedFeatureId(workItemId);
+      return jsonResult({ ...folder, featureTitle: title || null });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'feature_unmanage',
+  {
+    title: 'Stop showing a feature on the board',
+    description:
+      "Drop a feature from Moran's 'Features you're managing' board section. The folder on disk is left alone; only the board mark is removed. Fire when he says he's done managing feature #NNNNNN.",
+    inputSchema: {
+      workItemId: z.number().int().positive().describe('The Azure DevOps feature id to stop managing.'),
+    },
+  },
+  async ({ workItemId }) => {
+    try {
+      removeManagedFeatureId(workItemId);
+      return jsonResult({ unmanaged: workItemId });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
