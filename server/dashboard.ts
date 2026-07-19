@@ -46,6 +46,7 @@ import {
 } from './timers';
 import { getSHCreatedIdSet } from './sh-created';
 import { isSprintLevel } from './iteration-paths';
+import { getManagedFeatureIds, getActiveFeature, getWorkspaces, type ActiveFeature } from './workspace';
 
 export type { SessionEvent, SessionEventType, Session } from './sessions';
 
@@ -230,6 +231,8 @@ export interface DashboardPayload {
    *  feature being worked in Discovery & Design). Surfaced so Focus shows them
    *  beside sprint work. NOT part of sprint capacity/counts/grouping. */
   liveOutsideSprint: DashboardWorkItem[];
+  /** Discovery & Design rail card: active feature, managed features, workspace flag. */
+  discovery: DiscoveryBlock;
   fetchedAt: string;
 }
 
@@ -264,6 +267,35 @@ export interface CarryForwardSummary {
   count: number;
   /** The sprint label most stranded tasks sit in, e.g. "26_12". */
   fromSprintLabel: string;
+}
+
+export interface DiscoveryBlock {
+  activeFeature: { id: number; displayName: string; folderPath: string } | null;
+  managed: { id: number; displayName: string }[];
+  hasWorkspace: boolean;
+}
+
+/** Pure: the "Discovery & Design" rail-card payload. Active feature + managed
+ *  features (names before numbers) + whether a workspace is set. */
+export function buildDiscoveryBlock(args: {
+  activeFeature: ActiveFeature | null;
+  managedIds: number[];
+  fetched: { id: number; title: string }[];
+  hasWorkspace: boolean;
+}): DiscoveryBlock {
+  const { activeFeature, managedIds, fetched, hasWorkspace } = args;
+  const titleById = new Map(fetched.map(w => [w.id, w.title]));
+  const managed = managedIds.map(id => {
+    const title = titleById.get(id);
+    return { id, displayName: title ? `**${title}** (#${id})` : `#${id}` };
+  });
+  return {
+    activeFeature: activeFeature
+      ? { id: activeFeature.id, displayName: `**${activeFeature.title}** (#${activeFeature.id})`, folderPath: activeFeature.folderPath }
+      : null,
+    managed,
+    hasWorkspace,
+  };
 }
 
 /**
@@ -413,6 +445,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
         firstMove: null,
       },
       liveOutsideSprint: [],
+      discovery: { activeFeature: null, managed: [], hasWorkspace: getWorkspaces().paths.length > 0 },
       fetchedAt: new Date().toISOString(),
     };
   }
@@ -524,6 +557,21 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     }
   } catch {
     liveOutsideSprint = [];
+  }
+
+  // Discovery & Design card. Managed-feature titles fetched best-effort.
+  let discovery: DiscoveryBlock = { activeFeature: null, managed: [], hasWorkspace: false };
+  try {
+    const activeFeature = getActiveFeature();
+    const managedIds = getManagedFeatureIds();
+    const hasWorkspace = getWorkspaces().paths.length > 0;
+    let fetchedForTitles: { id: number; title: string }[] = [];
+    if (managedIds.length > 0) {
+      fetchedForTitles = await getWorkItemsWithParents(managedIds, { errorPolicy: 'omit' });
+    }
+    discovery = buildDiscoveryBlock({ activeFeature, managedIds, fetched: fetchedForTitles, hasWorkspace });
+  } catch {
+    discovery = { activeFeature: null, managed: [], hasWorkspace: getWorkspaces().paths.length > 0 };
   }
 
   // Outlook capacity is best-effort: never break the dashboard if the calendar
@@ -643,6 +691,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     needsYou,
     wrap,
     liveOutsideSprint,
+    discovery,
     fetchedAt: new Date().toISOString(),
   };
 }
