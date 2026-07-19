@@ -226,6 +226,10 @@ export interface DashboardPayload {
   needsYou: NeedsYouBlock;
   /** End-of-day wrap facts. Show/hide is decided client-side (WrapCard). */
   wrap: WrapBlock;
+  /** Live sessions whose item isn't in the current sprint (e.g. a managed
+   *  feature being worked in Discovery & Design). Surfaced so Focus shows them
+   *  beside sprint work. NOT part of sprint capacity/counts/grouping. */
+  liveOutsideSprint: DashboardWorkItem[];
   fetchedAt: string;
 }
 
@@ -348,6 +352,24 @@ export function mergeIntoTaskMeta(taskMeta: Map<number, TaskMetaEntry>, items: W
   }
 }
 
+/** Live-session work-item ids that are NOT in the current sprint. Deduped.
+ *  These get fetched + projected so a session on an out-of-sprint item (a
+ *  managed feature, or a previous-sprint task) is still visible in Focus. */
+export function selectLiveOutsideSprintIds(
+  activeSessionItemIds: number[],
+  sprintItemIds: number[],
+): number[] {
+  const inSprint = new Set(sprintItemIds);
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const id of activeSessionItemIds) {
+    if (inSprint.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
 export async function buildDashboard(opts: BuildOptions = {}): Promise<DashboardPayload> {
   const cfg = await loadAdoConfig();
 
@@ -390,6 +412,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
         stillOpen: [],
         firstMove: null,
       },
+      liveOutsideSprint: [],
       fetchedAt: new Date().toISOString(),
     };
   }
@@ -482,6 +505,25 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     if (slim.remainingWork == null && rollup.remainingHours > 0) {
       slim.remainingWork = rollup.remainingHours;
     }
+  }
+
+  // Out-of-sprint live sessions → visible in Focus (managed features, stray
+  // previous-sprint work). Best-effort; a fetch failure just yields none.
+  let liveOutsideSprint: DashboardWorkItem[] = [];
+  try {
+    const sprintIds = items.map(w => w.id);
+    const liveIds = [...activeSessions.keys()];
+    const outsideIds = selectLiveOutsideSprintIds(liveIds, sprintIds);
+    if (outsideIds.length > 0) {
+      const fetched = await getWorkItemsWithParents(outsideIds, { errorPolicy: 'omit' });
+      const extraEvents = getRecentEventsMap(outsideIds, 5);
+      const extraCounts = getSessionCountMap(outsideIds);
+      liveOutsideSprint = fetched
+        .filter(w => !DONE_STATES.has(w.state)) // a done item isn't "live work"
+        .map(w => projectWorkItem(w, uncaptured, localLogged, running, activeSessions, extraEvents, extraCounts, lastEventBySession, now));
+    }
+  } catch {
+    liveOutsideSprint = [];
   }
 
   // Outlook capacity is best-effort: never break the dashboard if the calendar
@@ -600,6 +642,7 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     carryForward,
     needsYou,
     wrap,
+    liveOutsideSprint,
     fetchedAt: new Date().toISOString(),
   };
 }
