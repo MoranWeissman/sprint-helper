@@ -142,8 +142,13 @@ function DashboardLive({
 
   // Every work item with a live Claude Code session, newest session first.
   const allItems = useMemo(
-    () => [...inProgress, ...upNext, ...done],
-    [inProgress, upNext, done],
+    () => {
+      const base = [...inProgress, ...upNext, ...done];
+      const seen = new Set(base.map(w => w.id));
+      const extra = (data.liveOutsideSprint ?? []).filter(w => !seen.has(w.id));
+      return [...base, ...extra];
+    },
+    [inProgress, upNext, done, data.liveOutsideSprint],
   );
   const liveItems = useMemo(
     () =>
