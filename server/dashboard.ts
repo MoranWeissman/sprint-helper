@@ -46,6 +46,7 @@ import {
 } from './timers';
 import { getSHCreatedIdSet } from './sh-created';
 import { isSprintLevel } from './iteration-paths';
+import { getManagedFeatureIds, getActiveFeature, getWorkspaces, type ActiveFeature } from './workspace';
 
 export type { SessionEvent, SessionEventType, Session } from './sessions';
 
@@ -226,6 +227,12 @@ export interface DashboardPayload {
   needsYou: NeedsYouBlock;
   /** End-of-day wrap facts. Show/hide is decided client-side (WrapCard). */
   wrap: WrapBlock;
+  /** Live sessions whose item isn't in the current sprint (e.g. a managed
+   *  feature being worked in Discovery & Design). Surfaced so Focus shows them
+   *  beside sprint work. NOT part of sprint capacity/counts/grouping. */
+  liveOutsideSprint: DashboardWorkItem[];
+  /** Discovery & Design rail card: active feature, managed features, workspace flag. */
+  discovery: DiscoveryBlock;
   fetchedAt: string;
 }
 
@@ -260,6 +267,35 @@ export interface CarryForwardSummary {
   count: number;
   /** The sprint label most stranded tasks sit in, e.g. "26_12". */
   fromSprintLabel: string;
+}
+
+export interface DiscoveryBlock {
+  activeFeature: { id: number; displayName: string; folderPath: string } | null;
+  managed: { id: number; displayName: string }[];
+  hasWorkspace: boolean;
+}
+
+/** Pure: the "Discovery & Design" rail-card payload. Active feature + managed
+ *  features (names before numbers) + whether a workspace is set. */
+export function buildDiscoveryBlock(args: {
+  activeFeature: ActiveFeature | null;
+  managedIds: number[];
+  fetched: { id: number; title: string }[];
+  hasWorkspace: boolean;
+}): DiscoveryBlock {
+  const { activeFeature, managedIds, fetched, hasWorkspace } = args;
+  const titleById = new Map(fetched.map(w => [w.id, w.title]));
+  const managed = managedIds.map(id => {
+    const title = titleById.get(id);
+    return { id, displayName: title ? `**${title}** (#${id})` : `#${id}` };
+  });
+  return {
+    activeFeature: activeFeature
+      ? { id: activeFeature.id, displayName: `**${activeFeature.title}** (#${activeFeature.id})`, folderPath: activeFeature.folderPath }
+      : null,
+    managed,
+    hasWorkspace,
+  };
 }
 
 /**
@@ -348,6 +384,24 @@ export function mergeIntoTaskMeta(taskMeta: Map<number, TaskMetaEntry>, items: W
   }
 }
 
+/** Live-session work-item ids that are NOT in the current sprint. Deduped.
+ *  These get fetched + projected so a session on an out-of-sprint item (a
+ *  managed feature, or a previous-sprint task) is still visible in Focus. */
+export function selectLiveOutsideSprintIds(
+  activeSessionItemIds: number[],
+  sprintItemIds: number[],
+): number[] {
+  const inSprint = new Set(sprintItemIds);
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const id of activeSessionItemIds) {
+    if (inSprint.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
 export async function buildDashboard(opts: BuildOptions = {}): Promise<DashboardPayload> {
   const cfg = await loadAdoConfig();
 
@@ -390,6 +444,8 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
         stillOpen: [],
         firstMove: null,
       },
+      liveOutsideSprint: [],
+      discovery: { activeFeature: null, managed: [], hasWorkspace: getWorkspaces().paths.length > 0 },
       fetchedAt: new Date().toISOString(),
     };
   }
@@ -482,6 +538,40 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     if (slim.remainingWork == null && rollup.remainingHours > 0) {
       slim.remainingWork = rollup.remainingHours;
     }
+  }
+
+  // Out-of-sprint live sessions → visible in Focus (managed features, stray
+  // previous-sprint work). Best-effort; a fetch failure just yields none.
+  let liveOutsideSprint: DashboardWorkItem[] = [];
+  try {
+    const sprintIds = items.map(w => w.id);
+    const liveIds = [...activeSessions.keys()];
+    const outsideIds = selectLiveOutsideSprintIds(liveIds, sprintIds);
+    if (outsideIds.length > 0) {
+      const fetched = await getWorkItemsWithParents(outsideIds, { errorPolicy: 'omit' });
+      const extraEvents = getRecentEventsMap(outsideIds, 5);
+      const extraCounts = getSessionCountMap(outsideIds);
+      liveOutsideSprint = fetched
+        .filter(w => !DONE_STATES.has(w.state)) // a done item isn't "live work"
+        .map(w => projectWorkItem(w, uncaptured, localLogged, running, activeSessions, extraEvents, extraCounts, lastEventBySession, now));
+    }
+  } catch {
+    liveOutsideSprint = [];
+  }
+
+  // Discovery & Design card. Managed-feature titles fetched best-effort.
+  let discovery: DiscoveryBlock = { activeFeature: null, managed: [], hasWorkspace: false };
+  try {
+    const activeFeature = getActiveFeature();
+    const managedIds = getManagedFeatureIds();
+    const hasWorkspace = getWorkspaces().paths.length > 0;
+    let fetchedForTitles: { id: number; title: string }[] = [];
+    if (managedIds.length > 0) {
+      fetchedForTitles = await getWorkItemsWithParents(managedIds, { errorPolicy: 'omit' });
+    }
+    discovery = buildDiscoveryBlock({ activeFeature, managedIds, fetched: fetchedForTitles, hasWorkspace });
+  } catch {
+    discovery = { activeFeature: null, managed: [], hasWorkspace: getWorkspaces().paths.length > 0 };
   }
 
   // Outlook capacity is best-effort: never break the dashboard if the calendar
@@ -600,6 +690,8 @@ export async function buildDashboard(opts: BuildOptions = {}): Promise<Dashboard
     carryForward,
     needsYou,
     wrap,
+    liveOutsideSprint,
+    discovery,
     fetchedAt: new Date().toISOString(),
   };
 }

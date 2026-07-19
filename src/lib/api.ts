@@ -228,6 +228,12 @@ export interface ApiStandupBlock {
   today: ApiStandupEntry[];
 }
 
+export interface ApiDiscovery {
+  activeFeature: { id: number; displayName: string; folderPath: string } | null;
+  managed: { id: number; displayName: string }[];
+  hasWorkspace: boolean;
+}
+
 export interface ApiPayload {
   user: string;
   sprint: ApiSprint | null;
@@ -267,6 +273,10 @@ export interface ApiPayload {
     next: ApiUpcomingCeremony | null;
     suggestedModeId: ModeId | null;
   };
+  /** Live sessions on items outside the current sprint (Discovery & Design work). Optional. */
+  liveOutsideSprint?: ApiWorkItem[];
+  /** Discovery & Design rail card data. Optional (older payloads omit it). */
+  discovery?: ApiDiscovery;
   fetchedAt: string;
 }
 

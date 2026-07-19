@@ -7,6 +7,7 @@ import {
   postCarryForward,
   nameFromEmail,
   useDashboardData,
+  type ApiDiscovery,
   type ApiHelperNote,
   type ApiHelperNotes,
   type ApiNeedsYou,
@@ -142,8 +143,13 @@ function DashboardLive({
 
   // Every work item with a live Claude Code session, newest session first.
   const allItems = useMemo(
-    () => [...inProgress, ...upNext, ...done],
-    [inProgress, upNext, done],
+    () => {
+      const base = [...inProgress, ...upNext, ...done];
+      const seen = new Set(base.map(w => w.id));
+      const extra = (data.liveOutsideSprint ?? []).filter(w => !seen.has(w.id));
+      return [...base, ...extra];
+    },
+    [inProgress, upNext, done, data.liveOutsideSprint],
   );
   const liveItems = useMemo(
     () =>
@@ -1557,6 +1563,7 @@ function DailyView({
             scrollerRef={storiesColRef}
           />
           <RailNeedsYou needsYou={needsYou} now={now} />
+          <RailDiscovery discovery={data.discovery} />
           <RailNotes notes={helperNotes} onRefresh={onRefresh} />
         </>
       )}
@@ -1793,6 +1800,46 @@ function RailNeedsYou({ needsYou, now }: { needsYou: ApiNeedsYou | undefined; no
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/** Last path segment of a folder path, for compact display. */
+function folderBase(p: string): string {
+  const parts = p.split('/').filter(Boolean);
+  return parts[parts.length - 1] ?? p;
+}
+
+function RailDiscovery({ discovery }: { discovery: ApiDiscovery | undefined }) {
+  // Version-skew guard: old payloads omit this → render nothing.
+  if (!discovery) return null;
+  // Only show once Moran has a Discovery & Design workspace set.
+  if (!discovery.hasWorkspace) return null;
+  const { activeFeature, managed } = discovery;
+  return (
+    <section className="r22-rail-card r22-rail-discovery" aria-label="Discovery and Design">
+      <div className="r22-rail-card-head">
+        <span className="r22-rail-card-label">Discovery &amp; Design</span>
+        {managed.length > 0 && (
+          <span className="r22-rail-card-meta">managing {managed.length}</span>
+        )}
+      </div>
+      {activeFeature ? (
+        <div className="disc-active">
+          <span className="disc-on">On now</span>
+          <span className="disc-title">{plainTitle(activeFeature.displayName)}</span>
+          <span className="disc-folder">📁 {folderBase(activeFeature.folderPath)}</span>
+        </div>
+      ) : (
+        <p className="empty">No feature open yet — name one in a chat to start.</p>
+      )}
+      {managed.length > 0 && (
+        <ul className="disc-managed">
+          {managed.map(m => (
+            <li key={m.id} className="disc-managed-row">{plainTitle(m.displayName)}</li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
