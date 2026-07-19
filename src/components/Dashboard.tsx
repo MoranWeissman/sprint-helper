@@ -7,6 +7,7 @@ import {
   postCarryForward,
   nameFromEmail,
   useDashboardData,
+  type ApiDiscovery,
   type ApiHelperNote,
   type ApiHelperNotes,
   type ApiNeedsYou,
