@@ -2531,6 +2531,11 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+/* In the Daily main column (not the rail) this card carries its own bottom
+   spacing — the rail relied on flex gap between siblings. */
+.r22-rail-discovery {
+  margin-bottom: 16px;
+}
 .r22-rail-discovery .disc-title {
   font-size: 14px;
   color: var(--ink-1);

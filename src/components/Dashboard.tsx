@@ -1448,6 +1448,11 @@ function DailyView({
         <CarryForwardBanner info={carryForward} onOpenItem={onOpenItem} onDone={onRefresh} />
       )}
 
+      {/* Discovery & Design — the feature you're thinking through, its folder,
+          and the features you're driving. In the main column (not the rail Moran
+          keeps closed) so it's always in view. */}
+      <RailDiscovery discovery={data.discovery} />
+
       {stories.length === 0 ? (
         <p className="r21-daily-empty">No stories in this sprint yet.</p>
       ) : (
@@ -1563,7 +1568,6 @@ function DailyView({
             scrollerRef={storiesColRef}
           />
           <RailNeedsYou needsYou={needsYou} now={now} />
-          <RailDiscovery discovery={data.discovery} />
           <RailNotes notes={helperNotes} onRefresh={onRefresh} />
         </>
       )}
