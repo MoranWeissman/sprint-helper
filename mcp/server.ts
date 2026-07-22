@@ -1601,16 +1601,21 @@ server.registerTool(
         );
       }
       // Discovery stories must have a finished discovery doc before they close.
+      // Only gate when the active feature IS this story's parent — the active
+      // pointer is global and may point at another feature (Moran runs several
+      // chats). On any mismatch or missing pointer, skip the gate rather than
+      // read the wrong feature's doc or trap a legitimate close.
       if (isDiscoveryStoryTitle(d.title)) {
         const active = getActiveFeature();
-        const folderPath = active?.folderPath ?? null;
-        const doc = folderPath ? readDiscoveryDoc(folderPath) : null;
-        const block = discoveryCloseBlockMessage({
-          isDiscoveryStory: true,
-          folderPath,
-          check: discoveryFinishedCheck(doc),
-        });
-        if (block) return errorResult(block);
+        if (active && d.parent?.id === active.id) {
+          const doc = readDiscoveryDoc(active.folderPath);
+          const block = discoveryCloseBlockMessage({
+            isDiscoveryStory: true,
+            folderPath: active.folderPath,
+            check: discoveryFinishedCheck(doc),
+          });
+          if (block) return errorResult(block);
+        }
       }
       const toState = await setStateBucket(workItemId, 'done');
       invalidateDashboardCache();
