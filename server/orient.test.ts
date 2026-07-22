@@ -84,3 +84,8 @@ describe('activeFeatureField', () => {
     expect(activeFeatureField(null)).toBeNull();
   });
 });
+
+// NOTE: buildOrientPacket integration tests would require mocking DB, dashboard
+// cache, sessions, etc. The discovery field is type-checked (tsc) and tested
+// indirectly via MCP server smoke tests. The pure discovery functions are unit
+// tested in discovery.test.ts.

@@ -12,6 +12,8 @@
 import type { Capacity } from './capacity';
 import { buildDashboardCached } from './dashboard-cache';
 import { getDb } from './db';
+import { discoveryStatus } from './discovery-store';
+import { discoveryDayStage, discoveryDayNudge, discoveryStartNudge } from './discovery';
 import { ensureCapacityNudge, getHelperNotes, scanStaleRemaining } from './helper-notes';
 import { getPlanningHome } from './planning-home';
 import { STALE_IDLE_MINUTES } from './session-activity';
@@ -148,6 +150,14 @@ export interface OrientPacket {
     id: number;
     displayName: string;
     folderPath: string;
+  } | null;
+  discovery: {
+    activeFeatureDisplayName: string;
+    hasDiscovery: boolean;
+    finished: boolean;
+    demoStatus: string;
+    startNudge: string | null;
+    dayNudge: string | null;
   } | null;
 }
 
@@ -348,7 +358,22 @@ export async function buildOrientPacket(chatCwd: string | null = null): Promise<
 
   const planningHome = getPlanningHome();
 
-  const activeFeature = activeFeatureField(getActiveFeature());
+  const af = getActiveFeature();
+  const activeFeature = activeFeatureField(af);
+
+  let discovery: OrientPacket['discovery'] = null;
+  if (af) {
+    const status = discoveryStatus(af.folderPath);
+    const { stage } = discoveryDayStage({ firstSessionAt: af.setAt, now });
+    discovery = {
+      activeFeatureDisplayName: displayNameFor(af.id, af.title),
+      hasDiscovery: status.hasDiscovery,
+      finished: status.finished,
+      demoStatus: status.demoStatus,
+      startNudge: discoveryStartNudge(status),
+      dayNudge: discoveryDayNudge(stage),
+    };
+  }
 
   return {
     greeting: greetingFor(now),
@@ -376,5 +401,6 @@ export async function buildOrientPacket(chatCwd: string | null = null): Promise<
       isExplicitlyConfigured: planningHome.isExplicitlyConfigured,
     },
     activeFeature,
+    discovery,
   };
 }

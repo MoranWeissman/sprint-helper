@@ -179,3 +179,11 @@ export function discoveryCloseBlockMessage(args: {
   const gaps = args.check.missing.join('; ');
   return `This discovery isn't finished yet — still needs: ${gaps}. Fill it in, then close the story.`;
 }
+
+export function discoveryStartNudge(status: { hasDiscovery: boolean; finished: boolean }): string | null {
+  if (status.finished) return null;
+  if (!status.hasDiscovery) {
+    return 'Heads up: this feature has no finished discovery yet. Want to start one before building?';
+  }
+  return 'Heads up: this feature\'s discovery is not finished yet.';
+}

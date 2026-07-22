@@ -1,6 +1,6 @@
 // server/discovery.test.ts
 import { describe, it, expect } from 'vitest';
-import { parseDiscoveryDoc, emptyDiscoveryDoc, renderDiscoveryMarkdown, isGroupComplete, discoveryFinishedCheck, discoveryDayStage, discoveryDayNudge, discoveryCloseBlockMessage } from './discovery';
+import { parseDiscoveryDoc, emptyDiscoveryDoc, renderDiscoveryMarkdown, isGroupComplete, discoveryFinishedCheck, discoveryDayStage, discoveryDayNudge, discoveryCloseBlockMessage, discoveryStartNudge } from './discovery';
 
 describe('parseDiscoveryDoc', () => {
   it('returns null for unset/garbage input', () => {
@@ -186,5 +186,17 @@ describe('discoveryCloseBlockMessage', () => {
     expect(discoveryCloseBlockMessage({
       isDiscoveryStory: true, folderPath: '/x', check: { ok: true, missing: [] },
     })).toBeNull();
+  });
+});
+
+describe('discoveryStartNudge', () => {
+  it('quiet when discovery is finished', () => {
+    expect(discoveryStartNudge({ hasDiscovery: true, finished: true })).toBeNull();
+  });
+  it('reminds when there is no discovery yet', () => {
+    expect(discoveryStartNudge({ hasDiscovery: false, finished: false })).toMatch(/no finished discovery/i);
+  });
+  it('reminds when discovery exists but is not finished', () => {
+    expect(discoveryStartNudge({ hasDiscovery: true, finished: false })).toMatch(/not finished/i);
   });
 });
