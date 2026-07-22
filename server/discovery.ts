@@ -162,3 +162,20 @@ export function discoveryDayNudge(stage: DiscoveryDayStage): string | null {
     default: return null;
   }
 }
+
+/** Title-based: POM discovery stories are titled "Discovery: X". */
+export function isDiscoveryStoryTitle(title: string): boolean {
+  return /^\s*discovery\b/i.test(title);
+}
+
+/** The story-close gate's message. null = allowed to close. */
+export function discoveryCloseBlockMessage(args: {
+  isDiscoveryStory: boolean;
+  folderPath: string | null;
+  check: { ok: boolean; missing: string[] };
+}): string | null {
+  if (!args.isDiscoveryStory) return null;
+  if (args.check.ok) return null;
+  const gaps = args.check.missing.join('; ');
+  return `This discovery isn't finished yet — still needs: ${gaps}. Fill it in, then close the story.`;
+}

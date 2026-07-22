@@ -1,6 +1,6 @@
 // server/discovery.test.ts
 import { describe, it, expect } from 'vitest';
-import { parseDiscoveryDoc, emptyDiscoveryDoc, renderDiscoveryMarkdown, isGroupComplete, discoveryFinishedCheck, discoveryDayStage, discoveryDayNudge } from './discovery';
+import { parseDiscoveryDoc, emptyDiscoveryDoc, renderDiscoveryMarkdown, isGroupComplete, discoveryFinishedCheck, discoveryDayStage, discoveryDayNudge, discoveryCloseBlockMessage } from './discovery';
 
 describe('parseDiscoveryDoc', () => {
   it('returns null for unset/garbage input', () => {
@@ -161,5 +161,30 @@ describe('discoveryDayNudge', () => {
     expect(discoveryDayNudge('day2')).toMatch(/wrap/i);
     expect(discoveryDayNudge('day3')).toMatch(/extra day/i);
     expect(discoveryDayNudge('overrun')).toMatch(/ran past/i);
+  });
+});
+
+describe('discoveryCloseBlockMessage', () => {
+  it('never blocks a non-discovery story', () => {
+    expect(discoveryCloseBlockMessage({
+      isDiscoveryStory: false, folderPath: null, check: { ok: false, missing: ['x'] },
+    })).toBeNull();
+  });
+  it('blocks a discovery story with no folder to read', () => {
+    const msg = discoveryCloseBlockMessage({
+      isDiscoveryStory: true, folderPath: null, check: { ok: false, missing: ['a discovery doc (none found)'] },
+    });
+    expect(msg).toMatch(/discovery/i);
+  });
+  it('blocks a discovery story whose doc is unfinished, listing the gaps', () => {
+    const msg = discoveryCloseBlockMessage({
+      isDiscoveryStory: true, folderPath: '/x', check: { ok: false, missing: ['an end-to-end flow'] },
+    });
+    expect(msg).toContain('an end-to-end flow');
+  });
+  it('lets a finished discovery story close', () => {
+    expect(discoveryCloseBlockMessage({
+      isDiscoveryStory: true, folderPath: '/x', check: { ok: true, missing: [] },
+    })).toBeNull();
   });
 });

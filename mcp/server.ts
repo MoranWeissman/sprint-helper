@@ -73,8 +73,11 @@ import {
   removeManagedFeatureId,
   workspaceOfferFor,
   setActiveFeature,
+  getActiveFeature,
   type OrientWorkspaceOffer,
 } from '../server/workspace.js';
+import { isDiscoveryStoryTitle, discoveryCloseBlockMessage, discoveryFinishedCheck } from '../server/discovery.js';
+import { readDiscoveryDoc } from '../server/discovery-store.js';
 import {
   createStory,
   createBug,
@@ -1596,6 +1599,18 @@ server.registerTool(
         return errorResult(
           `#${workItemId} still has open tasks: ${names}. Close or move those to the next sprint first, then close the story.`,
         );
+      }
+      // Discovery stories must have a finished discovery doc before they close.
+      if (isDiscoveryStoryTitle(d.title)) {
+        const active = getActiveFeature();
+        const folderPath = active?.folderPath ?? null;
+        const doc = folderPath ? readDiscoveryDoc(folderPath) : null;
+        const block = discoveryCloseBlockMessage({
+          isDiscoveryStory: true,
+          folderPath,
+          check: discoveryFinishedCheck(doc),
+        });
+        if (block) return errorResult(block);
       }
       const toState = await setStateBucket(workItemId, 'done');
       invalidateDashboardCache();
