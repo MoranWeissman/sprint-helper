@@ -359,11 +359,7 @@ Insert after the `/api/preplan` block (after ~line 422):
 
 - [ ] **Step 2: Add front-end types + fetches to `src/lib/api.ts`**
 
-Add `'dnd'` to `ModeId` (line 193):
-
-```ts
-export type ModeId = 'day' | 'preplan' | 'plan' | 'demo' | 'retro' | 'dnd';
-```
+**Do NOT change `ModeId` in this task.** Adding `'dnd'` to the union ripples into two exhaustive `Record<ModeId, …>` maps and the `Dashboard.tsx` placeholder call site — that whole ripple lands atomically in Task 3, where the rail/branch/`useMode` also change. Task 2 adds only the types + fetch functions below (none of them reference `ModeId`), so the suite and typecheck stay green on their own.
 
 Add after `ApiDiscovery` (~line 235):
 
@@ -429,7 +425,7 @@ export async function openDiscoveryFolder(id: number): Promise<{ ok: boolean }> 
 - [ ] **Step 3: Type-check**
 
 Run: `npm run typecheck`
-Expected: no errors. Adding `'dnd'` to `ModeId` does not break `useMode.ts` (its `MODES` is a runtime subset check; Task 3 adds `'dnd'` there) — the `mode !== 'day'` fallback in `Dashboard.tsx` already handles any unknown mode via `ModePlaceholder`.
+Expected: no errors. Task 2 does not touch `ModeId` or any mode-typed code, so nothing ripples — this task only adds new, self-contained types and fetch functions.
 
 - [ ] **Step 4: Run the existing suite**
 
@@ -633,13 +629,44 @@ function DnDDetail(props: {
 }
 ```
 
-- [ ] **Step 2: Add `'dnd'` to `MODES` in `src/lib/useMode.ts` (line 4)**
+- [ ] **Step 2: Add `'dnd'` to `ModeId` and satisfy the two exhaustive maps it breaks**
+
+Adding `'dnd'` to the `ModeId` union (in `src/lib/api.ts`, ~line 193) breaks THREE things that must all be fixed in this task — this is the atomic ripple the plan deliberately kept together here:
+
+```ts
+// src/lib/api.ts (~line 193)
+export type ModeId = 'day' | 'preplan' | 'plan' | 'demo' | 'retro' | 'dnd';
+```
+
+(a) `src/components/ModeGlyphs.tsx` — `GLYPHS: Record<ModeId | 'gear', ReactElement>` is exhaustive, so it must gain a `dnd` entry. Add this to the object (a compass glyph, matching the file's `viewBox="0 0 18 18"` style):
+
+```tsx
+  dnd: (
+    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="9" cy="9" r="5.4" />
+      <path d="M11.2 6.8 l-1.4 3.4 l-3.4 1.4 l1.4 -3.4 z" />
+    </svg>
+  ),
+```
+
+(b) `src/components/ModePlaceholder.tsx` — its `COPY: Record<Exclude<ModeId, 'day'>, …>` and its prop type would now demand a `dnd` entry. But `dnd` never reaches the placeholder (it renders `DnDView`). EXCLUDE it instead — change BOTH occurrences of `Exclude<ModeId, 'day'>` to `Exclude<ModeId, 'day' | 'dnd'>`:
+
+```tsx
+const COPY: Record<Exclude<ModeId, 'day' | 'dnd'>, { title: string; line: string; slice: string }> = {
+```
+```tsx
+export function ModePlaceholder({ mode }: { mode: Exclude<ModeId, 'day' | 'dnd'> }) {
+```
+
+Do NOT add a `dnd` key to `COPY` — that would imply a placeholder screen we aren't building.
+
+- [ ] **Step 3: Add `'dnd'` to `MODES` in `src/lib/useMode.ts` (line 4)**
 
 ```ts
 const MODES: ModeId[] = ['day', 'preplan', 'plan', 'demo', 'retro', 'dnd'];
 ```
 
-- [ ] **Step 3: Wire the rail tile + mode branch in `src/components/Dashboard.tsx`**
+- [ ] **Step 4: Wire the rail tile + mode branch in `src/components/Dashboard.tsx`**
 
 Add near the PlanView/PrePlanView imports (~line 43-44):
 
@@ -647,15 +674,13 @@ Add near the PlanView/PrePlanView imports (~line 43-44):
 import { DnDView } from './DnDView';
 ```
 
-Add an entry to `R21_MODES` (~line 500), copying a sibling entry's shape and swapping the glyph path:
+Add an entry to `R21_MODES` (~line 500). NOTE the exact shape of the existing entries: `glyph` is the INNER SVG shapes only (the rail wraps them in `<svg viewBox="0 0 14 14">`), NOT a full `<svg>` element. Match that — coordinates in a 14×14 box:
 
 ```tsx
-  { id: 'dnd', label: 'D&D', glyph: (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <circle cx="12" cy="12" r="9" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
-    </svg>
-  ) },
+  { id: 'dnd', label: 'D&D', glyph: <><circle cx="7" cy="7" r="4" stroke="currentColor" fill="none" /><path d="M9 5 L7.5 7.5 L5 9 L6.5 6.5 Z" fill="currentColor" /></> },
 ```
+
+`ModePlaceholder mode={mode}` call site: after Step 2 changed the prop type to `Exclude<ModeId, 'day' | 'dnd'>`, the `mode` variable at the call site is still typed `ModeId`. The `mode !== 'day'` branch guarantees it isn't `'day'`, but TS can't narrow out `'dnd'` from a `!== 'day'` check alone. The `dnd` branch added below runs BEFORE the `mode !== 'day'` branch, so at runtime `dnd` never reaches the placeholder — but to satisfy the type, the `dnd` branch must come first (it does, see next), which narrows `mode` to `Exclude<ModeId,'dnd'>` in the placeholder branch. Confirm typecheck passes; if TS still complains at the call site, cast is NOT allowed — instead the ordering (dnd branch before placeholder branch) is what makes it sound. If it still fails, STOP and report.
 
 In the mode ternary, add a `dnd` branch **immediately before** the `mode !== 'day'` (`ModePlaceholder`) branch, so `dnd` renders `DnDView` instead of the placeholder. The existing branch order is: `plan` → `preplan` → (`mode !== 'day'` → placeholder) → `isFocus` → DailyView. Insert `: mode === 'dnd' ? (<DnDView />)` between the `preplan` branch and the `mode !== 'day'` branch. Leave every other branch exactly as-is:
 
@@ -668,22 +693,22 @@ In the mode ternary, add a `dnd` branch **immediately before** the `mode !== 'da
             <ModePlaceholder mode={mode} />
 ```
 
-- [ ] **Step 4: Type-check + build**
+- [ ] **Step 5: Type-check + build**
 
 Run: `npm run typecheck`
 Expected: no errors.
 Run: `npm run build`
 Expected: build succeeds (compiles the front end; catches JSX/type mistakes the dev server hides).
 
-- [ ] **Step 5: Run the suite**
+- [ ] **Step 6: Run the suite**
 
 Run: `npm test`
 Expected: all existing tests still green (this task adds no unit tests; the tested logic is Task 1, the component is plain state).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/components/DnDView.tsx src/lib/useMode.ts src/components/Dashboard.tsx
+git add src/components/DnDView.tsx src/lib/useMode.ts src/components/Dashboard.tsx src/lib/api.ts src/components/ModeGlyphs.tsx src/components/ModePlaceholder.tsx
 git commit -m "feat(dnd): DnDView list+detail and dnd mode wiring"
 ```
 
