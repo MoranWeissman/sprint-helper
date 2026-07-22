@@ -1,9 +1,9 @@
 // server/discovery-store.test.ts
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { readDiscoveryDoc, writeDiscoveryDoc, discoveryStatus, DISCOVERY_MD } from './discovery-store';
+import { readDiscoveryDoc, writeDiscoveryDoc, discoveryStatus, DISCOVERY_MD, DISCOVERY_DIR } from './discovery-store';
 import { emptyDiscoveryDoc } from './discovery';
 
 let dir: string;
@@ -13,19 +13,28 @@ afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 describe('discovery-store', () => {
   it('reads null when no file / garbage file', () => {
     expect(readDiscoveryDoc(dir)).toBeNull();
-    writeFileSync(join(dir, 'discovery.json'), 'not json {');
+    mkdirSync(join(dir, DISCOVERY_DIR), { recursive: true });
+    writeFileSync(join(dir, DISCOVERY_DIR, 'discovery.json'), 'not json {');
     expect(readDiscoveryDoc(dir)).toBeNull();
   });
 
-  it('writes the json AND a rendered markdown beside it', () => {
+  it('writes the json AND a rendered markdown into the discovery/ subfolder', () => {
     const doc = emptyDiscoveryDoc();
     doc.problem = 'Move CD.';
     doc.flow = ['step 1'];
     writeDiscoveryDoc(dir, doc, '**Declarative CD** (#100)');
-    expect(existsSync(join(dir, 'discovery.json'))).toBe(true);
-    expect(existsSync(join(dir, DISCOVERY_MD))).toBe(true);
-    expect(readFileSync(join(dir, DISCOVERY_MD), 'utf8')).toContain('# Discovery: **Declarative CD** (#100)');
+    expect(existsSync(join(dir, DISCOVERY_DIR, 'discovery.json'))).toBe(true);
+    expect(existsSync(join(dir, DISCOVERY_DIR, DISCOVERY_MD))).toBe(true);
+    expect(readFileSync(join(dir, DISCOVERY_DIR, DISCOVERY_MD), 'utf8')).toContain('# Discovery: **Declarative CD** (#100)');
     expect(readDiscoveryDoc(dir)!.problem).toBe('Move CD.');
+  });
+
+  it('still reads a legacy file written at the feature-folder root', () => {
+    const doc = emptyDiscoveryDoc();
+    doc.problem = 'Legacy root draft.';
+    // Simulate a file written before the discovery/ split.
+    writeFileSync(join(dir, 'discovery.json'), JSON.stringify(doc));
+    expect(readDiscoveryDoc(dir)?.problem).toBe('Legacy root draft.');
   });
 
   it('discoveryStatus reports has/finished/demo from the folder', () => {

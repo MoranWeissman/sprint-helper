@@ -5,17 +5,30 @@
  * and exposes the read-from-any-session status summary. Reads never throw.
  */
 import { join } from 'node:path';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import {
   parseDiscoveryDoc, renderDiscoveryMarkdown, discoveryFinishedCheck,
   type DiscoveryDoc,
 } from './discovery';
 
+/** Discovery files live in a `discovery/` subfolder of the feature folder, so
+ *  discovery / design / demo files stay cleanly separated. */
+export const DISCOVERY_DIR = 'discovery';
 export const DISCOVERY_FILE = 'discovery.json';
 export const DISCOVERY_MD = 'discovery.md';
 
+/** The discovery file's path, preferring the `discovery/` subfolder but falling
+ *  back to the feature-folder root for anything written before the split. */
+function discoveryJsonPath(featureFolderPath: string): string {
+  const inDir = join(featureFolderPath, DISCOVERY_DIR, DISCOVERY_FILE);
+  if (existsSync(inDir)) return inDir;
+  const atRoot = join(featureFolderPath, DISCOVERY_FILE);
+  if (existsSync(atRoot)) return atRoot; // legacy location
+  return inDir; // default target when nothing exists yet
+}
+
 export function readDiscoveryDoc(featureFolderPath: string): DiscoveryDoc | null {
-  const p = join(featureFolderPath, DISCOVERY_FILE);
+  const p = discoveryJsonPath(featureFolderPath);
   if (!existsSync(p)) return null;
   try {
     return parseDiscoveryDoc(readFileSync(p, 'utf8'));
@@ -25,15 +38,18 @@ export function readDiscoveryDoc(featureFolderPath: string): DiscoveryDoc | null
 }
 
 /** Write the source JSON and regenerate the markdown render beside it, so the
- *  two never drift — the md is always rebuilt from the json on every write. */
+ *  two never drift — the md is always rebuilt from the json on every write.
+ *  Both land in the feature's `discovery/` subfolder (created if absent). */
 export function writeDiscoveryDoc(
   featureFolderPath: string,
   doc: DiscoveryDoc,
   featureDisplayName: string,
 ): void {
-  writeFileSync(join(featureFolderPath, DISCOVERY_FILE), JSON.stringify(doc, null, 2) + '\n');
+  const dir = join(featureFolderPath, DISCOVERY_DIR);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, DISCOVERY_FILE), JSON.stringify(doc, null, 2) + '\n');
   writeFileSync(
-    join(featureFolderPath, DISCOVERY_MD),
+    join(dir, DISCOVERY_MD),
     renderDiscoveryMarkdown(doc, { featureDisplayName }),
   );
 }
