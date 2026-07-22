@@ -10,7 +10,7 @@
  * Everything here is LOCAL — no Azure DevOps access.
  */
 import { join, resolve } from 'node:path';
-import { existsSync, mkdirSync, cpSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, cpSync, writeFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { getSetting, setSetting } from './timers';
 
@@ -184,6 +184,25 @@ const SETTINGS_JSON = JSON.stringify(
   2,
 ) + '\n';
 
+/** Copy seed skill folders the workspace doesn't have yet. Never overwrites an
+ *  existing skill (the user may have edited it). Returns `skill:<name>` for each
+ *  one added. Pure fs over two paths; safe when either skills dir is absent. */
+export function syncSeedSkills(seed: string, ws: string): string[] {
+  const seedSkills = join(seed, '.claude', 'skills');
+  if (!existsSync(seedSkills)) return [];
+  const wsSkills = join(ws, '.claude', 'skills');
+  const added: string[] = [];
+  for (const name of readdirSync(seedSkills, { withFileTypes: true })) {
+    if (!name.isDirectory()) continue;
+    const dest = join(wsSkills, name.name);
+    if (existsSync(dest)) continue; // already present — leave it alone
+    mkdirSync(wsSkills, { recursive: true });
+    cpSync(join(seedSkills, name.name), dest, { recursive: true });
+    added.push(`skill:${name.name}`);
+  }
+  return added;
+}
+
 export function ensureWorkspaceScaffold(
   workspacePath: string,
 ): { created: string[]; seedMissing: boolean } {
@@ -203,6 +222,12 @@ export function ensureWorkspaceScaffold(
       cpSync(join(seed, '.claude', 'skills'), join(ws, '.claude', 'skills'), { recursive: true });
     }
     created.push('bmad');
+  } else {
+    // Workspace already scaffolded: sync any NEW seed skills that landed after
+    // it was created. Copy per-skill-folder, never overwriting an existing one,
+    // so a workspace picks up skills we add later (e.g. `discovery`) without
+    // clobbering the user's own edits. This is the seed-update path.
+    created.push(...syncSeedSkills(seed, ws));
   }
   if (!existsSync(join(ws, 'CLAUDE.md')) && existsSync(join(seed, 'CLAUDE.md'))) {
     cpSync(join(seed, 'CLAUDE.md'), join(ws, 'CLAUDE.md'));

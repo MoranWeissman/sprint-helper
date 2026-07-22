@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -121,6 +121,33 @@ describe('ensureWorkspaceScaffold', () => {
       expect(existsSync(join(ws, '.claude', 'settings.json'))).toBe(true);
       const second = ensureWorkspaceScaffold(ws);
       expect(second.created).toEqual([]); // nothing re-copied
+    } finally {
+      rmSync(seed, { recursive: true, force: true });
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('syncs a NEW seed skill into an already-scaffolded workspace, without clobbering existing skills', () => {
+    const seed = makeSeed();
+    const ws = mkdtempSync(join(tmpdir(), 'sh-ws-sync-'));
+    try {
+      store.set(SEED_KEY, seed);
+      // First scaffold: workspace gets bmad + the seed's bmad-x skill.
+      ensureWorkspaceScaffold(ws);
+      expect(existsSync(join(ws, '.claude', 'skills', 'bmad-x', 'SKILL.md'))).toBe(true);
+      // User edits their copy of an existing skill.
+      writeFileSync(join(ws, '.claude', 'skills', 'bmad-x', 'SKILL.md'), 'EDITED');
+      // A new skill lands in the seed AFTER the workspace was created.
+      mkdirSync(join(seed, '.claude', 'skills', 'discovery'), { recursive: true });
+      writeFileSync(join(seed, '.claude', 'skills', 'discovery', 'SKILL.md'), 'discovery');
+      // Re-scaffold: the new skill is delivered; the edited one is left alone.
+      const r = ensureWorkspaceScaffold(ws);
+      expect(r.created).toContain('skill:discovery');
+      expect(existsSync(join(ws, '.claude', 'skills', 'discovery', 'SKILL.md'))).toBe(true);
+      expect(readFileSync(join(ws, '.claude', 'skills', 'bmad-x', 'SKILL.md'), 'utf8')).toBe('EDITED');
+      // Idempotent: running again copies nothing new.
+      const again = ensureWorkspaceScaffold(ws);
+      expect(again.created).toEqual([]);
     } finally {
       rmSync(seed, { recursive: true, force: true });
       rmSync(ws, { recursive: true, force: true });
