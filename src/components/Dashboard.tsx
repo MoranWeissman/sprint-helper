@@ -37,6 +37,7 @@ import {
 } from '../lib/focusPicks';
 import { buildNotePrompt } from '../lib/notePrompt';
 import type { SprintContext } from '../lib/types';
+import { DnDView } from './DnDView';
 import { Dot } from './Dot';
 import { ModePlaceholder } from './ModePlaceholder';
 import { Mono } from './Mono';
@@ -307,6 +308,8 @@ function DashboardLive({
             <PlanView onOpenItem={openItem} />
           ) : mode === 'preplan' ? (
             <PrePlanView onOpenItem={openItem} />
+          ) : mode === 'dnd' ? (
+            <DnDView />
           ) : mode !== 'day' ? (
             <ModePlaceholder mode={mode} />
           ) : isFocus ? (
@@ -503,6 +506,7 @@ const R21_MODES: { id: ModeId; label: string; glyph: JSX.Element }[] = [
   { id: 'plan', label: 'Plan', glyph: <><line x1="2" y1="4" x2="12" y2="4" stroke="currentColor" /><line x1="2" y1="7" x2="10" y2="7" stroke="currentColor" /><line x1="2" y1="10" x2="11" y2="10" stroke="currentColor" /></> },
   { id: 'demo', label: 'Demo', glyph: <polygon points="4,3 4,11 12,7" fill="currentColor" /> },
   { id: 'retro', label: 'Retro', glyph: <path d="M 11 7 A 4 4 0 1 1 7 3" stroke="currentColor" fill="none" strokeWidth="1.2" /> },
+  { id: 'dnd', label: 'D&D', glyph: <><circle cx="7" cy="7" r="4" stroke="currentColor" fill="none" /><path d="M9 5 L7.5 7.5 L5 9 L6.5 6.5 Z" fill="currentColor" /></> },
 ];
 
 function R21Rail({
