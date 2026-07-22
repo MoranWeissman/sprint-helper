@@ -83,3 +83,53 @@ export function parseDiscoveryDoc(raw: string | null | undefined): DiscoveryDoc 
     openQuestions: strArray(o.openQuestions),
   };
 }
+
+export function isGroupComplete(g: DiscoveryGroup): boolean {
+  const has = (t: DiscoveryTag) => g.items.some(i => i.tags.includes(t));
+  return has('diff') && has('risk') && (has('fact') || has('option'));
+}
+
+/** The story-close gate reads this. ok = a real flow + at least one complete
+ *  group. `missing` is plain-English so the close error can quote it. */
+export function discoveryFinishedCheck(doc: DiscoveryDoc | null): { ok: boolean; missing: string[] } {
+  const missing: string[] = [];
+  if (!doc) return { ok: false, missing: ['a discovery doc (none found)'] };
+  if (doc.flow.length === 0) missing.push('an end-to-end flow');
+  if (!doc.groups.some(isGroupComplete)) {
+    missing.push('at least one context group with a difference, a risk, and a fact or option');
+  }
+  return { ok: missing.length === 0, missing };
+}
+
+export function renderDiscoveryMarkdown(
+  doc: DiscoveryDoc,
+  opts: { featureDisplayName: string },
+): string {
+  const lines: string[] = [];
+  lines.push(`# Discovery: ${opts.featureDisplayName}`, '');
+  lines.push('## What we\'re solving', '', doc.problem || '_(not filled in)_', '');
+  lines.push('## The feature end-to-end', '');
+  if (doc.flow.length === 0) lines.push('_(no flow yet)_');
+  else doc.flow.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
+  lines.push('');
+  lines.push('## Context groups', '');
+  if (doc.groups.length === 0) lines.push('_(no groups yet)_', '');
+  for (const g of doc.groups) {
+    lines.push(`### ${g.name}`, '');
+    for (const it of g.items) {
+      const tags = it.tags.length ? ` [${it.tags.join(', ')}]` : '';
+      lines.push(`- ${it.text}${tags}`);
+    }
+    lines.push('');
+  }
+  lines.push('## Lanes', '');
+  lines.push(`- Ours: ${doc.lanes.ours || '_(not filled in)_'}`);
+  lines.push(`- Tech Lead's (parked): ${doc.lanes.techLead || '_(not filled in)_'}`, '');
+  lines.push('## Demo', '');
+  lines.push(`status: ${doc.demo.status}  ·  shape: ${doc.demo.shape || '—'}  ·  date: ${doc.demo.date || '—'}`, '');
+  lines.push('## Open questions for the platform-team talk', '');
+  if (doc.openQuestions.length === 0) lines.push('_(none yet)_');
+  else doc.openQuestions.forEach(q => lines.push(`- ${q}`));
+  lines.push('');
+  return lines.join('\n');
+}
