@@ -73,8 +73,11 @@ import {
   removeManagedFeatureId,
   workspaceOfferFor,
   setActiveFeature,
+  getActiveFeature,
   type OrientWorkspaceOffer,
 } from '../server/workspace.js';
+import { isDiscoveryStoryTitle, discoveryCloseBlockMessage, discoveryFinishedCheck } from '../server/discovery.js';
+import { readDiscoveryDoc } from '../server/discovery-store.js';
 import {
   createStory,
   createBug,
@@ -1596,6 +1599,23 @@ server.registerTool(
         return errorResult(
           `#${workItemId} still has open tasks: ${names}. Close or move those to the next sprint first, then close the story.`,
         );
+      }
+      // Discovery stories must have a finished discovery doc before they close.
+      // Only gate when the active feature IS this story's parent — the active
+      // pointer is global and may point at another feature (Moran runs several
+      // chats). On any mismatch or missing pointer, skip the gate rather than
+      // read the wrong feature's doc or trap a legitimate close.
+      if (isDiscoveryStoryTitle(d.title)) {
+        const active = getActiveFeature();
+        if (active && d.parent?.id === active.id) {
+          const doc = readDiscoveryDoc(active.folderPath);
+          const block = discoveryCloseBlockMessage({
+            isDiscoveryStory: true,
+            folderPath: active.folderPath,
+            check: discoveryFinishedCheck(doc),
+          });
+          if (block) return errorResult(block);
+        }
       }
       const toState = await setStateBucket(workItemId, 'done');
       invalidateDashboardCache();
