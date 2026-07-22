@@ -5,6 +5,7 @@
  * never throws — same discipline as server/workspace.ts. No fs or ADO access in
  * the pure core; the fs wrapper lives in Task 2.
  */
+import { countWorkingDays, DEFAULT_WORKING_DAYS } from './capacity';
 
 export type DiscoveryTag = 'diff' | 'risk' | 'fact' | 'option';
 const VALID_TAGS: ReadonlySet<string> = new Set(['diff', 'risk', 'fact', 'option']);
@@ -132,4 +133,32 @@ export function renderDiscoveryMarkdown(
   else doc.openQuestions.forEach(q => lines.push(`- ${q}`));
   lines.push('');
   return lines.join('\n');
+}
+
+export type DiscoveryDayStage = 'none' | 'ok' | 'day2' | 'day3' | 'overrun';
+
+export function discoveryDayStage(args: {
+  firstSessionAt: string | null;
+  now: Date;
+  workdays?: Set<number>;
+}): { workday: number; stage: DiscoveryDayStage } {
+  if (!args.firstSessionAt) return { workday: 0, stage: 'none' };
+  const start = new Date(args.firstSessionAt);
+  if (Number.isNaN(start.getTime())) return { workday: 0, stage: 'none' };
+  const workday = countWorkingDays(start, args.now, args.workdays ?? DEFAULT_WORKING_DAYS);
+  let stage: DiscoveryDayStage;
+  if (workday <= 1) stage = 'ok';
+  else if (workday === 2) stage = 'day2';
+  else if (workday === 3) stage = 'day3';
+  else stage = 'overrun';
+  return { workday, stage };
+}
+
+export function discoveryDayNudge(stage: DiscoveryDayStage): string | null {
+  switch (stage) {
+    case 'day2': return 'Discovery day 2 — aim to wrap it up today.';
+    case 'day3': return 'Discovery day 3, the extra day — close it out.';
+    case 'overrun': return 'This discovery ran past its 3 days — close it or say why it needs longer.';
+    default: return null;
+  }
 }

@@ -1,6 +1,6 @@
 // server/discovery.test.ts
 import { describe, it, expect } from 'vitest';
-import { parseDiscoveryDoc, emptyDiscoveryDoc, renderDiscoveryMarkdown, isGroupComplete, discoveryFinishedCheck } from './discovery';
+import { parseDiscoveryDoc, emptyDiscoveryDoc, renderDiscoveryMarkdown, isGroupComplete, discoveryFinishedCheck, discoveryDayStage, discoveryDayNudge } from './discovery';
 
 describe('parseDiscoveryDoc', () => {
   it('returns null for unset/garbage input', () => {
@@ -126,5 +126,40 @@ describe('renderDiscoveryMarkdown', () => {
     expect(md).toContain('double the ArgoCD apps');
     expect(md).toContain('[diff, fact]');
     expect(md).toContain('scheduled');
+  });
+});
+
+describe('discoveryDayStage', () => {
+  const WORKDAYS = new Set([0, 1, 2, 3, 4]); // Sun-Thu
+  it('none when there is no first session', () => {
+    expect(discoveryDayStage({ firstSessionAt: null, now: new Date('2026-07-22T10:00:00Z') }).stage).toBe('none');
+  });
+  it('day 1 is ok', () => {
+    // Sun 2026-07-19 .. same day
+    const r = discoveryDayStage({ firstSessionAt: '2026-07-19T08:00:00Z', now: new Date('2026-07-19T15:00:00Z'), workdays: WORKDAYS });
+    expect(r.workday).toBe(1);
+    expect(r.stage).toBe('ok');
+  });
+  it('Fri + Sat do not count as working days', () => {
+    // Sun 2026-07-19 (day1) .. through Sat 2026-07-25: working days are Sun,Mon,Tue,Wed,Thu = 5
+    const r = discoveryDayStage({ firstSessionAt: '2026-07-19T08:00:00Z', now: new Date('2026-07-25T10:00:00Z'), workdays: WORKDAYS });
+    expect(r.workday).toBe(5);
+    expect(r.stage).toBe('overrun');
+  });
+  it('day 2 / day 3 / overrun stages', () => {
+    // Sun(19)=1, Mon(20)=2, Tue(21)=3, Wed(22)=4
+    expect(discoveryDayStage({ firstSessionAt: '2026-07-19T08:00:00Z', now: new Date('2026-07-20T10:00:00Z'), workdays: WORKDAYS }).stage).toBe('day2');
+    expect(discoveryDayStage({ firstSessionAt: '2026-07-19T08:00:00Z', now: new Date('2026-07-21T10:00:00Z'), workdays: WORKDAYS }).stage).toBe('day3');
+    expect(discoveryDayStage({ firstSessionAt: '2026-07-19T08:00:00Z', now: new Date('2026-07-22T10:00:00Z'), workdays: WORKDAYS }).stage).toBe('overrun');
+  });
+});
+
+describe('discoveryDayNudge', () => {
+  it('is quiet on none and ok, speaks from day2 on', () => {
+    expect(discoveryDayNudge('none')).toBeNull();
+    expect(discoveryDayNudge('ok')).toBeNull();
+    expect(discoveryDayNudge('day2')).toMatch(/wrap/i);
+    expect(discoveryDayNudge('day3')).toMatch(/extra day/i);
+    expect(discoveryDayNudge('overrun')).toMatch(/ran past/i);
   });
 });
