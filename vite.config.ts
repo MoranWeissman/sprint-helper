@@ -433,6 +433,7 @@ function adoApiPlugin() {
           const { listTouchedFeatureFolders, deriveDndStatus, groupByDndStatus } = await import('./server/discovery-list');
           const { discoveryStatus, readDiscoveryDoc, writeDiscoveryDoc } = await import('./server/discovery-store');
           const { getWorkItem } = await import('./server/ado');
+          const { htmlPreview } = await import('./server/html-preview');
           const { isDiscoveryStoryTitle, discoveryDayStage } = await import('./server/discovery');
           const { readdirSync } = await import('node:fs');
 
@@ -487,11 +488,23 @@ function adoApiPlugin() {
           const folderPath = feature.folderPath;
 
           let displayName = `#${id}`;
-          try { const wi = await getWorkItem(id); displayName = `**${wi.title}** (#${id})`; } catch { /* ADO down */ }
+          let featureState: string | undefined;
+          let featureDescription: string | undefined;
+          let children: { id: number; title: string; type: string; state: string }[] = [];
+          try {
+            const wi = await getWorkItem(id);
+            displayName = `**${wi.title}** (#${id})`;
+            featureState = wi.state;
+            featureDescription = htmlPreview(wi.description);
+            children = wi.children.map(c => ({ id: c.id, title: c.title, type: c.type, state: c.state }));
+          } catch { /* ADO down — Overview degrades, discovery still reads from disk */ }
 
           if (!action) {
             if (method !== 'GET') { res.statusCode = 405; res.end(JSON.stringify({ error: 'GET only' })); return; }
-            res.end(JSON.stringify({ displayName, folderPath, doc: readDiscoveryDoc(folderPath) }));
+            res.end(JSON.stringify({
+              displayName, folderPath, doc: readDiscoveryDoc(folderPath),
+              featureState, featureDescription, children,
+            }));
             return;
           }
 

@@ -259,10 +259,22 @@ export interface ApiDiscoveryDoc {
   demo: { status: 'none'|'scheduled'|'built'; shape: string; date: string };
   openQuestions: string[];
 }
+export interface ApiDiscoveryChild {
+  id: number;
+  title: string;
+  type: string;
+  state: string;
+}
 export interface DiscoveryDetailPayload {
   displayName: string;
   folderPath: string;
   doc: ApiDiscoveryDoc | null;
+  /** The feature's own ADO state (Active / Closed / …). Absent if ADO was down. */
+  featureState?: string;
+  /** The feature's description as plain text (HTML stripped). Absent if empty/ADO down. */
+  featureDescription?: string;
+  /** The feature's child stories/tasks from the board. Empty if none / ADO down. */
+  children: ApiDiscoveryChild[];
 }
 
 export async function fetchDiscoveryList(): Promise<DiscoveryListPayload> {
