@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   fetchDiscoveryList, fetchDiscoveryDetail, markDiscoveryDemo, openDiscoveryFolder,
-  type ApiFeatureSection, type DiscoveryDetailPayload, type ApiDiscoveryChild, type DndStatus,
+  type ApiFeatureSection, type ApiFeatureListEntry, type DiscoveryDetailPayload, type ApiDiscoveryChild, type DndStatus,
 } from '../lib/api';
 
 const STATUS_LABEL: Record<DndStatus, string> = {
@@ -17,6 +17,29 @@ function renderDisplayName(s: string): JSX.Element {
   const m = s.match(/^\*\*(.+?)\*\*\s*(.*)$/);
   if (!m) return <span>{s}</span>;
   return <span><strong>{m[1]}</strong> {m[2]}</span>;
+}
+
+/** Turn inline **bold** runs anywhere in a string into <strong> spans. */
+function renderInlineBold(s: string): (string | JSX.Element)[] {
+  return s.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    /^\*\*[^*]+\*\*$/.test(part) ? <strong key={i}>{part.slice(2, -2)}</strong> : part,
+  );
+}
+
+/** Render board description text: paragraphs split on blank lines, inline bold honored. */
+function renderDescription(text: string): JSX.Element {
+  const paras = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  return (
+    <>
+      {paras.map((p, i) => (
+        <p key={i} className="dnd-overview-desc">
+          {p.split('\n').map((line, j) => (
+            <span key={j}>{j > 0 && <br />}{renderInlineBold(line)}</span>
+          ))}
+        </p>
+      ))}
+    </>
+  );
 }
 
 export function DnDView(): JSX.Element {
@@ -53,6 +76,12 @@ export function DnDView(): JSX.Element {
 
   const demoStatus = detail?.doc?.demo.status ?? 'none';
 
+  // No feature open → full-width browser so the whole page is used.
+  if (selectedId == null) {
+    return <FeatureBrowser sections={sections} error={error} onSelect={selectFeature} />;
+  }
+
+  // A feature is open → the three-level reading layout (unchanged).
   return (
     <div className="dnd">
       <FeatureListRail
@@ -61,17 +90,110 @@ export function DnDView(): JSX.Element {
         error={error}
         onSelect={selectFeature}
       />
-      {selectedId != null && (
-        <FeatureFacetMenu facet={facet} demoStatus={demoStatus} onPick={setFacet} />
-      )}
+      <FeatureFacetMenu facet={facet} demoStatus={demoStatus} onPick={setFacet} />
       <FacetReadingArea
-        selectedId={selectedId}
         facet={facet}
         detail={detail}
         error={error}
         onReloadDetail={loadDetail}
       />
     </div>
+  );
+}
+
+/** Feature meta chips — shared by the browser cards and the reading-view rail rows. */
+function FeatureMeta(props: { feature: ApiFeatureListEntry }): JSX.Element {
+  const { feature: f } = props;
+  return (
+    <span className="dnd-row-meta">
+      {f.boardState && <span className={`dnd-chip is-${f.boardState.toLowerCase()}`}>{f.boardState}</span>}
+      {f.readyToClose && <span className="dnd-ready">ready to close</span>}
+      {f.dayLabel && <span className="dnd-day">{f.dayLabel}</span>}
+    </span>
+  );
+}
+
+/** Compact rail row — used inside the three-level reading view. */
+function FeatureRow(props: {
+  feature: ApiFeatureListEntry;
+  selected: boolean;
+  onSelect: (id: number) => void;
+}): JSX.Element {
+  const { feature: f, selected, onSelect } = props;
+  return (
+    <button className={`dnd-row${selected ? ' is-sel' : ''}`} onClick={() => onSelect(f.id)}>
+      <span className="dnd-row-name">{renderDisplayName(f.displayName)}</span>
+      <FeatureMeta feature={f} />
+    </button>
+  );
+}
+
+/* ------------------- Landing — full-width feature browser ----------------- */
+
+/** A roomy card for the landing grid, with a status-colored spine. */
+function FeatureCard(props: {
+  feature: ApiFeatureListEntry;
+  onSelect: (id: number) => void;
+}): JSX.Element {
+  const { feature: f, onSelect } = props;
+  return (
+    <button className={`dnd-card is-${f.dndStatus}`} onClick={() => onSelect(f.id)}>
+      <span className="dnd-card-name">{renderDisplayName(f.displayName)}</span>
+      <FeatureMeta feature={f} />
+      <span className="dnd-card-go" aria-hidden="true">Read discovery →</span>
+    </button>
+  );
+}
+
+/** Plain-word noun for the running summary line, e.g. "3 in progress". */
+const STATUS_NOUN: Record<DndStatus, string> = {
+  'in-progress': 'in progress',
+  'not-started': 'not started',
+  'closed': 'done',
+};
+
+function FeatureBrowser(props: {
+  sections: ApiFeatureSection[] | null;
+  error: string | null;
+  onSelect: (id: number) => void;
+}): JSX.Element {
+  const { sections, error, onSelect } = props;
+  const groups = sections?.filter(sec => sec.features.length > 0) ?? [];
+  const total = groups.reduce((n, s) => n + s.features.length, 0);
+  const summary = groups.map(s => `${s.features.length} ${STATUS_NOUN[s.status]}`).join(' · ');
+
+  return (
+    <main className="dnd-browse">
+      <header className="dnd-browse-head">
+        <div className="dnd-browse-cap">Discovery &amp; Design</div>
+        <h1 className="dnd-browse-h">Your features</h1>
+        {total > 0
+          ? <p className="dnd-browse-sub"><b>{summary}</b> — pick one to read its discovery, design, and demo.</p>
+          : <p className="dnd-browse-sub">Discovery, design, and demo — one place per feature.</p>}
+      </header>
+
+      {error && <div className="dnd-error">Couldn't load discoveries: {error}</div>}
+      {sections && total === 0 && !error && (
+        <div className="dnd-empty">
+          Discoveries show up here once you start one. Run <code>/sprint-helper:discovery</code> in a workspace to begin.
+        </div>
+      )}
+
+      {groups.map(sec => (
+        <section key={sec.status} className={`dnd-browse-grp is-${sec.status}`}>
+          <div className="dnd-browse-grp-head">
+            <span className="dnd-browse-grp-dot" />
+            <span className="dnd-browse-grp-label">{STATUS_LABEL[sec.status]}</span>
+            <span className="dnd-browse-grp-count">{sec.features.length}</span>
+          </div>
+          <div className="dnd-browse-grid">
+            {sec.features.map(f => (
+              <FeatureCard key={f.id} feature={f} onSelect={onSelect} />
+            ))}
+          </div>
+        </section>
+      ))}
+    </main>
   );
 }
 
@@ -100,18 +222,7 @@ function FeatureListRail(props: {
             {STATUS_LABEL[sec.status]} <span className="dnd-grp-count">{sec.features.length}</span>
           </div>
           {sec.features.map(f => (
-            <button
-              key={f.id}
-              className={`dnd-row${f.id === selectedId ? ' is-sel' : ''}`}
-              onClick={() => onSelect(f.id)}
-            >
-              <span className="dnd-row-name">{renderDisplayName(f.displayName)}</span>
-              <span className="dnd-row-meta">
-                {f.boardState && <span className={`dnd-chip is-${f.boardState.toLowerCase()}`}>{f.boardState}</span>}
-                {f.readyToClose && <span className="dnd-ready">ready to close</span>}
-                {f.dayLabel && <span className="dnd-day">{f.dayLabel}</span>}
-              </span>
-            </button>
+            <FeatureRow key={f.id} feature={f} selected={f.id === selectedId} onSelect={onSelect} />
           ))}
         </div>
       ))}
@@ -154,21 +265,13 @@ function FeatureFacetMenu(props: {
 /* ------------------------- Level 3 — reading area ------------------------- */
 
 function FacetReadingArea(props: {
-  selectedId: number | null;
   facet: Facet;
   detail: DiscoveryDetailPayload | null;
   error: string | null;
   onReloadDetail: () => void;
 }): JSX.Element {
-  const { selectedId, facet, detail, error, onReloadDetail } = props;
+  const { facet, detail, error, onReloadDetail } = props;
 
-  if (selectedId == null) {
-    return (
-      <main className="dnd-read">
-        <div className="dnd-read-prompt">Pick a feature on the left to read its discovery.</div>
-      </main>
-    );
-  }
   if (error) {
     return <main className="dnd-read"><div className="dnd-error">Couldn't read this feature: {error}</div></main>;
   }
@@ -202,7 +305,7 @@ function OverviewFacet(props: { detail: DiscoveryDetailPayload }): JSX.Element {
         </div>
       )}
       {detail.featureDescription
-        ? <p className="dnd-overview-desc">{detail.featureDescription}</p>
+        ? renderDescription(detail.featureDescription)
         : <p className="dnd-muted">No description on the board.</p>}
       <h2 className="dnd-h2">Stories &amp; tasks under this feature</h2>
       {detail.children.length === 0

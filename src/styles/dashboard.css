@@ -5111,11 +5111,103 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   overflow: hidden;
   background: var(--bg-0);
 }
-/* When no feature is open, the menu column collapses to nothing. */
-/* No feature open → only the rail + reading area are in the DOM (no menu
-   column). Match the track count to the two children so the reading area
-   fills the rest instead of landing in a 0px track. */
-.dnd:has(.dnd-read-prompt) { grid-template-columns: 288px minmax(0, 1fr); }
+/* ---- LANDING — full-width feature browser (no feature open) ----
+   Borrows the home page's presence: a big light-weight title over an
+   uppercase caption, generous whitespace, and the live "In progress"
+   group elevated as the one focal point. */
+.dnd-browse {
+  position: absolute; inset: 0;
+  overflow-y: auto;
+  background:
+    radial-gradient(120% 60% at 50% -10%, color-mix(in oklch, var(--accent) 7%, transparent), transparent 60%),
+    var(--bg-0);
+  padding: clamp(30px, 4vw, 56px) clamp(20px, 4vw, 56px) 80px;
+}
+.dnd-browse-head {
+  max-width: 1200px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 8px;
+  padding-bottom: clamp(24px, 2.6vw, 36px);
+  margin-bottom: clamp(24px, 2.6vw, 36px);
+  border-bottom: 1px solid var(--line);
+}
+.dnd-browse-cap {
+  font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600;
+  animation: dnd-rise 0.5s cubic-bezier(.22,1,.36,1) both;
+}
+.dnd-browse-h {
+  margin: 0; font-size: clamp(30px, 3.6vw, 46px); line-height: 1.02;
+  font-weight: 300; letter-spacing: -0.03em; color: var(--ink-0);
+  animation: dnd-rise 0.5s cubic-bezier(.22,1,.36,1) 0.05s both;
+}
+.dnd-browse-sub {
+  margin: 2px 0 0; font-size: 15px; line-height: 1.5; color: var(--ink-3);
+  animation: dnd-rise 0.5s cubic-bezier(.22,1,.36,1) 0.1s both;
+}
+.dnd-browse-sub b { color: var(--ink-1); font-weight: 600; }
+
+@keyframes dnd-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+.dnd-browse-grp {
+  max-width: 1200px; margin: 0 auto clamp(28px, 2.8vw, 40px);
+  animation: dnd-rise 0.5s cubic-bezier(.22,1,.36,1) 0.16s both;
+}
+.dnd-browse-grp-head { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; }
+.dnd-browse-grp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-4); flex: none; }
+.dnd-browse-grp.is-in-progress .dnd-browse-grp-dot {
+  background: var(--st-going);
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--st-going) 20%, transparent);
+}
+.dnd-browse-grp.is-closed .dnd-browse-grp-dot { background: var(--st-done); }
+.dnd-browse-grp-label { font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-2); }
+.dnd-browse-grp-count {
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-4);
+  background: var(--bg-1); border: 1px solid var(--line-hair);
+  border-radius: 999px; padding: 1px 8px; line-height: 1.5;
+}
+.dnd-browse-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.dnd-card {
+  appearance: none; text-align: left; cursor: pointer; font-family: inherit;
+  display: flex; flex-direction: column; gap: 14px;
+  background: var(--surface-2); border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--line-strong);
+  border-radius: 16px; padding: clamp(18px, 1.6vw, 24px) clamp(18px, 1.6vw, 22px);
+  color: var(--ink-1); min-height: 120px;
+  transition: transform 0.18s cubic-bezier(.22,1,.36,1), border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+.dnd-card.is-closed { border-left-color: var(--st-done); }
+.dnd-card:hover {
+  transform: translateY(-3px);
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+  box-shadow: 0 8px 24px -12px oklch(0 0 0 / 0.5);
+}
+/* In-progress cards read as the live focal point — accent spine + soft glow. */
+.dnd-browse-grp.is-in-progress .dnd-card { border-left-color: var(--st-going); }
+.dnd-browse-grp.is-in-progress .dnd-card:hover {
+  border-color: color-mix(in oklch, var(--st-going) 45%, var(--line-strong));
+  box-shadow: 0 8px 28px -12px color-mix(in oklch, var(--st-going) 40%, transparent);
+}
+.dnd-card-name { font-size: 16px; font-weight: 500; line-height: 1.4; color: var(--ink-0); }
+.dnd-card-name strong { font-weight: 600; }
+.dnd-card .dnd-row-meta { margin-top: auto; }
+.dnd-card-go {
+  font-size: 12.5px; color: var(--accent); font-weight: 500;
+  opacity: 0; transform: translateX(-4px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.dnd-card:hover .dnd-card-go { opacity: 1; transform: translateX(0); }
+@media (prefers-reduced-motion: reduce) {
+  .dnd-browse-cap, .dnd-browse-h, .dnd-browse-sub, .dnd-browse-grp { animation: none; }
+  .dnd-card, .dnd-card-go { transition: none; }
+  .dnd-card:hover { transform: none; }
+  .dnd-card-go { opacity: 1; transform: none; }
+}
 
 /* ---- LEVEL 1 — feature list rail ---- */
 .dnd-rail {
@@ -5261,7 +5353,9 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 
 /* Overview facet */
 .dnd-overview-state { margin-bottom: 14px; }
-.dnd-overview-desc { font-size: 16px; line-height: 1.65; color: var(--ink-2); margin: 0; }
+.dnd-overview-desc { font-size: 16px; line-height: 1.65; color: var(--ink-2); margin: 0 0 14px; max-width: 74ch; }
+.dnd-overview-desc:last-of-type { margin-bottom: 4px; }
+.dnd-overview-desc strong { color: var(--ink-0); font-weight: 600; }
 .dnd-children { list-style: none; margin: 0; padding: 0; }
 .dnd-child {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
