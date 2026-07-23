@@ -433,7 +433,7 @@ function adoApiPlugin() {
           const { listTouchedFeatureFolders, deriveDndStatus, groupByDndStatus } = await import('./server/discovery-list');
           const { discoveryStatus, readDiscoveryDoc, writeDiscoveryDoc } = await import('./server/discovery-store');
           const { getWorkItem } = await import('./server/ado');
-          const { htmlPreview } = await import('./server/html-preview');
+          const { htmlToText } = await import('./server/html-preview');
           const { isDiscoveryStoryTitle, discoveryDayStage } = await import('./server/discovery');
           const { readdirSync } = await import('node:fs');
 
@@ -495,7 +495,7 @@ function adoApiPlugin() {
             const wi = await getWorkItem(id);
             displayName = `**${wi.title}** (#${id})`;
             featureState = wi.state;
-            featureDescription = htmlPreview(wi.description);
+            featureDescription = htmlToText(wi.description);
             children = wi.children.map(c => ({ id: c.id, title: c.title, type: c.type, state: c.state }));
           } catch { /* ADO down — Overview degrades, discovery still reads from disk */ }
 
