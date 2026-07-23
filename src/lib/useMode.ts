@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ModeId } from './api';
 
-const MODES: ModeId[] = ['day', 'preplan', 'plan', 'demo', 'retro'];
+const MODES: ModeId[] = ['day', 'preplan', 'plan', 'demo', 'retro', 'dnd'];
 const DEFAULT_MODE: ModeId = 'day';
 
 function modeFromUrl(): ModeId {

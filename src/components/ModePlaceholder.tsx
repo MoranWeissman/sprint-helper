@@ -1,7 +1,7 @@
 import type { ModeId } from '../lib/api';
 import { ModeGlyph } from './ModeGlyphs';
 
-const COPY: Record<Exclude<ModeId, 'day'>, { title: string; line: string; slice: string }> = {
+const COPY: Record<Exclude<ModeId, 'day' | 'dnd'>, { title: string; line: string; slice: string }> = {
   preplan: {
     title: 'Pre-plan',
     line: 'A read-mostly look-ahead at the next sprint — backlog candidates, notes, capacity peek.',
@@ -24,7 +24,7 @@ const COPY: Record<Exclude<ModeId, 'day'>, { title: string; line: string; slice:
   },
 };
 
-export function ModePlaceholder({ mode }: { mode: Exclude<ModeId, 'day'> }) {
+export function ModePlaceholder({ mode }: { mode: Exclude<ModeId, 'day' | 'dnd'> }) {
   const copy = COPY[mode];
   return (
     <div className="mode-placeholder">

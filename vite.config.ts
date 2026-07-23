@@ -420,6 +420,108 @@ function adoApiPlugin() {
           res.end(JSON.stringify({ error: message }));
         }
       });
+
+      server.middlewares.use('/api/discovery', async (req, res) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'no-store');
+        try {
+          const url = new URL(req.url ?? '/', 'http://localhost');
+          const path = url.pathname; // '/' | '' for list, '/426639', '/426639/demo', '/426639/open-folder'
+          const method = req.method ?? 'GET';
+
+          const { getWorkspaces, getActiveFeature } = await import('./server/workspace');
+          const { listTouchedFeatureFolders, deriveDndStatus, groupByDndStatus } = await import('./server/discovery-list');
+          const { discoveryStatus, readDiscoveryDoc, writeDiscoveryDoc } = await import('./server/discovery-store');
+          const { getWorkItem } = await import('./server/ado');
+          const { isDiscoveryStoryTitle, discoveryDayStage } = await import('./server/discovery');
+          const { readdirSync } = await import('node:fs');
+
+          const touched = listTouchedFeatureFolders(
+            getWorkspaces().paths,
+            (dir) => readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name),
+          );
+
+          // ---- LIST ----
+          if (path === '/' || path === '') {
+            if (method !== 'GET') { res.statusCode = 405; res.end(JSON.stringify({ error: 'GET only' })); return; }
+            const active = getActiveFeature();
+            const now = new Date();
+            const entries = await Promise.all(touched.map(async (f) => {
+              const status = discoveryStatus(f.folderPath);
+              let title: string | null = null;
+              let boardState: string | null = null;
+              let boardClosed = false;
+              try {
+                const wi = await getWorkItem(f.id);
+                title = wi.title;
+                const story = wi.children.find(c => c.type === 'User Story' && isDiscoveryStoryTitle(c.title));
+                if (story) { boardState = story.state; boardClosed = story.state === 'Closed'; }
+              } catch { /* ADO down — list from folder truth */ }
+              const dndStatus = deriveDndStatus({ hasDiscovery: status.hasDiscovery, finished: status.finished, boardClosed });
+              let dayLabel: string | null = null;
+              if (active && active.id === f.id && dndStatus === 'in-progress') {
+                const { workday } = discoveryDayStage({ firstSessionAt: active.setAt, now });
+                dayLabel = `day ${workday} of 2`;
+              }
+              return {
+                id: f.id,
+                displayName: title ? `**${title}** (#${f.id})` : `#${f.id}`,
+                folderPath: f.folderPath,
+                dndStatus, boardState, dayLabel,
+              };
+            }));
+            res.end(JSON.stringify({ sections: groupByDndStatus(entries) }));
+            return;
+          }
+
+          // ---- DETAIL / ACTIONS (/<id>[/demo|/open-folder]) ----
+          const m = path.match(/^\/(\d+)(?:\/(demo|open-folder))?\/?$/);
+          if (!m) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Expected /api/discovery/<id>[/demo|/open-folder]' })); return; }
+          const id = Number(m[1]);
+          const action = m[2]; // 'demo' | 'open-folder' | undefined
+          const feature = touched.find(f => f.id === id);
+          if (!feature) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Not a touched feature' })); return; }
+          const folderPath = feature.folderPath;
+
+          let displayName = `#${id}`;
+          try { const wi = await getWorkItem(id); displayName = `**${wi.title}** (#${id})`; } catch { /* ADO down */ }
+
+          if (!action) {
+            if (method !== 'GET') { res.statusCode = 405; res.end(JSON.stringify({ error: 'GET only' })); return; }
+            res.end(JSON.stringify({ displayName, folderPath, doc: readDiscoveryDoc(folderPath) }));
+            return;
+          }
+
+          if (action === 'demo') {
+            if (method !== 'POST') { res.statusCode = 405; res.end(JSON.stringify({ error: 'POST only' })); return; }
+            const body = (await readJsonBody(req)) as { status?: unknown; date?: unknown };
+            const status = body.status;
+            if (status !== 'none' && status !== 'scheduled' && status !== 'built') {
+              res.statusCode = 400; res.end(JSON.stringify({ error: 'status must be none | scheduled | built' })); return;
+            }
+            const date = typeof body.date === 'string' ? body.date : '';
+            const doc = readDiscoveryDoc(folderPath);
+            if (!doc) { res.statusCode = 409; res.end(JSON.stringify({ error: 'no discovery to mark' })); return; }
+            doc.demo = { status, shape: doc.demo.shape, date };
+            writeDiscoveryDoc(folderPath, doc, displayName);
+            res.end(JSON.stringify({ demo: doc.demo }));
+            return;
+          }
+
+          // action === 'open-folder'
+          if (method !== 'POST') { res.statusCode = 405; res.end(JSON.stringify({ error: 'POST only' })); return; }
+          const { spawn } = await import('node:child_process');
+          const { join } = await import('node:path');
+          let ok = true;
+          try { spawn('open', [join(folderPath, 'discovery')], { detached: true, stdio: 'ignore' }).unref(); }
+          catch { ok = false; }
+          res.end(JSON.stringify({ ok }));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'unknown error';
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: message }));
+        }
+      });
     },
   };
 }

@@ -5095,3 +5095,477 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   border-left: 2px solid var(--accent);
   line-height: 1.6;
 }
+
+/* ============================================================ */
+/* D&D (DISCOVERY & DESIGN) PAGE                                 */
+/* ============================================================ */
+
+/* ---- LIST VIEW ---- */
+.dnd-list {
+  padding: clamp(24px, 2.8vw, 48px) clamp(28px, 3.2vw, 64px);
+  display: flex; flex-direction: column; gap: 36px;
+  min-width: 0;
+}
+.dnd-title {
+  margin: 0;
+  font-size: clamp(26px, 2.6vw, 36px);
+  font-weight: 300;
+  letter-spacing: -0.025em;
+  color: var(--ink-0);
+  line-height: 1.15;
+}
+.dnd-error {
+  font-size: 14px;
+  color: oklch(0.78 0.10 30);
+  padding: 12px 16px;
+  background: oklch(0.22 0.05 30 / 0.18);
+  border: 1px solid oklch(0.42 0.08 30 / 0.32);
+  border-radius: 6px;
+}
+.dnd-empty {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-3);
+  padding: 16px 0;
+}
+.dnd-empty code {
+  background: var(--bg-1);
+  border: 1px solid var(--line-hair);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: var(--font-mono);
+  color: var(--ink-0);
+}
+.dnd-loading {
+  font-size: 15px;
+  color: var(--ink-3);
+  padding: 16px 0;
+}
+
+/* ---- SECTIONS ---- */
+.dnd-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dnd-section-head {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 600;
+  margin: 0;
+}
+/* Subtle accent for in-progress section */
+.dnd-section.is-in-progress .dnd-section-head {
+  color: var(--accent);
+}
+.dnd-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ---- ROW (feature in list) ---- */
+.dnd-row {
+  appearance: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--ink-1);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.dnd-row:hover {
+  background: var(--bg-2);
+  border-color: var(--line);
+}
+.dnd-row-name {
+  flex: 1 1 auto;
+  font-size: 15px;
+  color: var(--ink-0);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dnd-row-name strong {
+  font-weight: 600;
+}
+
+/* ---- CHIPS (board state) ---- */
+.dnd-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--ink-2);
+  background: var(--bg-3);
+  border: 1px solid var(--line-hair);
+}
+.dnd-chip.is-active {
+  color: var(--st-going);
+  background: color-mix(in oklch, var(--st-going) 16%, transparent);
+  border-color: color-mix(in oklch, var(--st-going) 32%, transparent);
+}
+.dnd-chip.is-closed {
+  color: var(--ink-3);
+  background: color-mix(in oklch, var(--ink-3) 12%, transparent);
+  border-color: color-mix(in oklch, var(--ink-3) 28%, transparent);
+}
+.dnd-chip.is-blocked {
+  color: var(--st-blocked);
+  background: color-mix(in oklch, var(--st-blocked) 16%, transparent);
+  border-color: color-mix(in oklch, var(--st-blocked) 32%, transparent);
+}
+.dnd-chip.is-new {
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 16%, transparent);
+  border-color: color-mix(in oklch, var(--accent) 32%, transparent);
+}
+
+/* ---- DAY LABEL ---- */
+.dnd-day {
+  flex: none;
+  font-size: 13px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
+  letter-spacing: 0.02em;
+}
+
+/* ---- DETAIL VIEW ---- */
+.dnd-detail {
+  padding: clamp(24px, 2.8vw, 48px) clamp(28px, 3.2vw, 64px);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.dnd-back {
+  appearance: none;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--ink-2);
+  padding: 4px 0;
+  border-bottom: 1px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  align-self: flex-start;
+}
+.dnd-back:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.dnd-detail-title {
+  margin: 0 0 12px;
+  font-size: clamp(26px, 2.6vw, 36px);
+  font-weight: 400;
+  letter-spacing: -0.022em;
+  color: var(--ink-0);
+  line-height: 1.2;
+}
+.dnd-detail-title strong {
+  font-weight: 600;
+}
+
+/* ---- TWO-COLUMN BODY ---- */
+.dnd-detail-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 48px;
+  align-items: start;
+}
+
+/* ---- MAIN COLUMN ---- */
+.dnd-main {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  min-width: 0;
+}
+.dnd-problem {
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--ink-1);
+  margin: 0;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.dnd-h2 {
+  margin: 0 0 16px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+/* ---- FLOW (focal point) ---- */
+.dnd-flow {
+  list-style: none;
+  counter-reset: flow;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dnd-flow > li {
+  counter-increment: flow;
+  position: relative;
+  padding-left: 40px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-0);
+}
+.dnd-flow > li::before {
+  content: counter(flow);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--accent) 32%, transparent);
+}
+
+/* ---- GROUPS (supporting detail) ---- */
+.dnd-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dnd-group-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-1);
+  letter-spacing: -0.005em;
+}
+.dnd-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dnd-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+}
+.dnd-item-text {
+  flex: 1 1 auto;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* ---- TAG CHIPS (diff/risk/fact/option) ---- */
+.dnd-tag {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.dnd-tag.is-diff {
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--accent) 28%, transparent);
+}
+.dnd-tag.is-risk {
+  color: var(--ev-blocker);
+  background: color-mix(in oklch, var(--ev-blocker) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--ev-blocker) 32%, transparent);
+}
+.dnd-tag.is-fact {
+  color: var(--ink-2);
+  background: color-mix(in oklch, var(--ink-2) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--ink-2) 24%, transparent);
+}
+.dnd-tag.is-option {
+  color: var(--st-waiting);
+  background: color-mix(in oklch, var(--st-waiting) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--st-waiting) 28%, transparent);
+}
+
+/* ---- SIDE PANEL ---- */
+.dnd-side {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.dnd-side-block {
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dnd-side-block.is-design {
+  border-color: var(--line-hair);
+  opacity: 0.7;
+}
+.dnd-side-head {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+.dnd-side-block p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.dnd-side-block ul {
+  margin: 0;
+  padding: 0 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dnd-side-block li {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.dnd-side-block select,
+.dnd-side-block input[type="date"] {
+  appearance: none;
+  background: var(--bg-1);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--ink-0);
+  width: 100%;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.dnd-side-block select:hover,
+.dnd-side-block input[type="date"]:hover {
+  border-color: var(--line);
+  background: var(--bg-2);
+}
+.dnd-side-block select:focus,
+.dnd-side-block input[type="date"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg-2);
+}
+.dnd-side-block button {
+  appearance: none;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+  color: var(--ink-1);
+  font-family: inherit;
+  font-size: 14px;
+  padding: 9px 16px;
+  border-radius: 6px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.dnd-side-block button:hover {
+  background: var(--bg-2);
+  color: var(--ink-0);
+  border-color: var(--line-strong);
+}
+.dnd-muted {
+  font-size: 13px;
+  color: var(--ink-4);
+  font-style: italic;
+}
+.dnd-path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+  padding: 8px 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-hair);
+  border-radius: 4px;
+  word-break: break-all;
+  user-select: all;
+}
+
+/* ---- RESPONSIVE ---- */
+@media (max-width: 900px) {
+  .dnd-detail-body {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+  .dnd-side {
+    order: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .dnd-list,
+  .dnd-detail {
+    padding: 24px 20px;
+  }
+  .dnd-title,
+  .dnd-detail-title {
+    font-size: 22px;
+  }
+  .dnd-detail-body {
+    gap: 28px;
+  }
+  .dnd-main {
+    gap: 28px;
+  }
+  .dnd-problem {
+    font-size: 16px;
+    padding-bottom: 20px;
+  }
+  .dnd-flow > li {
+    font-size: 15px;
+    padding-left: 36px;
+  }
+  .dnd-flow > li::before {
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+  }
+}

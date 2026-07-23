@@ -190,7 +190,7 @@ export interface ApiUserStoryGroup {
 }
 
 export type CeremonyId = 'daily' | 'preplan' | 'plan' | 'demo' | 'retro';
-export type ModeId = 'day' | 'preplan' | 'plan' | 'demo' | 'retro';
+export type ModeId = 'day' | 'preplan' | 'plan' | 'demo' | 'retro' | 'dnd';
 
 export interface ApiUpcomingCeremony {
   id: CeremonyId;
@@ -232,6 +232,63 @@ export interface ApiDiscovery {
   activeFeature: { id: number; displayName: string; folderPath: string } | null;
   managed: { id: number; displayName: string }[];
   hasWorkspace: boolean;
+}
+
+export type DndStatus = 'in-progress' | 'not-started' | 'finished' | 'closed';
+
+export interface ApiFeatureListEntry {
+  id: number;
+  displayName: string;
+  folderPath: string;
+  dndStatus: DndStatus;
+  boardState: string | null;
+  dayLabel: string | null;
+}
+export interface ApiFeatureSection { status: DndStatus; features: ApiFeatureListEntry[] }
+export interface DiscoveryListPayload { sections: ApiFeatureSection[] }
+
+export interface ApiDiscoveryItem { text: string; tags: ('diff'|'risk'|'fact'|'option')[] }
+export interface ApiDiscoveryGroup { name: string; items: ApiDiscoveryItem[] }
+export interface ApiDiscoveryDoc {
+  problem: string;
+  flow: string[];
+  groups: ApiDiscoveryGroup[];
+  lanes: { ours: string; techLead: string };
+  demo: { status: 'none'|'scheduled'|'built'; shape: string; date: string };
+  openQuestions: string[];
+}
+export interface DiscoveryDetailPayload {
+  displayName: string;
+  folderPath: string;
+  doc: ApiDiscoveryDoc | null;
+}
+
+export async function fetchDiscoveryList(): Promise<DiscoveryListPayload> {
+  const r = await fetch('/api/discovery', { cache: 'no-store' });
+  if (!r.ok) throw new Error(`discovery list failed: ${r.status}`);
+  return r.json() as Promise<DiscoveryListPayload>;
+}
+
+export async function fetchDiscoveryDetail(id: number): Promise<DiscoveryDetailPayload> {
+  const r = await fetch(`/api/discovery/${encodeURIComponent(id)}`, { cache: 'no-store' });
+  if (!r.ok) throw new Error(`discovery detail failed: ${r.status}`);
+  return r.json() as Promise<DiscoveryDetailPayload>;
+}
+
+export async function markDiscoveryDemo(
+  id: number, body: { status: 'none'|'scheduled'|'built'; date: string },
+): Promise<{ demo: ApiDiscoveryDoc['demo'] }> {
+  const r = await fetch(`/api/discovery/${encodeURIComponent(id)}/demo`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`mark demo failed: ${r.status}`);
+  return r.json() as Promise<{ demo: ApiDiscoveryDoc['demo'] }>;
+}
+
+export async function openDiscoveryFolder(id: number): Promise<{ ok: boolean }> {
+  const r = await fetch(`/api/discovery/${encodeURIComponent(id)}/open-folder`, { method: 'POST' });
+  if (!r.ok) throw new Error(`open folder failed: ${r.status}`);
+  return r.json() as Promise<{ ok: boolean }>;
 }
 
 export interface ApiPayload {

@@ -32,6 +32,12 @@ const GLYPHS: Record<ModeId | 'gear', ReactElement> = {
       <path d="M14.5 3.8 v3 h-3" />
     </svg>
   ),
+  dnd: (
+    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="9" cy="9" r="5.4" />
+      <path d="M11.2 6.8 l-1.4 3.4 l-3.4 1.4 l1.4 -3.4 z" />
+    </svg>
+  ),
   gear: (
     <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
       <circle cx="9" cy="9" r="2.2" />
