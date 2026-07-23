@@ -5289,9 +5289,17 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--accent); margin: 8px 0 18px;
 }
+/* Section titles ("Context groups", "Lanes", "Open questions") are the main
+   subjects on the page — they must sit ABOVE their cards in the hierarchy, not
+   below. Bigger, brighter, sentence case, with an accent tick to catch the eye. */
 .dnd-h2 {
-  font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em;
-  color: var(--ink-3); margin: 30px 0 14px;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 19px; font-weight: 600; letter-spacing: -0.01em; text-transform: none;
+  color: var(--ink-0); margin: 34px 0 15px;
+}
+.dnd-h2::before {
+  content: ""; flex: none; width: 4px; height: 18px; border-radius: 2px;
+  background: var(--accent);
 }
 .dnd-muted { font-size: 15px; color: var(--ink-3); }
 .dnd-muted-2 { font-size: 14px; color: var(--ink-4); margin-top: 6px; }
@@ -5348,50 +5356,165 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   border-right: 2px solid var(--ink-3); border-bottom: 2px solid var(--ink-3);
   transform: rotate(-45deg); transition: transform 0.18s ease;
 }
-.dnd-group[open] .dnd-group-chev { transform: rotate(45deg); }
+.dnd-group[open] > .dnd-group-sum .dnd-group-chev,
+.dnd-sub[open] > .dnd-sub-sum .dnd-group-chev { transform: rotate(45deg); }
 .dnd-group-name { font-size: 15px; font-weight: 600; color: var(--ink-0); flex: 1; min-width: 0; }
 .dnd-group-count {
   flex: none; font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-4);
   background: var(--bg-1); border: 1px solid var(--line-hair);
   border-radius: 999px; padding: 1px 8px; line-height: 1.5;
 }
-.dnd-items { list-style: none; margin: 0; padding: 2px 16px 14px; }
+.dnd-items { list-style: none; margin: 0; padding: 4px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
 @media (prefers-reduced-motion: reduce) { .dnd-group-chev { transition: none; } }
-.dnd-item { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; font-size: 15px; color: var(--ink-2); line-height: 1.55; }
+
+/* Discovery context groups — this is the section the user reads on every
+   review, so give it emphasis against the dark page: an accent left spine and
+   a slightly lifted surface. Scoped to Discovery so Overview stays calm. */
+.dnd-discovery .dnd-group {
+  border-left: 3px solid var(--accent-deep);
+  background: var(--surface-3);
+}
+.dnd-discovery .dnd-group[open] {
+  border-color: var(--line-strong);
+  border-left-color: var(--accent);
+}
+.dnd-discovery .dnd-group[open] .dnd-group-sum {
+  border-bottom: 1px solid var(--line-soft);
+}
+.dnd-discovery .dnd-group-name { color: var(--ink-0); }
+.dnd-discovery .dnd-group-sum:hover { background: color-mix(in oklch, var(--accent) 10%, var(--surface-3)); }
+/* Each context item is its own card with a state-coloured left spine + faint
+   tint, so fact / diff / risk read at a glance instead of one dark block.
+   The tag colours already carry meaning — this just makes the whole row show it. */
+.dnd-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 11px 14px; font-size: 15px; color: var(--ink-1); line-height: 1.6;
+  background: var(--surface-2);
+  border: 1px solid var(--line-hair);
+  border-left: 3px solid var(--line-strong);
+  border-radius: 10px;
+}
+.dnd-item.is-diff   { border-left-color: var(--accent);      background: color-mix(in oklch, var(--accent) 7%, var(--surface-2)); }
+.dnd-item.is-risk   { border-left-color: var(--st-blocked);  background: color-mix(in oklch, var(--st-blocked) 9%, var(--surface-2)); }
+.dnd-item.is-option { border-left-color: var(--st-waiting);  background: color-mix(in oklch, var(--st-waiting) 8%, var(--surface-2)); }
+.dnd-item.is-fact   { border-left-color: var(--line-strong); }
 .dnd-item-text { flex: 1; min-width: 0; }
+.dnd-item-tags { flex: none; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; padding-top: 1px; }
 .dnd-tag {
   font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
   padding: 3px 8px; border-radius: 6px; white-space: nowrap;
 }
 .dnd-tag.is-diff { background: var(--accent-soft); color: var(--accent); }
 .dnd-tag.is-risk { background: var(--st-blocked-bg); color: var(--st-blocked); }
-.dnd-tag.is-fact { background: var(--bg-2); color: var(--ink-2); }
+.dnd-tag.is-fact { background: var(--bg-2); color: var(--ink-3); }
 .dnd-tag.is-option { background: var(--st-waiting-bg); color: var(--st-waiting); }
 .dnd-lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
 .dnd-lane { background: var(--surface-2); border: 1px solid var(--line-hair); border-radius: 10px; padding: 14px 15px; }
-.dnd-lane-lab { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-4); margin-bottom: 7px; }
+.dnd-lane-lab { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; color: var(--ink-2); margin-bottom: 7px; }
 .dnd-lane p { font-size: 14.5px; color: var(--ink-2); line-height: 1.5; margin: 0; }
-.dnd-qs { list-style: none; margin: 0; padding: 0; }
-.dnd-qs li { font-size: 15px; color: var(--ink-2); padding: 9px 0 9px 18px; position: relative; border-bottom: 1px solid var(--line-hair); }
-.dnd-qs li:last-child { border-bottom: none; }
-.dnd-qs li::before { content: "?"; position: absolute; left: 0; color: var(--ink-4); font-weight: 600; }
+/* small note under a section heading — says what the section is FOR */
+.dnd-section-note { font-size: 14px; color: var(--ink-2); margin: -6px 0 14px; padding-left: 14px; }
+
+/* Open questions — the agenda for the platform-team talk. Each is its own
+   card with an accent spine so this reads as a live to-discuss list, not a
+   faint footnote. */
+.dnd-qs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.dnd-qs li {
+  font-size: 15px; color: var(--ink-1); line-height: 1.5;
+  padding: 12px 15px 12px 16px; position: relative;
+  background: var(--surface-3);
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--accent-deep);
+  border-radius: 10px;
+}
 
 /* Overview facet */
 .dnd-overview-state { margin-bottom: 14px; }
-.dnd-overview-desc { font-size: 16px; line-height: 1.65; color: var(--ink-2); margin: 0 0 14px; max-width: 74ch; }
-.dnd-overview-desc:last-of-type { margin-bottom: 4px; }
-.dnd-overview-desc strong { color: var(--ink-0); font-weight: 600; }
-.dnd-children { list-style: none; margin: 0; padding: 0; }
-.dnd-child {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 12px 0; border-bottom: 1px solid var(--line-hair);
+
+/* Board description — comfortable reading. Intro paragraph up top, then the
+   sections as collapsible .dnd-group cards (shared with Discovery). */
+.dnd-ov-desc { max-width: 74ch; margin-bottom: 8px; }
+.dnd-ov-intro { margin-bottom: 18px; }
+.dnd-ov-p { font-size: 15.5px; line-height: 1.7; color: var(--ink-2); margin: 0 0 12px; }
+.dnd-ov-p:last-child { margin-bottom: 0; }
+.dnd-ov-desc strong { color: var(--ink-0); font-weight: 600; }
+/* Topic headings read as real section titles here — bigger than a Discovery group. */
+.dnd-ov-desc .dnd-group { margin-bottom: 12px; }
+.dnd-ov-desc .dnd-group-sum { padding: 15px 18px; }
+.dnd-ov-desc .dnd-group-name { font-size: 17px; letter-spacing: -0.01em; }
+/* ![alt](url) — the ADO image needs a token to load, so show a calm caption. */
+.dnd-fig { display: inline-block; font-size: 13px; color: var(--ink-4); font-style: italic; }
+/* Open section body — a slightly darker inset so the lighter sub-topic rows
+   stand out against it instead of meshing into one dark block. */
+.dnd-ov-body { padding: 6px 16px 16px; background: color-mix(in oklch, var(--bg-0) 45%, transparent); }
+
+/* Sub-topics — a labeled bullet ("**Label:** text") becomes its own nested
+   collapsible, closed by default. Each is a distinct rounded row on a lighter
+   surface so it separates from the near-black background instead of meshing. */
+.dnd-subs { display: flex; flex-direction: column; gap: 8px; }
+.dnd-sub {
+  background: var(--surface-3);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  overflow: hidden;
 }
-.dnd-child:last-child { border-bottom: none; }
-.dnd-child-name { font-size: 15px; color: var(--ink-1); line-height: 1.4; min-width: 0; }
-.dnd-child-name strong { font-weight: 600; color: var(--ink-0); }
-.dnd-child-id { color: var(--ink-4); font-weight: 400; font-size: 13px; }
-.dnd-child-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.dnd-child-type { font-size: 12px; color: var(--ink-4); }
+.dnd-sub[open] { border-color: var(--line-strong); }
+.dnd-sub-sum {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; cursor: pointer; list-style: none; user-select: none;
+}
+.dnd-sub-sum::-webkit-details-marker { display: none; }
+.dnd-sub-sum:hover { background: color-mix(in oklch, var(--bg-2) 40%, transparent); }
+.dnd-sub-sum:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dnd-sub-label { font-size: 15px; font-weight: 600; color: var(--ink-1); flex: 1; min-width: 0; }
+.dnd-sub[open] .dnd-sub-label { color: var(--ink-0); }
+.dnd-sub-body {
+  padding: 2px 15px 15px 33px; font-size: 15.5px; line-height: 1.7; color: var(--ink-2);
+}
+/* a plain (unlabeled) bullet — a calm row with a dot */
+.dnd-ov-li { font-size: 15.5px; line-height: 1.65; color: var(--ink-2); padding: 8px 2px 8px 16px; position: relative; }
+.dnd-ov-li::before { content: ""; position: absolute; left: 2px; top: 15px; width: 5px; height: 5px; border-radius: 50%; background: var(--ink-4); }
+/* Child stories/tasks — same row vocabulary as the Plan page: a surface card
+   with a state-colored left spine, a kind tag, the title, and a state chip. */
+.dnd-kids { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.dnd-kid {
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--line-strong);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.dnd-kid.is-active, .dnd-kid.is-committed, .dnd-kid.is-new { border-left-color: var(--st-going); }
+.dnd-kid.is-closed, .dnd-kid.is-done, .dnd-kid.is-resolved { border-left-color: var(--st-done); }
+.dnd-kid.is-blocked { border-left-color: var(--ev-blocker); }
+/* the whole row is a button — opens the work item like Plan/Pre-plan do */
+.dnd-kid-btn {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 13px 16px; background: none; border: 0; font: inherit; text-align: left;
+  color: inherit; cursor: pointer; -webkit-appearance: none; appearance: none;
+  transition: background 0.15s ease;
+}
+.dnd-kid-btn:hover { background: color-mix(in oklch, var(--bg-2) 45%, transparent); }
+.dnd-kid-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dnd-kid-btn:disabled { cursor: default; }
+.dnd-kid-btn:hover .dnd-kid-title { color: var(--accent); }
+.dnd-kid-btn:disabled:hover { background: none; }
+.dnd-kid-btn:disabled:hover .dnd-kid-title { color: var(--ink-0); }
+.dnd-kid-type {
+  flex: none; width: 68px; box-sizing: border-box;
+  font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600;
+  color: var(--ink-4);
+}
+.dnd-kid-title { flex: 1 1 auto; min-width: 0; font-size: 15px; color: var(--ink-0); font-weight: 450; line-height: 1.4; }
+.dnd-kid-id { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-4); font-weight: 400; }
+.dnd-kid-state {
+  flex: none; font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em;
+  padding: 3px 10px; border-radius: 6px; white-space: nowrap;
+  color: var(--ink-1); background: var(--bg-3);
+}
+.dnd-kid.is-active .dnd-kid-state, .dnd-kid.is-committed .dnd-kid-state, .dnd-kid.is-new .dnd-kid-state { color: var(--st-going); background: color-mix(in oklch, var(--st-going) 16%, transparent); }
+.dnd-kid.is-closed .dnd-kid-state, .dnd-kid.is-done .dnd-kid-state, .dnd-kid.is-resolved .dnd-kid-state { color: var(--st-done); background: color-mix(in oklch, var(--st-done) 16%, transparent); }
+.dnd-kid.is-blocked .dnd-kid-state { color: var(--ev-blocker); background: color-mix(in oklch, var(--ev-blocker) 16%, transparent); }
 
 /* Demo facet + placeholder */
 .dnd-placeholder { padding: 8px 0; }

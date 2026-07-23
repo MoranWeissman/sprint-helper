@@ -20,30 +20,112 @@ function renderDisplayName(s: string): JSX.Element {
   return <span><strong>{m[1]}</strong> {m[2]}</span>;
 }
 
-/** Turn inline **bold** runs anywhere in a string into <strong> spans. */
-function renderInlineBold(s: string): (string | JSX.Element)[] {
-  return s.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    /^\*\*[^*]+\*\*$/.test(part) ? <strong key={i}>{part.slice(2, -2)}</strong> : part,
+/** Drop ~~struck~~ runs — they're the old version of an edited spec, noise for
+ *  "what this feature is now" — then tidy the whitespace the removal leaves. */
+function stripStruck(s: string): string {
+  return s.replace(/~~[^~]+~~/g, '').replace(/[ \t]{2,}/g, ' ').replace(/\s+([.,;:])/g, '$1').trim();
+}
+
+/** Inline markup in board text: **bold** and ![alt](url) images (shown as a
+ *  muted caption — the ADO URL needs a token to load). */
+function renderInline(s: string): (string | JSX.Element)[] {
+  return stripStruck(s)
+    .split(/(\*\*[^*]+\*\*|!\[[^\]]*\]\([^)]+\))/g)
+    .filter(part => part !== '')
+    .map((part, i) => {
+      if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={i}>{part.slice(2, -2)}</strong>;
+      const img = part.match(/^!\[([^\]]*)\]\([^)]+\)$/);
+      if (img) return <span key={i} className="dnd-fig">🖼 {img[1] || 'image on the board'}</span>;
+      return part;
+    });
+}
+
+/* --- Board description: numbered **N. Title** headers become collapsible
+   sections; paragraphs and bullet lists render as themselves. --- */
+
+type DescBlock = { kind: 'para'; lines: string[] } | { kind: 'list'; items: string[] };
+interface DescSection { heading: string | null; blocks: DescBlock[] }
+
+/** A block that is exactly one **bold** run on its own line is a section header. */
+const DESC_HEADER = /^\*\*(.+?)\*\*$/;
+
+function parseDescription(text: string): DescSection[] {
+  const sections: DescSection[] = [];
+  let cur: DescSection = { heading: null, blocks: [] };
+  let para: string[] = [];
+  let items: string[] = [];
+
+  const flushPara = () => { if (para.length) { cur.blocks.push({ kind: 'para', lines: para }); para = []; } };
+  const flushList = () => { if (items.length) { cur.blocks.push({ kind: 'list', items }); items = []; } };
+  const pushSection = () => { if (cur.heading !== null || cur.blocks.length) sections.push(cur); };
+
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (line === '') { flushPara(); continue; }      // blank ends a paragraph, keeps a list open
+    const header = line.match(DESC_HEADER);
+    // Drop the author's leading "N." — each topic is its own card, the number is noise.
+    if (header) { flushPara(); flushList(); pushSection(); cur = { heading: header[1].replace(/^\d+\.\s*/, ''), blocks: [] }; continue; }
+    if (/^[-*]\s+/.test(line)) { flushPara(); items.push(line.replace(/^[-*]\s+/, '')); continue; }
+    flushList(); para.push(line);
+  }
+  flushPara(); flushList(); pushSection();
+  return sections;
+}
+
+/** A bullet like "**Label:** long text" becomes its own collapsible sub-topic:
+ *  the label is the summary, the body hides until opened. Closed by default —
+ *  same approach as the sections above it. Plain bullets stay a simple row. */
+function renderListItem(item: string, key: number): JSX.Element {
+  const m = item.match(/^\*\*(.+?):\*\*\s*(.+)$/s);
+  if (m) {
+    return (
+      <details key={key} className="dnd-sub">
+        <summary className="dnd-sub-sum">
+          <span className="dnd-group-chev" aria-hidden="true" />
+          <span className="dnd-sub-label">{stripStruck(m[1])}</span>
+        </summary>
+        <div className="dnd-sub-body">{renderInline(m[2])}</div>
+      </details>
+    );
+  }
+  return <div key={key} className="dnd-ov-li">{renderInline(item)}</div>;
+}
+
+function renderDescBlock(b: DescBlock, i: number): JSX.Element {
+  if (b.kind === 'list') {
+    return <div key={i} className="dnd-subs">{b.items.map((it, j) => renderListItem(it, j))}</div>;
+  }
+  return (
+    <p key={i} className="dnd-ov-p">
+      {b.lines.map((ln, j) => <span key={j}>{j > 0 && <br />}{renderInline(ln)}</span>)}
+    </p>
   );
 }
 
-/** Render board description text: paragraphs split on blank lines, inline bold honored. */
 function renderDescription(text: string): JSX.Element {
-  const paras = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  const sections = parseDescription(text);
   return (
     <>
-      {paras.map((p, i) => (
-        <p key={i} className="dnd-overview-desc">
-          {p.split('\n').map((line, j) => (
-            <span key={j}>{j > 0 && <br />}{renderInlineBold(line)}</span>
-          ))}
-        </p>
-      ))}
+      {sections.map((sec, i) => {
+        if (sec.heading === null) {
+          return <div key={i} className="dnd-ov-intro">{sec.blocks.map(renderDescBlock)}</div>;
+        }
+        // Closed by default — you open the topic you want to read.
+        return (
+          <details key={i} className="dnd-group">
+            <summary className="dnd-group-sum">
+              <span className="dnd-group-chev" aria-hidden="true" />
+              <span className="dnd-group-name">{stripStruck(sec.heading)}</span>
+            </summary>
+            <div className="dnd-ov-body">{sec.blocks.map(renderDescBlock)}</div>
+          </details>
+        );
+      })}
     </>
   );
 }
 
-export function DnDView(): JSX.Element {
+export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): JSX.Element {
   const [sections, setSections] = useState<ApiFeatureSection[] | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [facet, setFacet] = useState<Facet>('discovery');
@@ -109,6 +191,7 @@ export function DnDView(): JSX.Element {
         board={board}
         error={error}
         onReloadDoc={loadDoc}
+        onOpenItem={onOpenItem}
       />
     </div>
   );
@@ -285,8 +368,9 @@ function FacetReadingArea(props: {
   board: DiscoveryBoardPayload | null;
   error: string | null;
   onReloadDoc: () => void;
+  onOpenItem?: (id: string) => void;
 }): JSX.Element {
-  const { facet, featureId, displayName, doc, board, error, onReloadDoc } = props;
+  const { facet, featureId, displayName, doc, board, error, onReloadDoc, onOpenItem } = props;
 
   if (error) {
     return <main className="dnd-read"><div className="dnd-error">Couldn't read this feature: {error}</div></main>;
@@ -301,7 +385,7 @@ function FacetReadingArea(props: {
     <main className="dnd-read">
       <h1 className="dnd-read-title">{renderDisplayName(displayName)}</h1>
       <div className="dnd-facet-label">{facetLabel(facet)}</div>
-      {facet === 'overview' && <OverviewFacet board={board} />}
+      {facet === 'overview' && <OverviewFacet board={board} onOpenItem={onOpenItem} />}
       {facet === 'discovery' && <DiscoveryFacet doc={doc.doc} />}
       {facet === 'design' && <DesignFacet />}
       {facet === 'demo' && <DemoFacet featureId={featureId} folderPath={doc.folderPath} doc={doc.doc} onSaved={onReloadDoc} />}
@@ -313,8 +397,8 @@ function facetLabel(f: Facet): string {
   return f === 'overview' ? 'Overview' : f === 'discovery' ? 'Discovery' : f === 'design' ? 'Design' : 'Demo';
 }
 
-function OverviewFacet(props: { board: DiscoveryBoardPayload | null }): JSX.Element {
-  const { board } = props;
+function OverviewFacet(props: { board: DiscoveryBoardPayload | null; onOpenItem?: (id: string) => void }): JSX.Element {
+  const { board, onOpenItem } = props;
   // Board hasn't arrived yet — the ADO call is still in flight.
   if (!board) return <div className="dnd-loading">Reading the board…</div>;
   if (!board.reachable) {
@@ -327,27 +411,40 @@ function OverviewFacet(props: { board: DiscoveryBoardPayload | null }): JSX.Elem
           <span className={`dnd-chip is-${board.featureState.toLowerCase()}`}>{board.featureState}</span>
         </div>
       )}
+      <h2 className="dnd-h2">What this feature is</h2>
       {board.featureDescription
-        ? renderDescription(board.featureDescription)
+        ? <div className="dnd-ov-desc">{renderDescription(board.featureDescription)}</div>
         : <p className="dnd-muted">No description on the board.</p>}
       <h2 className="dnd-h2">Stories &amp; tasks under this feature</h2>
       {board.children.length === 0
         ? <p className="dnd-muted">Nothing linked under this feature yet.</p>
         : (
-          <ul className="dnd-children">
+          <ul className="dnd-kids">
             {board.children.map((c: ApiDiscoveryChild) => (
-              <li key={c.id} className="dnd-child">
-                <span className="dnd-child-name"><strong>{c.title}</strong> <span className="dnd-child-id">#{c.id}</span></span>
-                <span className="dnd-child-meta">
-                  <span className="dnd-child-type">{c.type}</span>
-                  {c.state && <span className={`dnd-chip is-${c.state.toLowerCase()}`}>{c.state}</span>}
-                </span>
+              <li key={c.id} className={`dnd-kid is-${(c.state || '').toLowerCase()}`}>
+                <button
+                  type="button"
+                  className="dnd-kid-btn"
+                  onClick={() => onOpenItem?.(String(c.id))}
+                  disabled={!onOpenItem}
+                >
+                  <span className="dnd-kid-type">{c.type}</span>
+                  <span className="dnd-kid-title">{c.title} <span className="dnd-kid-id">#{c.id}</span></span>
+                  {c.state && <span className="dnd-kid-state">{c.state}</span>}
+                </button>
               </li>
             ))}
           </ul>
         )}
     </div>
   );
+}
+
+/** An item can carry several tags; the spine colour follows the most important
+ *  one — a risk outranks a change, which outranks an option, then a plain fact. */
+function dominantTag(tags: ('diff' | 'risk' | 'fact' | 'option')[]): string {
+  for (const t of ['risk', 'diff', 'option', 'fact'] as const) if (tags.includes(t)) return t;
+  return 'fact';
 }
 
 function DiscoveryFacet(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Element {
@@ -362,7 +459,7 @@ function DiscoveryFacet(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Element
 
       <h2 className="dnd-h2">Context groups</h2>
       {doc.groups.map((g, gi) => (
-        <details key={gi} className="dnd-group" open={gi === 0}>
+        <details key={gi} className="dnd-group">
           <summary className="dnd-group-sum">
             <span className="dnd-group-chev" aria-hidden="true" />
             <span className="dnd-group-name">{g.name}</span>
@@ -370,9 +467,11 @@ function DiscoveryFacet(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Element
           </summary>
           <ul className="dnd-items">
             {g.items.map((it, ii) => (
-              <li key={ii} className="dnd-item">
+              <li key={ii} className={`dnd-item is-${dominantTag(it.tags)}`}>
                 <span className="dnd-item-text">{it.text}</span>
-                {it.tags.map(t => <span key={t} className={`dnd-tag is-${t}`}>{t}</span>)}
+                <span className="dnd-item-tags">
+                  {it.tags.map(t => <span key={t} className={`dnd-tag is-${t}`}>{t}</span>)}
+                </span>
               </li>
             ))}
           </ul>
@@ -392,6 +491,7 @@ function DiscoveryFacet(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Element
       </div>
 
       <h2 className="dnd-h2">Open questions</h2>
+      <p className="dnd-section-note">Still unanswered — your agenda for the talk with the platform team.</p>
       {doc.openQuestions.length === 0
         ? <p className="dnd-muted">None noted.</p>
         : <ul className="dnd-qs">{doc.openQuestions.map((q, i) => <li key={i}>{q}</li>)}</ul>}

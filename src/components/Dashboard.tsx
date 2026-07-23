@@ -309,7 +309,7 @@ function DashboardLive({
           ) : mode === 'preplan' ? (
             <PrePlanView onOpenItem={openItem} />
           ) : mode === 'dnd' ? (
-            <DnDView />
+            <DnDView onOpenItem={openItem} />
           ) : mode !== 'day' ? (
             <ModePlaceholder mode={mode} />
           ) : isFocus ? (
