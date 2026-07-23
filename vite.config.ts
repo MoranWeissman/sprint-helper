@@ -478,33 +478,39 @@ function adoApiPlugin() {
             return;
           }
 
-          // ---- DETAIL / ACTIONS (/<id>[/demo|/open-folder]) ----
-          const m = path.match(/^\/(\d+)(?:\/(demo|open-folder))?\/?$/);
-          if (!m) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Expected /api/discovery/<id>[/demo|/open-folder]' })); return; }
+          // ---- DETAIL / ACTIONS (/<id>[/board|/demo|/open-folder]) ----
+          const m = path.match(/^\/(\d+)(?:\/(board|demo|open-folder))?\/?$/);
+          if (!m) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Expected /api/discovery/<id>[/board|/demo|/open-folder]' })); return; }
           const id = Number(m[1]);
-          const action = m[2]; // 'demo' | 'open-folder' | undefined
+          const action = m[2]; // 'board' | 'demo' | 'open-folder' | undefined
           const feature = touched.find(f => f.id === id);
           if (!feature) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Not a touched feature' })); return; }
           const folderPath = feature.folderPath;
 
-          let displayName = `#${id}`;
-          let featureState: string | undefined;
-          let featureDescription: string | undefined;
-          let children: { id: number; title: string; type: string; state: string }[] = [];
-          try {
-            const wi = await getWorkItem(id);
-            displayName = `**${wi.title}** (#${id})`;
-            featureState = wi.state;
-            featureDescription = htmlToText(wi.description);
-            children = wi.children.map(c => ({ id: c.id, title: c.title, type: c.type, state: c.state }));
-          } catch { /* ADO down — Overview degrades, discovery still reads from disk */ }
-
+          // DOC — disk only. This must never wait on ADO: the discovery lives in
+          // the workspace folder, so the Discovery/Demo tabs read instantly even
+          // when the board is slow or unreachable.
           if (!action) {
             if (method !== 'GET') { res.statusCode = 405; res.end(JSON.stringify({ error: 'GET only' })); return; }
-            res.end(JSON.stringify({
-              displayName, folderPath, doc: readDiscoveryDoc(folderPath),
-              featureState, featureDescription, children,
-            }));
+            res.end(JSON.stringify({ folderPath, doc: readDiscoveryDoc(folderPath) }));
+            return;
+          }
+
+          // BOARD — ADO only, best-effort. Its own request so a slow board never
+          // stalls the disk-backed doc. Degrades to empty if ADO is down.
+          if (action === 'board') {
+            if (method !== 'GET') { res.statusCode = 405; res.end(JSON.stringify({ error: 'GET only' })); return; }
+            let featureState: string | undefined;
+            let featureDescription: string | undefined;
+            let children: { id: number; title: string; type: string; state: string }[] = [];
+            let reachable = true;
+            try {
+              const wi = await getWorkItem(id);
+              featureState = wi.state;
+              featureDescription = htmlToText(wi.description);
+              children = wi.children.map(c => ({ id: c.id, title: c.title, type: c.type, state: c.state }));
+            } catch { reachable = false; }
+            res.end(JSON.stringify({ reachable, featureState, featureDescription, children }));
             return;
           }
 
@@ -519,6 +525,10 @@ function adoApiPlugin() {
             const doc = readDiscoveryDoc(folderPath);
             if (!doc) { res.statusCode = 409; res.end(JSON.stringify({ error: 'no discovery to mark' })); return; }
             doc.demo = { status, shape: doc.demo.shape, date };
+            // The title only decorates the regenerated markdown header. Resolve it
+            // best-effort; a slow/down board must not block the save.
+            let displayName = `#${id}`;
+            try { const wi = await getWorkItem(id); displayName = `**${wi.title}** (#${id})`; } catch { /* keep #id */ }
             writeDiscoveryDoc(folderPath, doc, displayName);
             res.end(JSON.stringify({ demo: doc.demo }));
             return;

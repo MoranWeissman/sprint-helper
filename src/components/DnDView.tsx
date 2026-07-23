@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  fetchDiscoveryList, fetchDiscoveryDetail, markDiscoveryDemo, openDiscoveryFolder,
-  type ApiFeatureSection, type ApiFeatureListEntry, type DiscoveryDetailPayload, type ApiDiscoveryChild, type DndStatus,
+  fetchDiscoveryList, fetchDiscoveryDoc, fetchDiscoveryBoard, markDiscoveryDemo, openDiscoveryFolder,
+  type ApiFeatureSection, type ApiFeatureListEntry, type DiscoveryDocPayload, type DiscoveryBoardPayload,
+  type ApiDiscoveryChild, type DndStatus,
 } from '../lib/api';
 
 const STATUS_LABEL: Record<DndStatus, string> = {
@@ -46,7 +47,10 @@ export function DnDView(): JSX.Element {
   const [sections, setSections] = useState<ApiFeatureSection[] | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [facet, setFacet] = useState<Facet>('discovery');
-  const [detail, setDetail] = useState<DiscoveryDetailPayload | null>(null);
+  // Disk-backed doc (Discovery/Demo) and board data (Overview) load separately,
+  // so a slow board never stalls the doc that's sitting ready on disk.
+  const [doc, setDoc] = useState<DiscoveryDocPayload | null>(null);
+  const [board, setBoard] = useState<DiscoveryBoardPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadList = useCallback(() => {
@@ -58,23 +62,29 @@ export function DnDView(): JSX.Element {
 
   useEffect(() => { loadList(); }, [loadList]);
 
-  const loadDetail = useCallback(() => {
-    if (selectedId == null) { setDetail(null); return; }
+  const loadDoc = useCallback(() => {
+    if (selectedId == null) { setDoc(null); setBoard(null); return; }
     setError(null);
     // Clear the old feature's data first so the reading area shows "Loading…"
-    // instead of feature A's title/content under feature B while B loads.
-    setDetail(null);
-    fetchDiscoveryDetail(selectedId).then(setDetail).catch(e => setError(String(e)));
+    // instead of feature A's content under feature B while B loads.
+    setDoc(null);
+    setBoard(null);
+    // Two independent requests. The doc is disk-only and returns instantly;
+    // the board hits ADO and may lag — it fills the Overview when it arrives.
+    fetchDiscoveryDoc(selectedId).then(setDoc).catch(e => setError(String(e)));
+    fetchDiscoveryBoard(selectedId).then(setBoard).catch(() => setBoard({ reachable: false, children: [] }));
   }, [selectedId]);
 
-  useEffect(() => { loadDetail(); }, [loadDetail]);
+  useEffect(() => { loadDoc(); }, [loadDoc]);
 
   function selectFeature(id: number): void {
     setSelectedId(id);
     setFacet('discovery');
   }
 
-  const demoStatus = detail?.doc?.demo.status ?? 'none';
+  const demoStatus = doc?.doc?.demo.status ?? 'none';
+  const selectedName =
+    sections?.flatMap(s => s.features).find(f => f.id === selectedId)?.displayName ?? `#${selectedId}`;
 
   // No feature open → full-width browser so the whole page is used.
   if (selectedId == null) {
@@ -93,9 +103,12 @@ export function DnDView(): JSX.Element {
       <FeatureFacetMenu facet={facet} demoStatus={demoStatus} onPick={setFacet} />
       <FacetReadingArea
         facet={facet}
-        detail={detail}
+        featureId={selectedId}
+        displayName={selectedName}
+        doc={doc}
+        board={board}
         error={error}
-        onReloadDetail={loadDetail}
+        onReloadDoc={loadDoc}
       />
     </div>
   );
@@ -266,27 +279,32 @@ function FeatureFacetMenu(props: {
 
 function FacetReadingArea(props: {
   facet: Facet;
-  detail: DiscoveryDetailPayload | null;
+  featureId: number;
+  displayName: string;
+  doc: DiscoveryDocPayload | null;
+  board: DiscoveryBoardPayload | null;
   error: string | null;
-  onReloadDetail: () => void;
+  onReloadDoc: () => void;
 }): JSX.Element {
-  const { facet, detail, error, onReloadDetail } = props;
+  const { facet, featureId, displayName, doc, board, error, onReloadDoc } = props;
 
   if (error) {
     return <main className="dnd-read"><div className="dnd-error">Couldn't read this feature: {error}</div></main>;
   }
-  if (!detail) {
+  // Only the disk-backed doc gates the reading area — it returns instantly.
+  // The board (Overview) fills in separately and never blocks this.
+  if (!doc) {
     return <main className="dnd-read"><div className="dnd-loading">Loading…</div></main>;
   }
 
   return (
     <main className="dnd-read">
-      <h1 className="dnd-read-title">{renderDisplayName(detail.displayName)}</h1>
+      <h1 className="dnd-read-title">{renderDisplayName(displayName)}</h1>
       <div className="dnd-facet-label">{facetLabel(facet)}</div>
-      {facet === 'overview' && <OverviewFacet detail={detail} />}
-      {facet === 'discovery' && <DiscoveryFacet detail={detail} />}
+      {facet === 'overview' && <OverviewFacet board={board} />}
+      {facet === 'discovery' && <DiscoveryFacet doc={doc.doc} />}
       {facet === 'design' && <DesignFacet />}
-      {facet === 'demo' && <DemoFacet detail={detail} onSaved={onReloadDetail} />}
+      {facet === 'demo' && <DemoFacet featureId={featureId} folderPath={doc.folderPath} doc={doc.doc} onSaved={onReloadDoc} />}
     </main>
   );
 }
@@ -295,24 +313,29 @@ function facetLabel(f: Facet): string {
   return f === 'overview' ? 'Overview' : f === 'discovery' ? 'Discovery' : f === 'design' ? 'Design' : 'Demo';
 }
 
-function OverviewFacet(props: { detail: DiscoveryDetailPayload }): JSX.Element {
-  const { detail } = props;
+function OverviewFacet(props: { board: DiscoveryBoardPayload | null }): JSX.Element {
+  const { board } = props;
+  // Board hasn't arrived yet — the ADO call is still in flight.
+  if (!board) return <div className="dnd-loading">Reading the board…</div>;
+  if (!board.reachable) {
+    return <p className="dnd-muted">Couldn't reach the board — Overview needs Azure DevOps. Discovery still reads fine.</p>;
+  }
   return (
     <div className="dnd-overview">
-      {detail.featureState && (
+      {board.featureState && (
         <div className="dnd-overview-state">
-          <span className={`dnd-chip is-${detail.featureState.toLowerCase()}`}>{detail.featureState}</span>
+          <span className={`dnd-chip is-${board.featureState.toLowerCase()}`}>{board.featureState}</span>
         </div>
       )}
-      {detail.featureDescription
-        ? renderDescription(detail.featureDescription)
+      {board.featureDescription
+        ? renderDescription(board.featureDescription)
         : <p className="dnd-muted">No description on the board.</p>}
       <h2 className="dnd-h2">Stories &amp; tasks under this feature</h2>
-      {detail.children.length === 0
+      {board.children.length === 0
         ? <p className="dnd-muted">Nothing linked under this feature yet.</p>
         : (
           <ul className="dnd-children">
-            {detail.children.map((c: ApiDiscoveryChild) => (
+            {board.children.map((c: ApiDiscoveryChild) => (
               <li key={c.id} className="dnd-child">
                 <span className="dnd-child-name"><strong>{c.title}</strong> <span className="dnd-child-id">#{c.id}</span></span>
                 <span className="dnd-child-meta">
@@ -327,8 +350,8 @@ function OverviewFacet(props: { detail: DiscoveryDetailPayload }): JSX.Element {
   );
 }
 
-function DiscoveryFacet(props: { detail: DiscoveryDetailPayload }): JSX.Element {
-  const { doc } = props.detail;
+function DiscoveryFacet(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Element {
+  const { doc } = props;
   if (!doc) return <div className="dnd-empty">This feature has no discovery yet.</div>;
   return (
     <div className="dnd-discovery">
@@ -381,19 +404,23 @@ function DesignFacet(): JSX.Element {
   );
 }
 
-function DemoFacet(props: { detail: DiscoveryDetailPayload; onSaved: () => void }): JSX.Element {
-  const { detail, onSaved } = props;
-  const id = Number(detail.displayName.match(/#(\d+)/)?.[1] ?? 0);
-  const [status, setStatus] = useState<'none' | 'scheduled' | 'built'>(detail.doc?.demo.status ?? 'none');
-  const [date, setDate] = useState(detail.doc?.demo.date ?? '');
+function DemoFacet(props: {
+  featureId: number;
+  folderPath: string;
+  doc: DiscoveryDocPayload['doc'];
+  onSaved: () => void;
+}): JSX.Element {
+  const { featureId: id, folderPath, doc, onSaved } = props;
+  const [status, setStatus] = useState<'none' | 'scheduled' | 'built'>(doc?.demo.status ?? 'none');
+  const [date, setDate] = useState(doc?.demo.date ?? '');
   const [folderMsg, setFolderMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    setStatus(detail.doc?.demo.status ?? 'none');
-    setDate(detail.doc?.demo.date ?? '');
-  }, [detail]);
+    setStatus(doc?.demo.status ?? 'none');
+    setDate(doc?.demo.date ?? '');
+  }, [doc]);
 
-  if (!detail.doc) return <div className="dnd-empty">Start a discovery before marking a demo.</div>;
+  if (!doc) return <div className="dnd-empty">Start a discovery before marking a demo.</div>;
 
   return (
     <div className="dnd-demo">
@@ -416,7 +443,7 @@ function DemoFacet(props: { detail: DiscoveryDetailPayload; onSaved: () => void 
         <button className="dnd-btn" onClick={() => markDiscoveryDemo(id, { status, date }).then(onSaved)}>Save</button>
       </div>
       <div className="dnd-demo-folder">
-        <button className="dnd-btn is-quiet" onClick={() => openDiscoveryFolder(id).then(r => { if (!r.ok) setFolderMsg(detail.folderPath); })}>
+        <button className="dnd-btn is-quiet" onClick={() => openDiscoveryFolder(id).then(r => { if (!r.ok) setFolderMsg(folderPath); })}>
           Open folder
         </button>
         {folderMsg && <code className="dnd-path">{folderMsg}</code>}

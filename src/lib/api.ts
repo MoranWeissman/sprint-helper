@@ -265,10 +265,16 @@ export interface ApiDiscoveryChild {
   type: string;
   state: string;
 }
-export interface DiscoveryDetailPayload {
-  displayName: string;
+/** Disk-backed part of a feature — reads instantly, never waits on the board. */
+export interface DiscoveryDocPayload {
   folderPath: string;
   doc: ApiDiscoveryDoc | null;
+}
+
+/** Board-backed part of a feature — a separate request so a slow ADO never
+ *  stalls the disk-backed doc. `reachable` is false when ADO was down. */
+export interface DiscoveryBoardPayload {
+  reachable: boolean;
   /** The feature's own ADO state (Active / Closed / …). Absent if ADO was down. */
   featureState?: string;
   /** The feature's description as plain text (HTML stripped). Absent if empty/ADO down. */
@@ -283,10 +289,18 @@ export async function fetchDiscoveryList(): Promise<DiscoveryListPayload> {
   return r.json() as Promise<DiscoveryListPayload>;
 }
 
-export async function fetchDiscoveryDetail(id: number): Promise<DiscoveryDetailPayload> {
+/** The disk-backed doc — instant, no board dependency. */
+export async function fetchDiscoveryDoc(id: number): Promise<DiscoveryDocPayload> {
   const r = await fetch(`/api/discovery/${encodeURIComponent(id)}`, { cache: 'no-store' });
-  if (!r.ok) throw new Error(`discovery detail failed: ${r.status}`);
-  return r.json() as Promise<DiscoveryDetailPayload>;
+  if (!r.ok) throw new Error(`discovery doc failed: ${r.status}`);
+  return r.json() as Promise<DiscoveryDocPayload>;
+}
+
+/** The board-backed part — Overview only. Own request so a slow ADO can't stall the doc. */
+export async function fetchDiscoveryBoard(id: number): Promise<DiscoveryBoardPayload> {
+  const r = await fetch(`/api/discovery/${encodeURIComponent(id)}/board`, { cache: 'no-store' });
+  if (!r.ok) throw new Error(`discovery board failed: ${r.status}`);
+  return r.json() as Promise<DiscoveryBoardPayload>;
 }
 
 export async function markDiscoveryDemo(
