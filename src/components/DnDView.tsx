@@ -362,8 +362,12 @@ function DiscoveryFacet(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Element
 
       <h2 className="dnd-h2">Context groups</h2>
       {doc.groups.map((g, gi) => (
-        <div key={gi} className="dnd-group">
-          <h3 className="dnd-group-name">{g.name}</h3>
+        <details key={gi} className="dnd-group" open={gi === 0}>
+          <summary className="dnd-group-sum">
+            <span className="dnd-group-chev" aria-hidden="true" />
+            <span className="dnd-group-name">{g.name}</span>
+            <span className="dnd-group-count">{g.items.length}</span>
+          </summary>
           <ul className="dnd-items">
             {g.items.map((it, ii) => (
               <li key={ii} className="dnd-item">
@@ -372,7 +376,7 @@ function DiscoveryFacet(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Element
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       ))}
 
       <h2 className="dnd-h2">Lanes</h2>

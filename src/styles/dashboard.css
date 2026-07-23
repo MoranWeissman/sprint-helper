@@ -5326,12 +5326,37 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   font-size: 13px; font-weight: 600;
   display: flex; align-items: center; justify-content: center;
 }
-.dnd-group { margin-bottom: 20px; }
-.dnd-group-name {
-  font-size: 15px; font-weight: 600; color: var(--ink-0);
-  margin: 0 0 9px; padding-bottom: 7px; border-bottom: 1px solid var(--line-soft);
+/* Context groups — collapsible topics. Closed by default keeps the eye calm;
+   open only what you want to read. Native <details> = no JS, keyboard-friendly. */
+.dnd-group {
+  margin-bottom: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  overflow: hidden;
 }
-.dnd-items { list-style: none; margin: 0; padding: 0; }
+.dnd-group-sum {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 16px; cursor: pointer; list-style: none;
+  user-select: none;
+}
+.dnd-group-sum::-webkit-details-marker { display: none; }
+.dnd-group-sum:hover { background: var(--surface-3); }
+.dnd-group-sum:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dnd-group-chev {
+  flex: none; width: 8px; height: 8px; margin-left: 2px;
+  border-right: 2px solid var(--ink-3); border-bottom: 2px solid var(--ink-3);
+  transform: rotate(-45deg); transition: transform 0.18s ease;
+}
+.dnd-group[open] .dnd-group-chev { transform: rotate(45deg); }
+.dnd-group-name { font-size: 15px; font-weight: 600; color: var(--ink-0); flex: 1; min-width: 0; }
+.dnd-group-count {
+  flex: none; font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-4);
+  background: var(--bg-1); border: 1px solid var(--line-hair);
+  border-radius: 999px; padding: 1px 8px; line-height: 1.5;
+}
+.dnd-items { list-style: none; margin: 0; padding: 2px 16px 14px; }
+@media (prefers-reduced-motion: reduce) { .dnd-group-chev { transition: none; } }
 .dnd-item { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; font-size: 15px; color: var(--ink-2); line-height: 1.55; }
 .dnd-item-text { flex: 1; min-width: 0; }
 .dnd-tag {
