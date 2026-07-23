@@ -7,8 +7,7 @@ import {
 const STATUS_LABEL: Record<DndStatus, string> = {
   'in-progress': 'In progress',
   'not-started': 'Not started',
-  'finished': 'Finished',
-  'closed': 'Closed',
+  'closed': 'Done',
 };
 
 /** Render a displayName's **bold** span without showing raw asterisks. */
@@ -66,6 +65,7 @@ export function DnDView(): JSX.Element {
                 <button className="dnd-row" onClick={() => setSelectedId(f.id)}>
                   <span className="dnd-row-name">{renderDisplayName(f.displayName)}</span>
                   {f.boardState && <span className={`dnd-chip is-${f.boardState.toLowerCase()}`}>{f.boardState}</span>}
+                  {f.readyToClose && <span className="dnd-ready">ready to close</span>}
                   {f.dayLabel && <span className="dnd-day">{f.dayLabel}</span>}
                 </button>
               </li>

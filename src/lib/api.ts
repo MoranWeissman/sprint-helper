@@ -234,7 +234,7 @@ export interface ApiDiscovery {
   hasWorkspace: boolean;
 }
 
-export type DndStatus = 'in-progress' | 'not-started' | 'finished' | 'closed';
+export type DndStatus = 'in-progress' | 'not-started' | 'closed';
 
 export interface ApiFeatureListEntry {
   id: number;
@@ -243,6 +243,8 @@ export interface ApiFeatureListEntry {
   dndStatus: DndStatus;
   boardState: string | null;
   dayLabel: string | null;
+  /** In-progress + the discovery file is complete → show a "ready to close" hint. */
+  readyToClose?: boolean;
 }
 export interface ApiFeatureSection { status: DndStatus; features: ApiFeatureListEntry[] }
 export interface DiscoveryListPayload { sections: ApiFeatureSection[] }

@@ -6,7 +6,7 @@
  */
 import { join } from 'node:path';
 
-export type DndStatus = 'in-progress' | 'not-started' | 'finished' | 'closed';
+export type DndStatus = 'in-progress' | 'not-started' | 'closed';
 
 export interface TouchedFeature { id: number; folderPath: string }
 
@@ -21,7 +21,7 @@ export interface FeatureListEntry {
 
 export interface FeatureSection { status: DndStatus; features: FeatureListEntry[] }
 
-const SECTION_ORDER: DndStatus[] = ['in-progress', 'not-started', 'finished', 'closed'];
+const SECTION_ORDER: DndStatus[] = ['in-progress', 'not-started', 'closed'];
 
 /** Parse a `<id>-<slug>` or bare `<id>` feature-folder name. Non-feature → null. */
 export function parseFeatureFolder(name: string): { id: number } | null {
@@ -52,11 +52,15 @@ export function listTouchedFeatureFolders(
   return out;
 }
 
+/** The BOARD decides "done", not the file. A discovery is only over when Moran
+ *  closes its story in Azure DevOps — a filled-in file is still "in progress"
+ *  until then. So: story closed → closed; else a discovery exists → in-progress;
+ *  else → not-started. (`finished` from the file no longer changes the status;
+ *  it stays a separate "ready to close" hint the row can show.) */
 export function deriveDndStatus(args: {
-  hasDiscovery: boolean; finished: boolean; boardClosed: boolean;
+  hasDiscovery: boolean; boardClosed: boolean;
 }): DndStatus {
   if (args.boardClosed) return 'closed';
-  if (args.finished) return 'finished';
   if (args.hasDiscovery) return 'in-progress';
   return 'not-started';
 }

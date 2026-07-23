@@ -50,17 +50,18 @@ describe('listTouchedFeatureFolders', () => {
 });
 
 describe('deriveDndStatus', () => {
-  it('closed wins over everything', () => {
-    expect(deriveDndStatus({ hasDiscovery: true, finished: true, boardClosed: true })).toBe('closed');
+  it('closed only when the board story is closed', () => {
+    expect(deriveDndStatus({ hasDiscovery: true, boardClosed: true })).toBe('closed');
   });
-  it('finished when done and not closed', () => {
-    expect(deriveDndStatus({ hasDiscovery: true, finished: true, boardClosed: false })).toBe('finished');
+  it('a filled-in discovery is still IN PROGRESS until the story closes', () => {
+    // The whole point of the fix: a complete file does NOT mean "done".
+    expect(deriveDndStatus({ hasDiscovery: true, boardClosed: false })).toBe('in-progress');
   });
-  it('in-progress when a doc exists but is unfinished', () => {
-    expect(deriveDndStatus({ hasDiscovery: true, finished: false, boardClosed: false })).toBe('in-progress');
+  it('in-progress when a doc exists and the story is open', () => {
+    expect(deriveDndStatus({ hasDiscovery: true, boardClosed: false })).toBe('in-progress');
   });
   it('not-started when no doc', () => {
-    expect(deriveDndStatus({ hasDiscovery: false, finished: false, boardClosed: false })).toBe('not-started');
+    expect(deriveDndStatus({ hasDiscovery: false, boardClosed: false })).toBe('not-started');
   });
 });
 
@@ -69,8 +70,8 @@ describe('groupByDndStatus', () => {
     id, displayName: `**F${id}** (#${id})`, folderPath: `/ws/${id}`, dndStatus, boardState: null, dayLabel: null,
   });
   it('orders sections and omits empty ones', () => {
-    const out = groupByDndStatus([mk(1, 'finished'), mk(2, 'in-progress'), mk(3, 'finished')]);
-    expect(out.map(s => s.status)).toEqual(['in-progress', 'finished']);
+    const out = groupByDndStatus([mk(1, 'closed'), mk(2, 'in-progress'), mk(3, 'closed')]);
+    expect(out.map(s => s.status)).toEqual(['in-progress', 'closed']);
     expect(out[0].features.map(f => f.id)).toEqual([2]);
     expect(out[1].features.map(f => f.id)).toEqual([1, 3]);
   });

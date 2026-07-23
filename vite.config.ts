@@ -457,7 +457,10 @@ function adoApiPlugin() {
                 const story = wi.children.find(c => c.type === 'User Story' && isDiscoveryStoryTitle(c.title));
                 if (story) { boardState = story.state; boardClosed = story.state === 'Closed'; }
               } catch { /* ADO down — list from folder truth */ }
-              const dndStatus = deriveDndStatus({ hasDiscovery: status.hasDiscovery, finished: status.finished, boardClosed });
+              const dndStatus = deriveDndStatus({ hasDiscovery: status.hasDiscovery, boardClosed });
+              // The file being complete no longer flips the status — it's a hint
+              // the row shows on an in-progress feature: "written, ready to close".
+              const readyToClose = dndStatus === 'in-progress' && status.finished;
               let dayLabel: string | null = null;
               if (active && active.id === f.id && dndStatus === 'in-progress') {
                 const { workday } = discoveryDayStage({ firstSessionAt: active.setAt, now });
@@ -467,7 +470,7 @@ function adoApiPlugin() {
                 id: f.id,
                 displayName: title ? `**${title}** (#${f.id})` : `#${f.id}`,
                 folderPath: f.folderPath,
-                dndStatus, boardState, dayLabel,
+                dndStatus, boardState, dayLabel, readyToClose,
               };
             }));
             res.end(JSON.stringify({ sections: groupByDndStatus(entries) }));
