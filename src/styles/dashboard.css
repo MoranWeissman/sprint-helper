@@ -5443,7 +5443,15 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 .dnd-ov-desc .dnd-group-sum { padding: 15px 18px; }
 .dnd-ov-desc .dnd-group-name { font-size: 17px; letter-spacing: -0.01em; }
 /* ![alt](url) — the ADO image needs a token to load, so show a calm caption. */
-.dnd-fig { display: inline-block; font-size: 13px; color: var(--ink-4); font-style: italic; }
+.dnd-fig { display: inline-block; font-size: 13px; color: var(--ink-3); font-style: italic; }
+/* a downloaded board image — click to open full size in a new tab */
+.dnd-img-link { display: block; margin: 12px 0; }
+.dnd-img {
+  display: block; max-width: 100%; height: auto;
+  border: 1px solid var(--line-soft); border-radius: 10px;
+  background: var(--surface-2);
+}
+.dnd-img-link:hover .dnd-img { border-color: var(--line-strong); }
 /* Open section body — a slightly darker inset so the lighter sub-topic rows
    stand out against it instead of meshing into one dark block. */
 .dnd-ov-body { padding: 6px 16px 16px; background: color-mix(in oklch, var(--bg-0) 45%, transparent); }

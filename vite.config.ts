@@ -433,7 +433,9 @@ function adoApiPlugin() {
           const { listTouchedFeatureFolders, deriveDndStatus, groupByDndStatus } = await import('./server/discovery-list');
           const { discoveryStatus, readDiscoveryDoc, writeDiscoveryDoc } = await import('./server/discovery-store');
           const { getWorkItem } = await import('./server/ado');
+          const { downloadAttachment } = await import('./server/ado-client');
           const { htmlToText } = await import('./server/html-preview');
+          const { extractImages, rewriteImageUrls, imagesDir, isSafeImageName } = await import('./server/discovery-images');
           const { isDiscoveryStoryTitle, discoveryDayStage } = await import('./server/discovery');
           const { readdirSync } = await import('node:fs');
 
@@ -478,11 +480,11 @@ function adoApiPlugin() {
             return;
           }
 
-          // ---- DETAIL / ACTIONS (/<id>[/board|/demo|/open-folder]) ----
-          const m = path.match(/^\/(\d+)(?:\/(board|demo|open-folder))?\/?$/);
-          if (!m) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Expected /api/discovery/<id>[/board|/demo|/open-folder]' })); return; }
+          // ---- DETAIL / ACTIONS (/<id>[/board|/demo|/open-folder|/image/<name>]) ----
+          const m = path.match(/^\/(\d+)(?:\/(board|demo|open-folder|image)(?:\/[^/]+)?)?\/?$/);
+          if (!m) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Expected /api/discovery/<id>[/board|/demo|/open-folder|/image/<name>]' })); return; }
           const id = Number(m[1]);
-          const action = m[2]; // 'board' | 'demo' | 'open-folder' | undefined
+          const action = m[2]; // 'board' | 'demo' | 'open-folder' | 'image' | undefined
           const feature = touched.find(f => f.id === id);
           if (!feature) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Not a touched feature' })); return; }
           const folderPath = feature.folderPath;
@@ -509,8 +511,47 @@ function adoApiPlugin() {
               featureState = wi.state;
               featureDescription = htmlToText(wi.description);
               children = wi.children.map(c => ({ id: c.id, title: c.title, type: c.type, state: c.state }));
+
+              // Cache any embedded ADO images into the feature folder, then point
+              // the description at the local serve route so the browser can show
+              // them. Best-effort per image — a failed download keeps the caption.
+              if (featureDescription) {
+                const images = extractImages(featureDescription);
+                if (images.length) {
+                  const { mkdir } = await import('node:fs/promises');
+                  const { existsSync } = await import('node:fs');
+                  const { join } = await import('node:path');
+                  const dir = imagesDir(folderPath);
+                  await mkdir(dir, { recursive: true });
+                  for (const img of images) {
+                    const dest = join(dir, img.localName);
+                    if (existsSync(dest)) continue; // already cached
+                    try { await downloadAttachment(img.url, dest); }
+                    catch { /* leave it — renderInline shows a caption for a missing local image */ }
+                  }
+                  featureDescription = rewriteImageUrls(featureDescription, id);
+                }
+              }
             } catch { reachable = false; }
             res.end(JSON.stringify({ reachable, featureState, featureDescription, children }));
+            return;
+          }
+
+          // IMAGE — serve a cached attachment from the feature folder.
+          const imgMatch = action === 'image' ? path.match(/\/image\/([^/]+)$/) : null;
+          if (action === 'image') {
+            if (method !== 'GET') { res.statusCode = 405; res.end(JSON.stringify({ error: 'GET only' })); return; }
+            const name = imgMatch ? decodeURIComponent(imgMatch[1]) : '';
+            if (!isSafeImageName(name)) { res.statusCode = 400; res.end(JSON.stringify({ error: 'bad image name' })); return; }
+            const { join } = await import('node:path');
+            const { existsSync, readFileSync } = await import('node:fs');
+            const file = join(imagesDir(folderPath), name);
+            if (!existsSync(file)) { res.statusCode = 404; res.end(JSON.stringify({ error: 'not cached' })); return; }
+            const ext = (name.split('.').pop() || 'png').toLowerCase();
+            const type = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'gif' ? 'image/gif' : ext === 'svg' ? 'image/svg+xml' : 'image/png';
+            res.setHeader('Content-Type', type);
+            res.setHeader('Cache-Control', 'max-age=86400');
+            res.end(readFileSync(file));
             return;
           }
 

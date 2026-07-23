@@ -272,3 +272,25 @@ export function resetAdoClient(): void {
 export function setAdoClient(next: AdoClient | null): void {
   client = next;
 }
+
+/**
+ * Download a binary Azure DevOps attachment (e.g. an image embedded in a work
+ * item description) to `destPath`. Honours both doorways:
+ *   - cli → `az rest --output-file` (az handles auth; --output-file keeps the
+ *           bytes intact, which `-o tsv/json` would corrupt).
+ *   - api → fetch with the stored token and write the buffer.
+ * Throws on failure so the caller can fall back to a caption.
+ */
+export async function downloadAttachment(uri: string, destPath: string): Promise<void> {
+  if (getAdoAccessMode() === 'api') {
+    const token = getStoredToken();
+    if (!token) throw new Error('api mode but no token stored');
+    const res = await fetch(uri, { headers: { Authorization: 'Basic ' + Buffer.from(':' + token).toString('base64') } });
+    if (!res.ok) throw new Error(`attachment fetch ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(destPath, buf);
+    return;
+  }
+  await runAz(['rest', '--method', 'get', '--uri', uri, '--resource', ADO_RESOURCE, '--output-file', destPath], null);
+}

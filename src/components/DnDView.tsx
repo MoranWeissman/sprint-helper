@@ -26,16 +26,28 @@ function stripStruck(s: string): string {
   return s.replace(/~~[^~]+~~/g, '').replace(/[ \t]{2,}/g, ' ').replace(/\s+([.,;:])/g, '$1').trim();
 }
 
-/** Inline markup in board text: **bold** and ![alt](url) images (shown as a
- *  muted caption — the ADO URL needs a token to load). */
+/** Inline markup in board text: **bold** and ![alt](url) images. The server
+ *  rewrites downloadable ADO images to a local /api/discovery/<id>/image/ URL,
+ *  which we show as a real <img>. Anything still remote (couldn't download) or
+ *  non-ADO falls back to a muted caption — a raw remote src would just break. */
 function renderInline(s: string): (string | JSX.Element)[] {
   return stripStruck(s)
     .split(/(\*\*[^*]+\*\*|!\[[^\]]*\]\([^)]+\))/g)
     .filter(part => part !== '')
     .map((part, i) => {
       if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={i}>{part.slice(2, -2)}</strong>;
-      const img = part.match(/^!\[([^\]]*)\]\([^)]+\)$/);
-      if (img) return <span key={i} className="dnd-fig">🖼 {img[1] || 'image on the board'}</span>;
+      const img = part.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+      if (img) {
+        const [, alt, url] = img;
+        if (url.startsWith('/api/discovery/')) {
+          return (
+            <a key={i} className="dnd-img-link" href={url} target="_blank" rel="noreferrer">
+              <img className="dnd-img" src={url} alt={alt || 'board image'} loading="lazy" />
+            </a>
+          );
+        }
+        return <span key={i} className="dnd-fig">🖼 {alt || 'image on the board'}</span>;
+      }
       return part;
     });
 }
