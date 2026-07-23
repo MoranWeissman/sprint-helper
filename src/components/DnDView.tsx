@@ -137,10 +137,23 @@ function renderDescription(text: string): JSX.Element {
   );
 }
 
+const FACETS: Facet[] = ['overview', 'discovery', 'design', 'demo'];
+
+/** Read the open feature + facet from the URL so a refresh restores them. */
+function readUrlState(): { id: number | null; facet: Facet } {
+  if (typeof window === 'undefined') return { id: null, facet: 'discovery' };
+  const p = new URL(window.location.href).searchParams;
+  const rawId = Number(p.get('feature'));
+  const id = Number.isInteger(rawId) && rawId > 0 ? rawId : null;
+  const f = p.get('facet');
+  return { id, facet: FACETS.includes(f as Facet) ? (f as Facet) : 'discovery' };
+}
+
 export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): JSX.Element {
   const [sections, setSections] = useState<ApiFeatureSection[] | null>(null);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [facet, setFacet] = useState<Facet>('discovery');
+  const initial = readUrlState();
+  const [selectedId, setSelectedId] = useState<number | null>(initial.id);
+  const [facet, setFacet] = useState<Facet>(initial.facet);
   // Disk-backed doc (Discovery/Demo) and board data (Overview) load separately,
   // so a slow board never stalls the doc that's sitting ready on disk.
   const [doc, setDoc] = useState<DiscoveryDocPayload | null>(null);
@@ -171,9 +184,29 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
 
   useEffect(() => { loadDoc(); }, [loadDoc]);
 
+  // Keep the URL in step with what's open, so a refresh (or a shared link)
+  // lands back on the same feature + facet instead of the feature list.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (selectedId == null) { url.searchParams.delete('feature'); url.searchParams.delete('facet'); }
+    else { url.searchParams.set('feature', String(selectedId)); url.searchParams.set('facet', facet); }
+    window.history.replaceState(null, '', url.toString());
+  }, [selectedId, facet]);
+
+  // Back/forward should move between features too.
+  useEffect(() => {
+    const handler = () => { const s = readUrlState(); setSelectedId(s.id); setFacet(s.facet); };
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, []);
+
   function selectFeature(id: number): void {
     setSelectedId(id);
     setFacet('discovery');
+  }
+
+  function goHome(): void {
+    setSelectedId(null);
   }
 
   const demoStatus = doc?.doc?.demo.status ?? 'none';
@@ -185,7 +218,8 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
     return <FeatureBrowser sections={sections} error={error} onSelect={selectFeature} />;
   }
 
-  // A feature is open → the three-level reading layout (unchanged).
+  // A feature is open → feature list on the left, facet tabs on top of a
+  // full-width reading area (frees the old 184px menu column for reading).
   return (
     <div className="dnd">
       <FeatureListRail
@@ -193,18 +227,21 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
         selectedId={selectedId}
         error={error}
         onSelect={selectFeature}
+        onBack={goHome}
       />
-      <FeatureFacetMenu facet={facet} demoStatus={demoStatus} onPick={setFacet} />
-      <FacetReadingArea
-        facet={facet}
-        featureId={selectedId}
-        displayName={selectedName}
-        doc={doc}
-        board={board}
-        error={error}
-        onReloadDoc={loadDoc}
-        onOpenItem={onOpenItem}
-      />
+      <div className="dnd-main">
+        <FeatureFacetBar facet={facet} demoStatus={demoStatus} onPick={setFacet} />
+        <FacetReadingArea
+          facet={facet}
+          featureId={selectedId}
+          displayName={selectedName}
+          doc={doc}
+          board={board}
+          error={error}
+          onReloadDoc={loadDoc}
+          onOpenItem={onOpenItem}
+        />
+      </div>
     </div>
   );
 }
@@ -312,10 +349,14 @@ function FeatureListRail(props: {
   selectedId: number | null;
   error: string | null;
   onSelect: (id: number) => void;
+  onBack: () => void;
 }): JSX.Element {
-  const { sections, selectedId, error, onSelect } = props;
+  const { sections, selectedId, error, onSelect, onBack } = props;
   return (
     <aside className="dnd-rail">
+      <button className="dnd-rail-back" onClick={onBack}>
+        <span className="dnd-rail-back-arrow" aria-hidden="true">←</span> All features
+      </button>
       <div className="dnd-rail-title">Discovery &amp; Design</div>
       <div className="dnd-rail-sub">Features you've worked</div>
       {error && <div className="dnd-error">Couldn't load discoveries: {error}</div>}
@@ -338,9 +379,9 @@ function FeatureListRail(props: {
   );
 }
 
-/* ------------------------- Level 2 — facet menu --------------------------- */
+/* ------------------------- Level 2 — facet tab bar ------------------------ */
 
-function FeatureFacetMenu(props: {
+function FeatureFacetBar(props: {
   facet: Facet;
   demoStatus: 'none' | 'scheduled' | 'built';
   onPick: (f: Facet) => void;
@@ -350,20 +391,20 @@ function FeatureFacetMenu(props: {
     { id: 'overview', label: 'Overview' },
     { id: 'discovery', label: 'Discovery' },
     { id: 'design', label: 'Design', hint: 'soon' },
-    { id: 'demo', label: 'Demo', hint: demoStatus },
+    { id: 'demo', label: 'Demo', hint: demoStatus === 'none' ? undefined : demoStatus },
   ];
   return (
-    <nav className="dnd-menu">
-      <div className="dnd-menu-cap">This feature</div>
+    <nav className="dnd-tabbar" role="tablist" aria-label="This feature">
       {tabs.map(t => (
         <button
           key={t.id}
-          className={`dnd-tab${t.id === facet ? ' is-sel' : ''}`}
+          role="tab"
+          aria-selected={t.id === facet}
+          className={`dnd-tabtop${t.id === facet ? ' is-sel' : ''}`}
           onClick={() => onPick(t.id)}
         >
-          <span className="dnd-tab-dot" />
-          <span className="dnd-tab-label">{t.label}</span>
-          {t.hint && <span className="dnd-tab-hint">{t.hint}</span>}
+          <span className="dnd-tabtop-label">{t.label}</span>
+          {t.hint && <span className="dnd-tabtop-hint">{t.hint}</span>}
         </button>
       ))}
     </nav>
@@ -396,17 +437,12 @@ function FacetReadingArea(props: {
   return (
     <main className="dnd-read">
       <h1 className="dnd-read-title">{renderDisplayName(displayName)}</h1>
-      <div className="dnd-facet-label">{facetLabel(facet)}</div>
       {facet === 'overview' && <OverviewFacet board={board} onOpenItem={onOpenItem} />}
       {facet === 'discovery' && <DiscoveryFacet doc={doc.doc} />}
       {facet === 'design' && <DesignFacet />}
       {facet === 'demo' && <DemoFacet featureId={featureId} folderPath={doc.folderPath} doc={doc.doc} onSaved={onReloadDoc} />}
     </main>
   );
-}
-
-function facetLabel(f: Facet): string {
-  return f === 'overview' ? 'Overview' : f === 'discovery' ? 'Discovery' : f === 'design' ? 'Design' : 'Demo';
 }
 
 function OverviewFacet(props: { board: DiscoveryBoardPayload | null; onOpenItem?: (id: string) => void }): JSX.Element {
@@ -459,6 +495,31 @@ function dominantTag(tags: ('diff' | 'risk' | 'fact' | 'option')[]): string {
   return 'fact';
 }
 
+/** Long items are collapsed to a few lines so a group isn't a wall of text;
+ *  a "Show more" toggle reveals the rest. Short items render whole, no toggle. */
+const ITEM_CLAMP_CHARS = 240;
+
+function ContextItem(props: { item: { text: string; tags: ('diff' | 'risk' | 'fact' | 'option')[] } }): JSX.Element {
+  const { item } = props;
+  const isLong = item.text.length > ITEM_CLAMP_CHARS;
+  const [open, setOpen] = useState(false);
+  return (
+    <li className={`dnd-item is-${dominantTag(item.tags)}`}>
+      <span className="dnd-item-main">
+        <span className={`dnd-item-text${isLong && !open ? ' is-clamped' : ''}`}>{item.text}</span>
+        {isLong && (
+          <button className="dnd-item-more" onClick={() => setOpen(o => !o)}>
+            {open ? 'Show less' : 'Show more'}
+          </button>
+        )}
+      </span>
+      <span className="dnd-item-tags">
+        {item.tags.map(t => <span key={t} className={`dnd-tag is-${t}`}>{t}</span>)}
+      </span>
+    </li>
+  );
+}
+
 function DiscoveryFacet(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Element {
   const { doc } = props;
   if (!doc) return <div className="dnd-empty">This feature has no discovery yet.</div>;
@@ -478,14 +539,7 @@ function DiscoveryFacet(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Element
             <span className="dnd-group-count">{g.items.length}</span>
           </summary>
           <ul className="dnd-items">
-            {g.items.map((it, ii) => (
-              <li key={ii} className={`dnd-item is-${dominantTag(it.tags)}`}>
-                <span className="dnd-item-text">{it.text}</span>
-                <span className="dnd-item-tags">
-                  {it.tags.map(t => <span key={t} className={`dnd-tag is-${t}`}>{t}</span>)}
-                </span>
-              </li>
-            ))}
+            {g.items.map((it, ii) => <ContextItem key={ii} item={it} />)}
           </ul>
         </details>
       ))}
@@ -540,6 +594,12 @@ function DemoFacet(props: {
 
   return (
     <div className="dnd-demo">
+      <h2 className="dnd-h2">Demo candidate</h2>
+      {doc.demo.notes
+        ? <div className="dnd-demo-candidate">{doc.demo.notes}</div>
+        : <p className="dnd-muted">No candidate noted yet. A discovery session jots which flow to demo and why here.</p>}
+
+      <h2 className="dnd-h2">Where the demo stands</h2>
       <p className="dnd-muted">
         A built demo will show up here once the demo generator exists. For now you can mark where the demo stands.
       </p>

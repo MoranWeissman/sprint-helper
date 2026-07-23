@@ -33,6 +33,13 @@ describe('parseDiscoveryDoc', () => {
     expect(parsed!.demo.status).toBe('scheduled');
   });
 
+  it('parses the demo candidate notes, defaulting to empty', () => {
+    const withNotes = parseDiscoveryDoc(JSON.stringify({ demo: { status: 'none', notes: 'demo the dev-to-prod PR flow' } }));
+    expect(withNotes!.demo.notes).toBe('demo the dev-to-prod PR flow');
+    const withoutNotes = parseDiscoveryDoc(JSON.stringify({ demo: { status: 'none' } }));
+    expect(withoutNotes!.demo.notes).toBe('');
+  });
+
   it('drops unknown tags and malformed items rather than throwing', () => {
     const doc = {
       problem: 'x', flow: [], groups: [

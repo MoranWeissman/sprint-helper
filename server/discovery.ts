@@ -20,7 +20,9 @@ export interface DiscoveryDoc {
   flow: string[];
   groups: DiscoveryGroup[];
   lanes: { ours: string; techLead: string };
-  demo: { status: DemoStatus; shape: string; date: string };
+  /** `notes` = the demo candidate: which flow to demo and why. Free text until
+   *  the demo generator gives it a richer home. */
+  demo: { status: DemoStatus; shape: string; date: string; notes: string };
   openQuestions: string[];
 }
 
@@ -52,7 +54,7 @@ export function emptyDiscoveryDoc(): DiscoveryDoc {
   return {
     problem: '', flow: [], groups: [],
     lanes: { ours: '', techLead: '' },
-    demo: { status: 'none', shape: '', date: '' },
+    demo: { status: 'none', shape: '', date: '', notes: '' },
     openQuestions: [],
   };
 }
@@ -80,7 +82,7 @@ export function parseDiscoveryDoc(raw: string | null | undefined): DiscoveryDoc 
     groups: Array.isArray(o.groups)
       ? o.groups.map(parseGroup).filter((g): g is DiscoveryGroup => g !== null) : [],
     lanes: { ours: str(lanes.ours), techLead: str(lanes.techLead) },
-    demo: { status, shape: str(demo.shape), date: str(demo.date) },
+    demo: { status, shape: str(demo.shape), date: str(demo.date), notes: str(demo.notes) },
     openQuestions: strArray(o.openQuestions),
   };
 }
@@ -128,6 +130,7 @@ export function renderDiscoveryMarkdown(
   lines.push(`- Tech Lead's (parked): ${doc.lanes.techLead || '_(not filled in)_'}`, '');
   lines.push('## Demo', '');
   lines.push(`status: ${doc.demo.status}  ·  shape: ${doc.demo.shape || '—'}  ·  date: ${doc.demo.date || '—'}`, '');
+  if (doc.demo.notes) lines.push('', `Candidate: ${doc.demo.notes}`, '');
   lines.push('## Open questions for the platform-team talk', '');
   if (doc.openQuestions.length === 0) lines.push('_(none yet)_');
   else doc.openQuestions.forEach(q => lines.push(`- ${q}`));

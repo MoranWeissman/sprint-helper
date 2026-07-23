@@ -5107,10 +5107,12 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 .dnd {
   position: absolute; inset: 0;
   display: grid;
-  grid-template-columns: 288px 184px minmax(0, 1fr);
+  grid-template-columns: 288px minmax(0, 1fr);
   overflow: hidden;
   background: var(--bg-0);
 }
+/* right side: facet tab bar on top, reading area below (own scroll) */
+.dnd-main { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 /* ---- LANDING — full-width feature browser (no feature open) ----
    Borrows the home page's presence: a big light-weight title over an
    uppercase caption, generous whitespace, and the live "In progress"
@@ -5131,8 +5133,8 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   border-bottom: 1px solid var(--line);
 }
 .dnd-browse-cap {
-  font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase;
-  color: var(--ink-3); font-weight: 600;
+  font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700;
   animation: dnd-rise 0.5s cubic-bezier(.22,1,.36,1) both;
 }
 .dnd-browse-h {
@@ -5217,6 +5219,18 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   overflow-y: auto;
   min-width: 0;
 }
+/* back to the full-feature browser */
+.dnd-rail-back {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin: 0 0 14px 6px; padding: 5px 10px 5px 8px;
+  background: none; border: 1px solid var(--line-soft); border-radius: 999px;
+  font: inherit; font-size: 12.5px; color: var(--ink-2); cursor: pointer;
+  -webkit-appearance: none; appearance: none;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.dnd-rail-back:hover { background: var(--surface-3); color: var(--ink-0); border-color: var(--line-strong); }
+.dnd-rail-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dnd-rail-back-arrow { font-size: 14px; line-height: 1; }
 .dnd-rail-title { font-size: 17px; font-weight: 600; color: var(--ink-0); padding: 0 8px 4px; }
 .dnd-rail-sub { font-size: 13px; color: var(--ink-3); padding: 0 8px 20px; }
 .dnd-grp { margin-bottom: 20px; }
@@ -5250,45 +5264,41 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 .dnd-ready { font-size: 11.5px; color: var(--ev-progress); }
 .dnd-day { font-size: 11.5px; color: var(--ink-4); }
 
-/* ---- LEVEL 2 — facet menu ---- */
-.dnd-menu {
+/* ---- LEVEL 2 — facet tab bar (top) ----
+   Prominent by design: a raised surface header with a bottom border, and the
+   active tab carries an accent underline + brighter text so it can't be missed. */
+.dnd-tabbar {
+  flex: none; display: flex; align-items: stretch; gap: 4px;
+  padding: 0 clamp(20px, 3vw, 40px);
   background: var(--surface-2);
-  border-right: 1px solid var(--line-soft);
-  padding: 24px 11px;
-  overflow-y: auto;
-  min-width: 0;
+  border-bottom: 1px solid var(--line-strong);
 }
-.dnd-menu-cap {
-  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--ink-4); padding: 0 9px 14px;
+.dnd-tabtop {
+  appearance: none; -webkit-appearance: none; cursor: pointer; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 8px;
+  background: none; border: none; padding: 15px 16px 14px;
+  color: var(--ink-3); font-size: 15px; font-weight: 500;
+  border-bottom: 2.5px solid transparent; margin-bottom: -1px;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
-.dnd-tab {
-  appearance: none; display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
-  cursor: pointer; font-family: inherit; background: transparent; border: none;
-  border-radius: 9px; padding: 11px; margin-bottom: 3px; color: var(--ink-2); font-size: 15px;
-  transition: background 0.15s ease, color 0.15s ease;
+.dnd-tabtop:hover { color: var(--ink-1); }
+.dnd-tabtop:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.dnd-tabtop.is-sel { color: var(--ink-0); font-weight: 600; border-bottom-color: var(--accent); }
+.dnd-tabtop-hint {
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--ink-4); background: var(--bg-1);
+  border: 1px solid var(--line-hair); border-radius: 999px; padding: 1px 7px;
 }
-.dnd-tab:hover { background: var(--surface-3); color: var(--ink-1); }
-.dnd-tab.is-sel { background: var(--accent-soft); color: var(--ink-0); font-weight: 500; }
-.dnd-tab-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-4); flex-shrink: 0; }
-.dnd-tab.is-sel .dnd-tab-dot { background: var(--accent); }
-.dnd-tab-hint {
-  margin-left: auto; font-size: 11px; color: var(--ink-4);
-  text-transform: uppercase; letter-spacing: 0.04em;
-}
+.dnd-tabtop.is-sel .dnd-tabtop-hint { color: var(--accent); border-color: color-mix(in oklch, var(--accent) 32%, transparent); }
 
 /* ---- LEVEL 3 — reading area ---- */
-.dnd-read { overflow-y: auto; padding: 30px 40px 64px; min-width: 0; }
+.dnd-read { flex: 1; overflow-y: auto; padding: 30px clamp(20px, 3vw, 40px) 64px; min-width: 0; }
 .dnd-read-prompt, .dnd-loading { font-size: 15px; color: var(--ink-3); padding: 40px 0; }
 .dnd-read-title {
-  margin: 0; font-size: 24px; font-weight: 600; color: var(--ink-0);
+  margin: 0 0 22px; font-size: 24px; font-weight: 600; color: var(--ink-0);
   letter-spacing: -0.02em; line-height: 1.25;
 }
 .dnd-read-title strong { font-weight: 600; }
-.dnd-facet-label {
-  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--accent); margin: 8px 0 18px;
-}
 /* Section titles ("Context groups", "Lanes", "Open questions") are the main
    subjects on the page — they must sit ABOVE their cards in the hierarchy, not
    below. Bigger, brighter, sentence case, with an accent tick to catch the eye. */
@@ -5316,14 +5326,15 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 
 /* Discovery facet */
 .dnd-problem {
-  font-size: 16px; line-height: 1.65; color: var(--ink-2);
-  padding: 16px 18px; background: var(--surface-2);
+  font-size: 16px; line-height: 1.75; color: var(--ink-2);
+  padding: 18px 20px; background: var(--surface-2);
   border: 1px solid var(--line-hair); border-radius: 10px;
 }
+.dnd-problem, .dnd-flow li { max-width: 72ch; }
 .dnd-flow { list-style: none; counter-reset: f; margin: 0; padding: 0; }
 .dnd-flow li {
-  counter-increment: f; position: relative; padding: 13px 0 13px 44px;
-  font-size: 16px; color: var(--ink-1); line-height: 1.6;
+  counter-increment: f; position: relative; padding: 14px 0 14px 44px;
+  font-size: 16px; color: var(--ink-1); line-height: 1.7;
   border-bottom: 1px solid var(--line-hair);
 }
 .dnd-flow li:last-child { border-bottom: none; }
@@ -5388,7 +5399,7 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
    The tag colours already carry meaning — this just makes the whole row show it. */
 .dnd-item {
   display: flex; align-items: flex-start; gap: 12px;
-  padding: 11px 14px; font-size: 15px; color: var(--ink-1); line-height: 1.6;
+  padding: 13px 16px; font-size: 15px; color: var(--ink-1); line-height: 1.75;
   background: var(--surface-2);
   border: 1px solid var(--line-hair);
   border-left: 3px solid var(--line-strong);
@@ -5398,7 +5409,21 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 .dnd-item.is-risk   { border-left-color: var(--st-blocked);  background: color-mix(in oklch, var(--st-blocked) 9%, var(--surface-2)); }
 .dnd-item.is-option { border-left-color: var(--st-waiting);  background: color-mix(in oklch, var(--st-waiting) 8%, var(--surface-2)); }
 .dnd-item.is-fact   { border-left-color: var(--line-strong); }
-.dnd-item-text { flex: 1; min-width: 0; }
+/* Cap the reading measure — long lines are what make text feel "squashed".
+   ~68 characters is the comfortable range; the card can be wider, the text won't. */
+.dnd-item-main { flex: 1; min-width: 0; max-width: 68ch; }
+.dnd-item-text { display: block; }
+/* A long item is clamped to a few lines by default; the toggle reveals it. */
+.dnd-item-text.is-clamped {
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.dnd-item-more {
+  appearance: none; -webkit-appearance: none; cursor: pointer; font-family: inherit;
+  background: none; border: none; padding: 4px 0 0; margin: 0;
+  color: var(--accent); font-size: 13px; font-weight: 600;
+}
+.dnd-item-more:hover { color: var(--ink-0); text-decoration: underline; }
+.dnd-item-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .dnd-item-tags { flex: none; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; padding-top: 1px; }
 .dnd-tag {
   font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
@@ -5420,8 +5445,8 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
    faint footnote. */
 .dnd-qs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .dnd-qs li {
-  font-size: 15px; color: var(--ink-1); line-height: 1.5;
-  padding: 12px 15px 12px 16px; position: relative;
+  font-size: 15px; color: var(--ink-1); line-height: 1.6; max-width: 72ch;
+  padding: 13px 16px; position: relative;
   background: var(--surface-3);
   border: 1px solid var(--line-soft);
   border-left: 3px solid var(--accent-deep);
@@ -5477,7 +5502,8 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 .dnd-sub-label { font-size: 15px; font-weight: 600; color: var(--ink-1); flex: 1; min-width: 0; }
 .dnd-sub[open] .dnd-sub-label { color: var(--ink-0); }
 .dnd-sub-body {
-  padding: 2px 15px 15px 33px; font-size: 15.5px; line-height: 1.7; color: var(--ink-2);
+  padding: 2px 15px 15px 33px; font-size: 15.5px; line-height: 1.75; color: var(--ink-2);
+  max-width: 72ch;
 }
 /* a plain (unlabeled) bullet — a calm row with a dot */
 .dnd-ov-li { font-size: 15.5px; line-height: 1.65; color: var(--ink-2); padding: 8px 2px 8px 16px; position: relative; }
@@ -5526,6 +5552,12 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 
 /* Demo facet + placeholder */
 .dnd-placeholder { padding: 8px 0; }
+.dnd-demo-candidate {
+  font-size: 15.5px; line-height: 1.75; color: var(--ink-1); max-width: 72ch;
+  padding: 14px 16px; background: var(--surface-3);
+  border: 1px solid var(--line-soft); border-left: 3px solid var(--accent-deep);
+  border-radius: 10px; white-space: pre-wrap;
+}
 .dnd-demo-controls { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; margin: 18px 0; }
 .dnd-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink-3); }
 .dnd-field select, .dnd-field input {
@@ -5543,14 +5575,8 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 .dnd-demo-folder { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .dnd-path { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-3); }
 
-/* Narrow: drop the facet menu into a row of pills under the title area. */
+/* Narrow: shrink the feature list; the tab bar can scroll sideways if needed. */
 @media (max-width: 900px) {
-  .dnd, .dnd:has(.dnd-read-prompt) { grid-template-columns: 240px minmax(0, 1fr); }
-  .dnd-menu {
-    grid-column: 2; border-right: none; border-bottom: 1px solid var(--line-soft);
-    display: flex; gap: 6px; padding: 12px 16px; overflow-x: auto;
-  }
-  .dnd-menu-cap { display: none; }
-  .dnd-tab { width: auto; margin-bottom: 0; white-space: nowrap; }
-  .dnd-read { grid-column: 2; }
+  .dnd { grid-template-columns: 240px minmax(0, 1fr); }
+  .dnd-tabbar { overflow-x: auto; padding: 0 16px; }
 }

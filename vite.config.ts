@@ -565,7 +565,7 @@ function adoApiPlugin() {
             const date = typeof body.date === 'string' ? body.date : '';
             const doc = readDiscoveryDoc(folderPath);
             if (!doc) { res.statusCode = 409; res.end(JSON.stringify({ error: 'no discovery to mark' })); return; }
-            doc.demo = { status, shape: doc.demo.shape, date };
+            doc.demo = { status, shape: doc.demo.shape, date, notes: doc.demo.notes };
             // The title only decorates the regenerated markdown header. Resolve it
             // best-effort; a slow/down board must not block the save.
             let displayName = `#${id}`;

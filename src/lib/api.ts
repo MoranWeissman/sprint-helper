@@ -256,7 +256,7 @@ export interface ApiDiscoveryDoc {
   flow: string[];
   groups: ApiDiscoveryGroup[];
   lanes: { ours: string; techLead: string };
-  demo: { status: 'none'|'scheduled'|'built'; shape: string; date: string };
+  demo: { status: 'none'|'scheduled'|'built'; shape: string; date: string; notes: string };
   openQuestions: string[];
 }
 export interface ApiDiscoveryChild {
