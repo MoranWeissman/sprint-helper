@@ -38,6 +38,9 @@ export function DnDView(): JSX.Element {
   const loadDetail = useCallback(() => {
     if (selectedId == null) { setDetail(null); return; }
     setError(null);
+    // Clear the old feature's data first so the reading area shows "Loading…"
+    // instead of feature A's title/content under feature B while B loads.
+    setDetail(null);
     fetchDiscoveryDetail(selectedId).then(setDetail).catch(e => setError(String(e)));
   }, [selectedId]);
 

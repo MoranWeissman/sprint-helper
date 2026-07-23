@@ -5112,7 +5112,10 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   background: var(--bg-0);
 }
 /* When no feature is open, the menu column collapses to nothing. */
-.dnd:has(.dnd-read-prompt) { grid-template-columns: 288px 0 minmax(0, 1fr); }
+/* No feature open → only the rail + reading area are in the DOM (no menu
+   column). Match the track count to the two children so the reading area
+   fills the rest instead of landing in a 0px track. */
+.dnd:has(.dnd-read-prompt) { grid-template-columns: 288px minmax(0, 1fr); }
 
 /* ---- LEVEL 1 — feature list rail ---- */
 .dnd-rail {
