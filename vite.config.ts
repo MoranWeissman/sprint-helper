@@ -431,7 +431,7 @@ function adoApiPlugin() {
 
           const { getWorkspaces, getActiveFeature } = await import('./server/workspace');
           const { listTouchedFeatureFolders, deriveDndStatus, groupByDndStatus } = await import('./server/discovery-list');
-          const { discoveryStatus, readDiscoveryDoc, writeDiscoveryDoc } = await import('./server/discovery-store');
+          const { discoveryStatus, readDiscoveryDoc, writeDiscoveryDoc, hasHtmlArtifact, htmlArtifactPath } = await import('./server/discovery-store');
           const { getWorkItem } = await import('./server/ado');
           const { downloadAttachment } = await import('./server/ado-client');
           const { htmlToText } = await import('./server/html-preview');
@@ -481,10 +481,10 @@ function adoApiPlugin() {
           }
 
           // ---- DETAIL / ACTIONS (/<id>[/board|/demo|/open-folder|/image/<name>]) ----
-          const m = path.match(/^\/(\d+)(?:\/(board|demo|open-folder|image)(?:\/[^/]+)?)?\/?$/);
-          if (!m) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Expected /api/discovery/<id>[/board|/demo|/open-folder|/image/<name>]' })); return; }
+          const m = path.match(/^\/(\d+)(?:\/(board|demo|open-folder|image|html)(?:\/[^/]+)?)?\/?$/);
+          if (!m) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Expected /api/discovery/<id>[/board|/demo|/open-folder|/image/<name>|/html/<kind>]' })); return; }
           const id = Number(m[1]);
-          const action = m[2]; // 'board' | 'demo' | 'open-folder' | 'image' | undefined
+          const action = m[2]; // 'board' | 'demo' | 'open-folder' | 'image' | 'html' | undefined
           const feature = touched.find(f => f.id === id);
           if (!feature) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Not a touched feature' })); return; }
           const folderPath = feature.folderPath;
@@ -494,7 +494,12 @@ function adoApiPlugin() {
           // when the board is slow or unreachable.
           if (!action) {
             if (method !== 'GET') { res.statusCode = 405; res.end(JSON.stringify({ error: 'GET only' })); return; }
-            res.end(JSON.stringify({ folderPath, doc: readDiscoveryDoc(folderPath) }));
+            res.end(JSON.stringify({
+              folderPath,
+              doc: readDiscoveryDoc(folderPath),
+              hasWalkthrough: hasHtmlArtifact(folderPath, 'walkthrough'),
+              hasDemoHtml: hasHtmlArtifact(folderPath, 'demo'),
+            }));
             return;
           }
 
@@ -551,6 +556,23 @@ function adoApiPlugin() {
             const type = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'gif' ? 'image/gif' : ext === 'svg' ? 'image/svg+xml' : 'image/png';
             res.setHeader('Content-Type', type);
             res.setHeader('Cache-Control', 'max-age=86400');
+            res.end(readFileSync(file));
+            return;
+          }
+
+          // HTML — serve a session-built artifact (walkthrough slideshow / concept
+          // demo). Fixed filenames by kind; no free-form name → no path traversal.
+          if (action === 'html') {
+            if (method !== 'GET') { res.statusCode = 405; res.end(JSON.stringify({ error: 'GET only' })); return; }
+            const kindMatch = path.match(/\/html\/([^/]+)$/);
+            const kind = kindMatch ? decodeURIComponent(kindMatch[1]) : '';
+            if (kind !== 'walkthrough' && kind !== 'demo') {
+              res.statusCode = 400; res.end(JSON.stringify({ error: 'kind must be walkthrough | demo' })); return;
+            }
+            const { existsSync, readFileSync } = await import('node:fs');
+            const file = htmlArtifactPath(folderPath, kind);
+            if (!existsSync(file)) { res.statusCode = 404; res.end(JSON.stringify({ error: 'not built' })); return; }
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
             res.end(readFileSync(file));
             return;
           }
