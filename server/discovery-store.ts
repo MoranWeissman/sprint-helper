@@ -17,6 +17,24 @@ export const DISCOVERY_DIR = 'discovery';
 export const DISCOVERY_FILE = 'discovery.json';
 export const DISCOVERY_MD = 'discovery.md';
 
+/** HTML artifacts a session builds for a feature, shown in the dashboard's
+ *  Discovery sub-tabs. Both live in the feature's `demo/` subfolder. */
+export type HtmlArtifactKind = 'walkthrough' | 'demo';
+const HTML_ARTIFACT_FILE: Record<HtmlArtifactKind, string> = {
+  walkthrough: 'walkthrough.html',
+  demo: 'concept-demo.html',
+};
+
+/** Absolute path to a feature's HTML artifact of the given kind. */
+export function htmlArtifactPath(featureFolderPath: string, kind: HtmlArtifactKind): string {
+  return join(featureFolderPath, 'demo', HTML_ARTIFACT_FILE[kind]);
+}
+
+/** True when that artifact file exists on disk. */
+export function hasHtmlArtifact(featureFolderPath: string, kind: HtmlArtifactKind): boolean {
+  return existsSync(htmlArtifactPath(featureFolderPath, kind));
+}
+
 /** The discovery file's path, preferring the `discovery/` subfolder but falling
  *  back to the feature-folder root for anything written before the split. */
 function discoveryJsonPath(featureFolderPath: string): string {

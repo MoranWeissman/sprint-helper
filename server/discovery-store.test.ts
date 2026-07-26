@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { readDiscoveryDoc, writeDiscoveryDoc, discoveryStatus, DISCOVERY_MD, DISCOVERY_DIR } from './discovery-store';
+import { readDiscoveryDoc, writeDiscoveryDoc, discoveryStatus, DISCOVERY_MD, DISCOVERY_DIR, htmlArtifactPath, hasHtmlArtifact } from './discovery-store';
 import { emptyDiscoveryDoc } from './discovery';
 
 let dir: string;
@@ -50,5 +50,16 @@ describe('discovery-store', () => {
     expect(st.hasDiscovery).toBe(true);
     expect(st.finished).toBe(true);
     expect(st.demoStatus).toBe('scheduled');
+  });
+
+  it('maps html artifact kinds to demo/ files and reports existence', () => {
+    expect(htmlArtifactPath(dir, 'walkthrough')).toBe(join(dir, 'demo', 'walkthrough.html'));
+    expect(htmlArtifactPath(dir, 'demo')).toBe(join(dir, 'demo', 'concept-demo.html'));
+
+    expect(hasHtmlArtifact(dir, 'demo')).toBe(false);
+    mkdirSync(join(dir, 'demo'), { recursive: true });
+    writeFileSync(join(dir, 'demo', 'concept-demo.html'), '<!doctype html><title>x</title>');
+    expect(hasHtmlArtifact(dir, 'demo')).toBe(true);
+    expect(hasHtmlArtifact(dir, 'walkthrough')).toBe(false);
   });
 });
