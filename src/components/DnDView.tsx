@@ -574,6 +574,24 @@ function DesignFacet(): JSX.Element {
   );
 }
 
+/** Shows a session-built HTML artifact in a sealed frame. The sandbox allows
+ *  scripts (the demo's animated flow, the slideshow) but NOT same-origin, so the
+ *  artifact's loud styling can never leak into the calm dashboard. */
+function ArtifactView(props: { featureId: number; kind: 'walkthrough' | 'demo'; title: string }): JSX.Element {
+  const { featureId, kind, title } = props;
+  const url = `/api/discovery/${featureId}/html/${kind}`;
+  const downloadName = kind === 'walkthrough' ? 'walkthrough.html' : 'concept-demo.html';
+  return (
+    <div className="dnd-artifact">
+      <div className="dnd-artifact-bar">
+        <a className="dnd-btn is-quiet" href={url} target="_blank" rel="noreferrer">Open in new tab</a>
+        <a className="dnd-btn is-quiet" href={url} download={downloadName}>Download</a>
+      </div>
+      <iframe className="dnd-artifact-frame" src={url} title={title} sandbox="allow-scripts" loading="lazy" />
+    </div>
+  );
+}
+
 function DemoFacet(props: {
   featureId: number;
   folderPath: string;
