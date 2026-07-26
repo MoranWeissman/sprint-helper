@@ -166,6 +166,25 @@ export function discoveryDayNudge(stage: DiscoveryDayStage): string | null {
   }
 }
 
+/** Once discovery is finished, the sequence is walkthrough → demo → close.
+ *  orient surfaces this so a plain "what's next?" names the real next step,
+ *  instead of the session guessing "just close it" from finished + dayNudge.
+ *  Null while discovery is unfinished — the day/start nudges own that phase. */
+export function discoveryNextStep(status: {
+  finished: boolean;
+  hasWalkthrough: boolean;
+  hasDemoHtml: boolean;
+}): string | null {
+  if (!status.finished) return null;
+  if (!status.hasWalkthrough) {
+    return 'Discovery is done. Next: build the walkthrough (a slideshow to present it), then the concept demo. Say "build the walkthrough".';
+  }
+  if (!status.hasDemoHtml) {
+    return 'Walkthrough is built. Next: build the concept demo (a page picturing the product working). Say "build the demo".';
+  }
+  return 'Walkthrough and demo are both built. Next: review them, then close the discovery story.';
+}
+
 /** Title-based: POM discovery stories are titled "Discovery: X". */
 export function isDiscoveryStoryTitle(title: string): boolean {
   return /^\s*discovery\b/i.test(title);

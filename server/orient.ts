@@ -13,7 +13,7 @@ import type { Capacity } from './capacity';
 import { buildDashboardCached } from './dashboard-cache';
 import { getDb } from './db';
 import { discoveryStatus } from './discovery-store';
-import { discoveryDayStage, discoveryDayNudge, discoveryStartNudge } from './discovery';
+import { discoveryDayStage, discoveryDayNudge, discoveryStartNudge, discoveryNextStep } from './discovery';
 import { ensureCapacityNudge, getHelperNotes, scanStaleRemaining } from './helper-notes';
 import { getPlanningHome } from './planning-home';
 import { STALE_IDLE_MINUTES } from './session-activity';
@@ -158,6 +158,9 @@ export interface OrientPacket {
     demoStatus: string;
     startNudge: string | null;
     dayNudge: string | null;
+    /** After discovery is finished: the walkthrough → demo → close sequence.
+     *  Null while unfinished (the day/start nudges own that phase). */
+    nextStep: string | null;
   } | null;
 }
 
@@ -372,6 +375,7 @@ export async function buildOrientPacket(chatCwd: string | null = null): Promise<
       demoStatus: status.demoStatus,
       startNudge: discoveryStartNudge(status),
       dayNudge: discoveryDayNudge(stage),
+      nextStep: discoveryNextStep(status),
     };
   }
 

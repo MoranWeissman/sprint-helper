@@ -1,6 +1,6 @@
 // server/discovery.test.ts
 import { describe, it, expect } from 'vitest';
-import { parseDiscoveryDoc, emptyDiscoveryDoc, renderDiscoveryMarkdown, isGroupComplete, discoveryFinishedCheck, discoveryDayStage, discoveryDayNudge, discoveryCloseBlockMessage, discoveryStartNudge } from './discovery';
+import { parseDiscoveryDoc, emptyDiscoveryDoc, renderDiscoveryMarkdown, isGroupComplete, discoveryFinishedCheck, discoveryDayStage, discoveryDayNudge, discoveryCloseBlockMessage, discoveryStartNudge, discoveryNextStep } from './discovery';
 
 describe('parseDiscoveryDoc', () => {
   it('returns null for unset/garbage input', () => {
@@ -193,6 +193,23 @@ describe('discoveryCloseBlockMessage', () => {
     expect(discoveryCloseBlockMessage({
       isDiscoveryStory: true, folderPath: '/x', check: { ok: true, missing: [] },
     })).toBeNull();
+  });
+});
+
+describe('discoveryNextStep', () => {
+  it('is quiet while discovery is unfinished', () => {
+    expect(discoveryNextStep({ finished: false, hasWalkthrough: false, hasDemoHtml: false })).toBeNull();
+  });
+  it('points to the walkthrough first once finished', () => {
+    expect(discoveryNextStep({ finished: true, hasWalkthrough: false, hasDemoHtml: false })).toMatch(/walkthrough/i);
+  });
+  it('points to the demo once the walkthrough exists', () => {
+    const msg = discoveryNextStep({ finished: true, hasWalkthrough: true, hasDemoHtml: false });
+    expect(msg).toMatch(/demo/i);
+    expect(msg).not.toMatch(/build the walkthrough/i);
+  });
+  it('points to review + close once both are built', () => {
+    expect(discoveryNextStep({ finished: true, hasWalkthrough: true, hasDemoHtml: true })).toMatch(/close/i);
   });
 });
 

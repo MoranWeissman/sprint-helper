@@ -38,7 +38,10 @@ describe('discovery-store', () => {
   });
 
   it('discoveryStatus reports has/finished/demo from the folder', () => {
-    expect(discoveryStatus(dir)).toEqual({ hasDiscovery: false, finished: false, missing: expect.any(Array), demoStatus: 'none' });
+    expect(discoveryStatus(dir)).toEqual({
+      hasDiscovery: false, finished: false, missing: expect.any(Array), demoStatus: 'none',
+      hasWalkthrough: false, hasDemoHtml: false,
+    });
     const doc = emptyDiscoveryDoc();
     doc.flow = ['s1', 's2'];
     doc.groups = [{ name: 'g', items: [
@@ -50,6 +53,14 @@ describe('discovery-store', () => {
     expect(st.hasDiscovery).toBe(true);
     expect(st.finished).toBe(true);
     expect(st.demoStatus).toBe('scheduled');
+    expect(st.hasWalkthrough).toBe(false);
+    expect(st.hasDemoHtml).toBe(false);
+
+    // Once the artifact files land, the status flips.
+    mkdirSync(join(dir, 'demo'), { recursive: true });
+    writeFileSync(join(dir, 'demo', 'walkthrough.html'), '<!doctype html><title>w</title>');
+    expect(discoveryStatus(dir).hasWalkthrough).toBe(true);
+    expect(discoveryStatus(dir).hasDemoHtml).toBe(false);
   });
 
   it('maps html artifact kinds to demo/ files and reports existence', () => {

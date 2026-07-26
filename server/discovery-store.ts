@@ -77,6 +77,8 @@ export interface DiscoveryStatus {
   finished: boolean;
   missing: string[];
   demoStatus: string;
+  hasWalkthrough: boolean;
+  hasDemoHtml: boolean;
 }
 
 export function discoveryStatus(featureFolderPath: string): DiscoveryStatus {
@@ -87,5 +89,7 @@ export function discoveryStatus(featureFolderPath: string): DiscoveryStatus {
     finished: check.ok,
     missing: check.missing,
     demoStatus: doc?.demo.status ?? 'none',
+    hasWalkthrough: hasHtmlArtifact(featureFolderPath, 'walkthrough'),
+    hasDemoHtml: hasHtmlArtifact(featureFolderPath, 'demo'),
   };
 }
