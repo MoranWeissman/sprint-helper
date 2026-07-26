@@ -11,7 +11,8 @@ const STATUS_LABEL: Record<DndStatus, string> = {
   'closed': 'Done',
 };
 
-type Facet = 'overview' | 'discovery' | 'design' | 'demo';
+type Facet = 'overview' | 'discovery' | 'design';
+type DiscoverySub = 'review' | 'walkthrough' | 'demo';
 
 /** Render a displayName's **bold** span without showing raw asterisks. */
 function renderDisplayName(s: string): JSX.Element {
@@ -137,16 +138,23 @@ function renderDescription(text: string): JSX.Element {
   );
 }
 
-const FACETS: Facet[] = ['overview', 'discovery', 'design', 'demo'];
+const FACETS: Facet[] = ['overview', 'discovery', 'design'];
+const DISCOVERY_SUBS: DiscoverySub[] = ['review', 'walkthrough', 'demo'];
 
-/** Read the open feature + facet from the URL so a refresh restores them. */
-function readUrlState(): { id: number | null; facet: Facet } {
-  if (typeof window === 'undefined') return { id: null, facet: 'discovery' };
+/** Read the open feature + facet + discovery sub-tab from the URL so a refresh
+ *  restores them. */
+function readUrlState(): { id: number | null; facet: Facet; sub: DiscoverySub } {
+  if (typeof window === 'undefined') return { id: null, facet: 'discovery', sub: 'review' };
   const p = new URL(window.location.href).searchParams;
   const rawId = Number(p.get('feature'));
   const id = Number.isInteger(rawId) && rawId > 0 ? rawId : null;
   const f = p.get('facet');
-  return { id, facet: FACETS.includes(f as Facet) ? (f as Facet) : 'discovery' };
+  const s = p.get('sub');
+  return {
+    id,
+    facet: FACETS.includes(f as Facet) ? (f as Facet) : 'discovery',
+    sub: DISCOVERY_SUBS.includes(s as DiscoverySub) ? (s as DiscoverySub) : 'review',
+  };
 }
 
 export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): JSX.Element {
@@ -154,6 +162,7 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
   const initial = readUrlState();
   const [selectedId, setSelectedId] = useState<number | null>(initial.id);
   const [facet, setFacet] = useState<Facet>(initial.facet);
+  const [sub, setSub] = useState<DiscoverySub>(initial.sub);
   // Disk-backed doc (Discovery/Demo) and board data (Overview) load separately,
   // so a slow board never stalls the doc that's sitting ready on disk.
   const [doc, setDoc] = useState<DiscoveryDocPayload | null>(null);
@@ -188,14 +197,19 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
   // lands back on the same feature + facet instead of the feature list.
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (selectedId == null) { url.searchParams.delete('feature'); url.searchParams.delete('facet'); }
-    else { url.searchParams.set('feature', String(selectedId)); url.searchParams.set('facet', facet); }
+    if (selectedId == null) {
+      url.searchParams.delete('feature'); url.searchParams.delete('facet'); url.searchParams.delete('sub');
+    } else {
+      url.searchParams.set('feature', String(selectedId));
+      url.searchParams.set('facet', facet);
+      if (facet === 'discovery') url.searchParams.set('sub', sub); else url.searchParams.delete('sub');
+    }
     window.history.replaceState(null, '', url.toString());
-  }, [selectedId, facet]);
+  }, [selectedId, facet, sub]);
 
   // Back/forward should move between features too.
   useEffect(() => {
-    const handler = () => { const s = readUrlState(); setSelectedId(s.id); setFacet(s.facet); };
+    const handler = () => { const s = readUrlState(); setSelectedId(s.id); setFacet(s.facet); setSub(s.sub); };
     window.addEventListener('popstate', handler);
     return () => window.removeEventListener('popstate', handler);
   }, []);
@@ -209,7 +223,6 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
     setSelectedId(null);
   }
 
-  const demoStatus = doc?.doc?.demo.status ?? 'none';
   const selectedName =
     sections?.flatMap(s => s.features).find(f => f.id === selectedId)?.displayName ?? `#${selectedId}`;
 
@@ -230,9 +243,11 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
         onBack={goHome}
       />
       <div className="dnd-main">
-        <FeatureFacetBar facet={facet} demoStatus={demoStatus} onPick={setFacet} />
+        <FeatureFacetBar facet={facet} onPick={setFacet} />
         <FacetReadingArea
           facet={facet}
+          sub={sub}
+          onSub={setSub}
           featureId={selectedId}
           displayName={selectedName}
           doc={doc}
@@ -383,15 +398,13 @@ function FeatureListRail(props: {
 
 function FeatureFacetBar(props: {
   facet: Facet;
-  demoStatus: 'none' | 'scheduled' | 'built';
   onPick: (f: Facet) => void;
 }): JSX.Element {
-  const { facet, demoStatus, onPick } = props;
+  const { facet, onPick } = props;
   const tabs: { id: Facet; label: string; hint?: string }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'discovery', label: 'Discovery' },
     { id: 'design', label: 'Design', hint: 'soon' },
-    { id: 'demo', label: 'Demo', hint: demoStatus === 'none' ? undefined : demoStatus },
   ];
   return (
     <nav className="dnd-tabbar" role="tablist" aria-label="This feature">
@@ -415,6 +428,8 @@ function FeatureFacetBar(props: {
 
 function FacetReadingArea(props: {
   facet: Facet;
+  sub: DiscoverySub;
+  onSub: (s: DiscoverySub) => void;
   featureId: number;
   displayName: string;
   doc: DiscoveryDocPayload | null;
@@ -423,13 +438,11 @@ function FacetReadingArea(props: {
   onReloadDoc: () => void;
   onOpenItem?: (id: string) => void;
 }): JSX.Element {
-  const { facet, featureId, displayName, doc, board, error, onReloadDoc, onOpenItem } = props;
+  const { facet, sub, onSub, featureId, displayName, doc, board, error, onReloadDoc, onOpenItem } = props;
 
   if (error) {
     return <main className="dnd-read"><div className="dnd-error">Couldn't read this feature: {error}</div></main>;
   }
-  // Only the disk-backed doc gates the reading area — it returns instantly.
-  // The board (Overview) fills in separately and never blocks this.
   if (!doc) {
     return <main className="dnd-read"><div className="dnd-loading">Loading…</div></main>;
   }
@@ -438,9 +451,16 @@ function FacetReadingArea(props: {
     <main className="dnd-read">
       <h1 className="dnd-read-title">{renderDisplayName(displayName)}</h1>
       {facet === 'overview' && <OverviewFacet board={board} onOpenItem={onOpenItem} />}
-      {facet === 'discovery' && <DiscoveryFacet doc={doc.doc} />}
+      {facet === 'discovery' && (
+        <DiscoveryFacet
+          sub={sub}
+          onSub={onSub}
+          featureId={featureId}
+          payload={doc}
+          onReloadDoc={onReloadDoc}
+        />
+      )}
       {facet === 'design' && <DesignFacet />}
-      {facet === 'demo' && <DemoFacet featureId={featureId} folderPath={doc.folderPath} doc={doc.doc} onSaved={onReloadDoc} />}
     </main>
   );
 }
@@ -520,7 +540,67 @@ function ContextItem(props: { item: { text: string; tags: ('diff' | 'risk' | 'fa
   );
 }
 
-function DiscoveryFacet(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Element {
+function DiscoverySubBar(props: {
+  sub: DiscoverySub;
+  onSub: (s: DiscoverySub) => void;
+  demoStatus: 'none' | 'scheduled' | 'built';
+}): JSX.Element {
+  const { sub, onSub, demoStatus } = props;
+  const tabs: { id: DiscoverySub; label: string; hint?: string }[] = [
+    { id: 'review', label: 'Review' },
+    { id: 'walkthrough', label: 'Walkthrough' },
+    { id: 'demo', label: 'Demo', hint: demoStatus === 'none' ? undefined : demoStatus },
+  ];
+  return (
+    <nav className="dnd-subtabs" role="tablist" aria-label="Discovery views">
+      {tabs.map(t => (
+        <button
+          key={t.id}
+          role="tab"
+          aria-selected={t.id === sub}
+          className={`dnd-subtab${t.id === sub ? ' is-sel' : ''}`}
+          onClick={() => onSub(t.id)}
+        >
+          {t.label}
+          {t.hint && <span className="dnd-subtab-hint">{t.hint}</span>}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function DiscoveryFacet(props: {
+  sub: DiscoverySub;
+  onSub: (s: DiscoverySub) => void;
+  featureId: number;
+  payload: DiscoveryDocPayload;
+  onReloadDoc: () => void;
+}): JSX.Element {
+  const { sub, onSub, featureId, payload, onReloadDoc } = props;
+  const demoStatus = payload.doc?.demo.status ?? 'none';
+  return (
+    <div className="dnd-discovery-wrap">
+      <DiscoverySubBar sub={sub} onSub={onSub} demoStatus={demoStatus} />
+      {sub === 'review' && <DiscoveryReview doc={payload.doc} />}
+      {sub === 'walkthrough' && (
+        payload.hasWalkthrough
+          ? <ArtifactView featureId={featureId} kind="walkthrough" title="Discovery walkthrough" />
+          : <p className="dnd-artifact-empty">No walkthrough built yet. In a Discovery &amp; Design chat, ask to build the walkthrough slideshow.</p>
+      )}
+      {sub === 'demo' && (
+        <DemoFacet
+          featureId={featureId}
+          folderPath={payload.folderPath}
+          doc={payload.doc}
+          hasDemoHtml={payload.hasDemoHtml}
+          onSaved={onReloadDoc}
+        />
+      )}
+    </div>
+  );
+}
+
+function DiscoveryReview(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Element {
   const { doc } = props;
   if (!doc) return <div className="dnd-empty">This feature has no discovery yet.</div>;
   return (
@@ -596,9 +676,10 @@ function DemoFacet(props: {
   featureId: number;
   folderPath: string;
   doc: DiscoveryDocPayload['doc'];
+  hasDemoHtml: boolean;
   onSaved: () => void;
 }): JSX.Element {
-  const { featureId: id, folderPath, doc, onSaved } = props;
+  const { featureId: id, folderPath, doc, hasDemoHtml, onSaved } = props;
   const [status, setStatus] = useState<'none' | 'scheduled' | 'built'>(doc?.demo.status ?? 'none');
   const [date, setDate] = useState(doc?.demo.date ?? '');
   const [folderMsg, setFolderMsg] = useState<string | null>(null);
@@ -617,10 +698,12 @@ function DemoFacet(props: {
         ? <div className="dnd-demo-candidate">{doc.demo.notes}</div>
         : <p className="dnd-muted">No candidate noted yet. A discovery session jots which flow to demo and why here.</p>}
 
+      <h2 className="dnd-h2">The demo</h2>
+      {hasDemoHtml
+        ? <ArtifactView featureId={id} kind="demo" title="Concept demo" />
+        : <p className="dnd-artifact-empty">No demo built yet. In a Discovery &amp; Design chat, ask to build the concept demo.</p>}
+
       <h2 className="dnd-h2">Where the demo stands</h2>
-      <p className="dnd-muted">
-        A built demo will show up here once the demo generator exists. For now you can mark where the demo stands.
-      </p>
       <div className="dnd-demo-controls">
         <label className="dnd-field">
           <span>Status</span>

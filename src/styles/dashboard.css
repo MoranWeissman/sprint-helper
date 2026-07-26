@@ -5584,6 +5584,26 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 }
 .dnd-artifact-empty { font-size: 15px; color: var(--ink-3); padding: 24px 0; }
 
+/* ---- Discovery inner sub-tabs (Review / Walkthrough / Demo) ---- */
+.dnd-discovery-wrap { display: flex; flex-direction: column; }
+.dnd-subtabs { display: flex; gap: 6px; margin: 0 0 22px; border-bottom: 1px solid var(--line-soft); }
+.dnd-subtab {
+  appearance: none; -webkit-appearance: none; cursor: pointer; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 7px;
+  background: none; border: none; padding: 8px 12px 10px;
+  color: var(--ink-3); font-size: 14px; font-weight: 500;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.dnd-subtab:hover { color: var(--ink-1); }
+.dnd-subtab:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.dnd-subtab.is-sel { color: var(--ink-0); font-weight: 600; border-bottom-color: var(--accent); }
+.dnd-subtab-hint {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+  color: var(--accent); border: 1px solid color-mix(in oklch, var(--accent) 32%, transparent);
+  border-radius: 999px; padding: 1px 7px;
+}
+
 /* Narrow: shrink the feature list; the tab bar can scroll sideways if needed. */
 @media (max-width: 900px) {
   .dnd { grid-template-columns: 240px minmax(0, 1fr); }
