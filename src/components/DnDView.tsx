@@ -217,6 +217,7 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
   function selectFeature(id: number): void {
     setSelectedId(id);
     setFacet('discovery');
+    setSub('review'); // land on the data view, not a "not built yet" HTML sub-tab
   }
 
   function goHome(): void {
