@@ -1,152 +1,170 @@
-# Demo generator — design
+# Discovery HTML artifacts + demo — design
 
-Date: 2026-07-24
+Date: 2026-07-24 (reshaped 2026-07-26)
 Status: approved, ready for implementation plan
 
 ## What we're building
 
-The last piece of the discovery arc. Once a feature's discovery is complete, a
-chat session builds a **concept demo** — a single self-contained HTML file that
-throws a convincing picture of the idea on screen (honest banner, human hook,
-numbered pillars, one animated flow, behind-the-scenes, a dashed "out of scope"
-aside). The dashboard's Demo tab then shows that file in a sealed frame.
+Two standalone, self-contained HTML artifacts a chat session can build for a
+feature once its discovery is done, and a place in the dashboard to show them.
+Both live inside the **Discovery** tab as sub-tabs, so everything for a feature's
+discovery sits in one place.
 
-This is NOT a working demo and NOT a slide deck. It's a narrated concept, made
-fast, to show a stakeholder or think out loud before any real work. The format
-is the one in [[feedback-dnd-concept-demo-format]].
+The two artifacts are DIFFERENT in shape and purpose:
+
+1. **Walkthrough** — an interactive **slideshow** that presents the discovery
+   findings (problem → flow → diffs/risks/facts → open questions), slide by slide.
+   For walking a room through the discovery, or uploading to another repo. NOT for
+   the dashboard-only reader — it's a shareable, offline file.
+2. **Demo** — one long **scrollable page** that pictures the product working. The
+   flashy concept-demo format from [[feedback-dnd-concept-demo-format]] (honest
+   banner, human hook, numbered pillars, one animated flow, behind-the-scenes,
+   dashed "out of scope" aside). Optional; only when a good demo flow exists.
+
+Neither replaces the existing **Review** view (the data-driven Discovery tab).
+Review stays exactly as it is today.
+
+## The Discovery tab becomes three sub-tabs
+
+Top-level tabs today: **Overview · Discovery · Design · Demo**.
+
+Change: the top-level **Demo tab goes away**. Discovery gains three sub-tabs:
+
+- **Review** — today's data view (problem, flow, collapsible groups with
+  diff/risk/fact/option tags, lanes, open questions), built from `discovery.json`.
+  UNCHANGED — this spec only wraps it as the first sub-tab.
+- **Walkthrough** — the slideshow HTML. Shows the file if built; a plain "not
+  built yet" note otherwise.
+- **Demo** — the scrollable concept-demo HTML, plus the demo status/date/candidate
+  controls that used to live on the old top-level Demo tab. Shows the file if
+  built; controls + "not built yet" note otherwise.
+
+Design stays its own top-level tab for later.
 
 ## The split (who does what)
 
-The dashboard is a plain Vite server with **no AI inside it** — it reads and
-shows files, it can't write a demo. The AI lives in chat sessions. Writing a good
-concept demo is a creative act, so it happens in a session. This mirrors how
-discovery already works: a session writes the file, the dashboard reads it.
+The dashboard is a plain Vite server with **no AI inside it** — it reads and shows
+files, it can't write them. The AI lives in chat sessions. Writing these HTMLs is
+a creative act, so it happens in a session. This mirrors discovery today: a
+session writes the file, the dashboard reads it.
 
-1. **A session builds the demo.** Either the user says "build the demo" in a
-   Discovery & Design chat, OR the session offers it the moment discovery is
-   complete. The AI reads the finished discovery (including `demo.notes`),
-   proposes 2–3 demo ideas in plain words, the user picks one, and the AI writes
-   the HTML into the feature's folder, then flips `demo.status` to `built`.
-2. **The file lives in the feature folder** at `demo/concept-demo.html`, beside
-   the existing `discovery/` folder. One demo per feature; rebuilding overwrites.
-3. **The dashboard Demo tab shows it.** When the built HTML exists, the tab
-   renders it in a sealed iframe plus Open-in-new-tab and Download buttons. No
-   HTML yet → the tab keeps today's candidate-notes + mark-status view.
+1. **A session builds an artifact.** The user asks ("build the walkthrough" /
+   "build the demo"), or the session offers the moment discovery is complete. For
+   the demo, it proposes 2–3 ideas in plain words and the user picks. It writes a
+   self-contained HTML into the feature folder.
+2. **The files live in the feature folder** beside `discovery/`:
+   - `demo/walkthrough.html`
+   - `demo/concept-demo.html`
+   One of each per feature; rebuilding overwrites.
+3. **The dashboard shows whatever HTML is there.** One show-it mechanism serves
+   any of these files in a sealed frame; the sub-tab just points at the right one.
 
 ## Scope decisions
 
+- **One show-it mechanism, two writing recipes.** The dashboard doesn't care if an
+  HTML scrolls or clicks through slides — it serves a self-contained file in a
+  sealed iframe. The only real difference between walkthrough and demo is the
+  session's *writing instructions*. This is what stops two artifacts from doubling
+  the build.
 - **The "offer when complete" nudge is skill instructions only** — not hardened
-  into `orient`/MCP code yet. We learn from the first real generated demo before
-  adding enforcement plumbing. Cheaper, reversible, fits "see one first."
-- **The dashboard has no generation button and no AI.** It only reads and shows.
-  Triggering generation from the dashboard would need it to launch an AI session
-  behind the scenes — off the current pattern, real extra plumbing, deferred.
-- **The writing guidance stays lean for now.** The part we can only tune by
-  looking at a real generated file. Build the mechanism solid; refine the
-  how-to-write-it instructions after seeing one on screen.
+  into `orient`/MCP code yet. Learn from the first real artifacts before adding
+  enforcement plumbing. Cheaper, reversible.
+- **The dashboard has no generate button and no AI.** It only reads and shows.
+- **Writing guidance stays lean for now.** Build the mechanism solid; refine the
+  how-to-write-it instructions after seeing real output.
 
 ## Part A — dashboard (the only code)
 
-Three small changes. No AI, no generation.
+### A1. Doc route reports which artifacts exist
 
-### A1. Doc route gains one field
-
-`GET /api/discovery/:id` (the disk-only doc route in `vite.config.ts`) returns an
-extra boolean:
+`GET /api/discovery/:id` (the disk-only doc route in `vite.config.ts`) returns two
+extra booleans:
 
 ```
-{ folderPath, doc, hasDemoHtml }
+{ folderPath, doc, hasWalkthrough, hasDemoHtml }
 ```
 
-`hasDemoHtml` = `existsSync(join(folderPath, 'demo', 'concept-demo.html'))`. Cheap,
-synchronous, no new request, no ADO. The `DiscoveryDocPayload` type in
-`src/lib/api.ts` gains `hasDemoHtml: boolean`.
+- `hasWalkthrough` = `existsSync(join(folderPath, 'demo', 'walkthrough.html'))`
+- `hasDemoHtml`    = `existsSync(join(folderPath, 'demo', 'concept-demo.html'))`
 
-### A2. New serve route
+Cheap, synchronous, no new request, no ADO. `DiscoveryDocPayload` in
+`src/lib/api.ts` gains both booleans.
 
-`GET /api/discovery/:id/demo-html` — serves the one fixed file
-`demo/concept-demo.html` as `text/html; charset=utf-8`. Modelled on the existing
-`/image/:name` route but with NO name parameter: the filename is fixed, so there
-is no path-traversal surface. 404 if the file is absent. Add `demo-html` to the
-action alternation in the route regex.
+### A2. One serve route for the artifacts
 
-### A3. Demo tab renders it
+`GET /api/discovery/:id/html/:kind` — serves a fixed file by kind:
 
-In `DnDView.tsx`, `DemoFacet` gains a `hasDemoHtml` prop (threaded from
-`doc.hasDemoHtml` through `FacetReadingArea`). When true:
+- `kind = walkthrough` → `demo/walkthrough.html`
+- `kind = demo`        → `demo/concept-demo.html`
 
-- A **sealed `<iframe>`** with `src="/api/discovery/:id/demo-html"`,
-  `sandbox="allow-scripts"` (scripts for the animated flow; no `allow-same-origin`
-  so its CSS/JS cannot touch the dashboard), `title` set, a sensible min-height.
-  This is the boundary from [[feedback-dnd-concept-demo-format]]: the flashy demo
-  style stays walled off from the calm dashboard.
-- **Open in new tab** — a link to the same URL, `target="_blank"`.
-- **Download** — an `<a download="concept-demo.html">` to the same URL.
+`kind` is validated against that two-value allow-list (no free-form filename → no
+path-traversal surface). Served as `text/html; charset=utf-8`. 404 if the file is
+absent. Add `html` to the action alternation in the route regex.
 
-The candidate notes + status controls stay above the frame. When `hasDemoHtml`
-is false, the tab is exactly today's view — no empty frame.
+### A3. Discovery tab renders sub-tabs
+
+In `DnDView.tsx`:
+
+- Remove `demo` from the top-level `Facet` type and the `FeatureFacetBar` tabs;
+  top tabs become **Overview · Discovery · Design**.
+- The Discovery facet gains an inner sub-tab strip: **Review · Walkthrough ·
+  Demo**. Sub-tab state is local (and mirrored to the URL like the top facet, so a
+  refresh keeps the sub-tab — same `?facet=` pattern, add `?sub=`).
+- **Review** sub-tab = the current `DiscoveryFacet` body, unchanged.
+- **Walkthrough** sub-tab = if `hasWalkthrough`, a sealed `<iframe>` at
+  `/api/discovery/:id/html/walkthrough` + Open-in-new-tab + Download; else a plain
+  "No walkthrough built yet" note.
+- **Demo** sub-tab = the old `DemoFacet` content (candidate notes + status/date
+  controls) PLUS, if `hasDemoHtml`, the sealed `<iframe>` at
+  `/api/discovery/:id/html/demo` + Open + Download.
+
+Sealed iframe: `sandbox="allow-scripts"` (scripts for the demo's animated flow and
+the slideshow; no `allow-same-origin`, so the artifact's CSS/JS can't touch the
+dashboard), a `title`, a sensible min-height. This is the boundary from
+[[feedback-dnd-concept-demo-format]]: the loud artifact style stays walled off
+from the calm dashboard.
 
 ### What Part A does NOT touch
 
-The `demo` POST route, `markDiscoveryDemo`, the `DiscoveryDoc` shape. The session
-writes the HTML and flips status through the tools that already exist.
+The `demo` POST route, `markDiscoveryDemo`, the `DiscoveryDoc` shape. Sessions
+write the HTML and flip status through existing tools.
 
 ## Part B — session instructions (no code)
 
-A new `demo` skill (sibling to the `discovery` skill), living in the same three
-places the discovery skill does:
+Two skills, each in the three places the discovery skill lives (global on-ramp,
+`features/` seed, and a manual copy into existing live workspaces since
+`syncSeedSkills` only copies MISSING skills):
 
-- global on-ramp: `~/.claude/skills/sprint-helper-plus/skills/demo/SKILL.md`
-- seed: `~/projects/github-moran/features/.claude/skills/demo/SKILL.md`
-- (workspaces inherit the seed via `syncSeedSkills`; existing live workspaces get
-  a manual copy, since sync only copies MISSING skills)
+- `demo/SKILL.md` — the concept-demo scrollable page. Full format spec folded in
+  from [[feedback-dnd-concept-demo-format]] so it's self-contained.
+- `walkthrough/SKILL.md` — the discovery slideshow. Presents the discovery data as
+  slides: title → problem → the end-to-end flow → one slide per context group with
+  its tagged items → lanes → open questions. Same "honest, plain English, one idea
+  per slide" voice. Self-contained single file, `prefers-reduced-motion` guard.
 
-The skill tells a session:
+Both skills tell the session: offer when discovery is complete
+(`discoveryFinishedCheck` passes), name the feature with its `displayName`, write
+the file into `demo/`, and (for the demo) flip `demo.status` to `built`.
 
-1. **When to offer.** The moment `discoveryFinishedCheck` passes (flow + at least
-   one complete group), say one plain line: "**<feature>** discovery looks
-   complete — want me to build a concept demo?" Names before numbers; echo
-   `displayName`.
-2. **Propose 2–3 ideas** in plain words, drawn from the flow + `demo.notes`. Let
-   the user pick. Do not build without a pick.
-3. **Write** `demo/concept-demo.html` in the feature folder, using the
-   concept-demo format. The skill carries the full format spec inline (folded in
-   from [[feedback-dnd-concept-demo-format]]) so it's self-contained:
-   - honest banner up top ("Illustrative concept — not a working system")
-   - human hook first (first-person feeling, win as crossed-out pain)
-   - numbered pillars, one idea each; the star pillar has an interactive animated
-     flow (run/step/reset, a fake console, stages lighting up)
-   - a calmer "behind the scenes" layer
-   - a dashed amber "out of scope / parked for debate" aside
-   - self-contained single file, no CDN, opens offline
-   - `@media (prefers-reduced-motion: reduce)` guard — flashy by choice, still
-     accessibility-safe
-4. **Flip status** to `built` via the existing demo action, so the dashboard and
-   `orient` reflect it.
-
-The skill also states the boundary: this flashy style is the OPPOSITE of the calm
-dashboard rules and that's fine — it's a separate file the dashboard shows in a
-sealed frame, never embeds.
+Whether these are two skills or one skill with two modes is an implementation-plan
+detail; the content above is the requirement.
 
 ## Testing
 
-- **A1/A2 server:** the doc route's `hasDemoHtml` and the `demo-html` serve route
-  are inline Vite-middleware glue (not unit-tested per the project's convention);
-  the user smokes them. If a small pure helper falls out (e.g. a
-  `demoHtmlPath(folderPath)` in `discovery-store.ts`), unit-test that.
-- **A3 frontend:** no new pure logic worth a test; visual, user-smoked.
-- **Skill:** prose, no test.
-
-Net: likely one tiny pure helper + its test; the rest is user-smoked, matching how
-the discovery routes were verified.
+- Any small pure helper that falls out (e.g. an `htmlArtifactPath(folderPath,
+  kind)` in `discovery-store.ts`) gets a unit test.
+- The route glue and the sub-tab UI are inline/visual — user-smoked, matching how
+  the discovery routes were verified.
 
 ## Build order
 
-1. `demoHtmlPath` helper in `discovery-store.ts` (+ test).
-2. Doc route `hasDemoHtml` + `demo-html` serve route in `vite.config.ts`; regex.
-3. `DiscoveryDocPayload.hasDemoHtml` in `src/lib/api.ts`.
-4. `DemoFacet` sealed-iframe + buttons in `DnDView.tsx`; CSS for the frame.
-5. `demo` skill in all three places.
+1. `htmlArtifactPath` helper in `discovery-store.ts` (+ test).
+2. Doc route `hasWalkthrough`/`hasDemoHtml` + `html/:kind` serve route in
+   `vite.config.ts`; regex.
+3. `DiscoveryDocPayload` booleans in `src/lib/api.ts`.
+4. `DnDView.tsx`: drop top-level Demo tab; add Discovery sub-tab strip (Review /
+   Walkthrough / Demo); sealed-iframe + buttons; URL `?sub=`; CSS.
+5. `demo` + `walkthrough` skills in all three places.
 6. Typecheck (both tsconfigs), test, build. User smokes with a real feature.
 
 ## Out of scope (later)
