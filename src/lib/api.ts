@@ -269,6 +269,9 @@ export interface ApiDiscoveryChild {
 export interface DiscoveryDocPayload {
   folderPath: string;
   doc: ApiDiscoveryDoc | null;
+  /** Whether the session has built each HTML artifact (shown in Discovery sub-tabs). */
+  hasWalkthrough: boolean;
+  hasDemoHtml: boolean;
 }
 
 /** Board-backed part of a feature — a separate request so a slow ADO never
