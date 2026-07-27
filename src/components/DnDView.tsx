@@ -442,26 +442,40 @@ function FacetReadingArea(props: {
   const { facet, sub, onSub, featureId, displayName, doc, board, error, onReloadDoc, onOpenItem } = props;
 
   if (error) {
-    return <main className="dnd-read"><div className="dnd-error">Couldn't read this feature: {error}</div></main>;
+    return <main className="dnd-read"><div className="dnd-read-scroll"><div className="dnd-error">Couldn't read this feature: {error}</div></div></main>;
   }
   if (!doc) {
-    return <main className="dnd-read"><div className="dnd-loading">Loading…</div></main>;
+    return <main className="dnd-read"><div className="dnd-read-scroll"><div className="dnd-loading">Loading…</div></div></main>;
   }
 
+  // The head (title + discovery sub-tabs) stays pinned; only the content below
+  // scrolls. The scroller is keyed by facet+sub so every tab click starts its
+  // page from the top instead of inheriting the previous tab's scroll depth.
   return (
     <main className="dnd-read">
-      <h1 className="dnd-read-title">{renderDisplayName(displayName)}</h1>
-      {facet === 'overview' && <OverviewFacet board={board} onOpenItem={onOpenItem} />}
-      {facet === 'discovery' && (
-        <DiscoveryFacet
-          sub={sub}
-          onSub={onSub}
-          featureId={featureId}
-          payload={doc}
-          onReloadDoc={onReloadDoc}
-        />
-      )}
-      {facet === 'design' && <DesignFacet />}
+      <div className="dnd-read-head">
+        <h1 className="dnd-read-title">{renderDisplayName(displayName)}</h1>
+        {facet === 'discovery' && (
+          <DiscoverySubBar
+            sub={sub}
+            onSub={onSub}
+            demoStatus={doc.doc?.demo.status ?? 'none'}
+            meetingCount={(doc.meetings ?? []).length}
+          />
+        )}
+      </div>
+      <div className="dnd-read-scroll" key={`${facet}:${sub}`}>
+        {facet === 'overview' && <OverviewFacet board={board} onOpenItem={onOpenItem} />}
+        {facet === 'discovery' && (
+          <DiscoveryFacet
+            sub={sub}
+            featureId={featureId}
+            payload={doc}
+            onReloadDoc={onReloadDoc}
+          />
+        )}
+        {facet === 'design' && <DesignFacet />}
+      </div>
     </main>
   );
 }
@@ -572,22 +586,21 @@ function DiscoverySubBar(props: {
   );
 }
 
+/** The sub-tab STRIP renders in the pinned read-head (FacetReadingArea);
+ *  this component is only the active sub-tab's content. */
 function DiscoveryFacet(props: {
   sub: DiscoverySub;
-  onSub: (s: DiscoverySub) => void;
   featureId: number;
   payload: DiscoveryDocPayload;
   onReloadDoc: () => void;
 }): JSX.Element {
-  const { sub, onSub, featureId, payload, onReloadDoc } = props;
-  const demoStatus = payload.doc?.demo.status ?? 'none';
+  const { sub, featureId, payload, onReloadDoc } = props;
   // Defensive: a payload from an older server (dev server started before the
   // meetings field shipped, or a cached response) has no `meetings` — render
   // an empty list instead of crashing the whole facet.
   const meetings = payload.meetings ?? [];
   return (
     <div className="dnd-discovery-wrap">
-      <DiscoverySubBar sub={sub} onSub={onSub} demoStatus={demoStatus} meetingCount={meetings.length} />
       {sub === 'review' && <DiscoveryReview doc={payload.doc} />}
       {sub === 'meetings' && <MeetingsFacet meetings={meetings} />}
       {sub === 'walkthrough' && (

@@ -5310,7 +5310,15 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 .dnd-tabtop.is-sel .dnd-tabtop-hint { color: var(--accent); border-color: color-mix(in oklch, var(--accent) 32%, transparent); }
 
 /* ---- LEVEL 3 — reading area ---- */
-.dnd-read { flex: 1; overflow-y: auto; padding: 30px clamp(20px, 3vw, 40px) 64px; min-width: 0; }
+/* Reading area = pinned head (title + discovery sub-tabs) over its own
+   scroller, so the title and tab strip never scroll away. */
+.dnd-read { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.dnd-read-head { flex: none; padding: 26px clamp(20px, 3vw, 40px) 0; }
+/* Discovery's sub-tab strip carries its own bottom border, so it IS the head's
+   edge; on facets without a strip the head draws its own. */
+.dnd-read-head .dnd-subtabs { margin-bottom: 0; }
+.dnd-read-head:not(:has(.dnd-subtabs)) { border-bottom: 1px solid var(--line-soft); }
+.dnd-read-scroll { flex: 1; overflow-y: auto; padding: 22px clamp(20px, 3vw, 40px) 64px; min-width: 0; }
 .dnd-read-prompt, .dnd-loading { font-size: 15px; color: var(--ink-3); padding: 40px 0; }
 .dnd-read-title {
   margin: 0 0 22px; font-size: 24px; font-weight: 600; color: var(--ink-0);
