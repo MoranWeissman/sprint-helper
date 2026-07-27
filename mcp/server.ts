@@ -22,7 +22,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 import { mirrorSprintSummary, mirrorStandupForToday, mirrorTaskFile } from '../server/archive.js';
 import { getCalendarUrl, setCalendarUrl } from '../server/calendar.js';
@@ -33,6 +34,12 @@ import { sprintCheckIn } from '../server/guardrail.js';
 import { addNote, getHelperNotes } from '../server/helper-notes.js';
 import { buildEstimateAnchor } from '../server/estimate-anchor.js';
 import { checkStaleLogNudge } from '../server/log-nudge.js';
+import {
+  syncManagedSkills,
+  formatSyncReport,
+  globalSkillsDir,
+  checkSkillsDriftNudge,
+} from '../server/skills-sync.js';
 import { buildOrientPacket } from '../server/orient.js';
 import { getPlanningHome, isPlanningHomeCwd, setPlanningHome } from '../server/planning-home.js';
 import { findGaps } from '../server/planning.js';
@@ -74,6 +81,8 @@ import {
   workspaceOfferFor,
   setActiveFeature,
   getActiveFeature,
+  getSeedPath,
+  expandHome,
   type OrientWorkspaceOffer,
 } from '../server/workspace.js';
 import { isDiscoveryStoryTitle, discoveryCloseBlockMessage, discoveryFinishedCheck } from '../server/discovery.js';
@@ -1278,6 +1287,22 @@ Moran, by you, by another session, by ADO itself). Sprint-helper is the
 source of truth; memory is not. The cost of an extra read is small; the
 cost of a stale answer is wrong work.
 
+MANAGED SKILLS (\`skills_sync\`): the three workspace-craft skills — demo,
+discovery, walkthrough — live as copies: the seed folder (the source of
+truth), every registered workspace's \`.claude/skills\`, and the global
+\`~/.claude/skills/sprint-helper-plus/skills\`. RULES:
+  - EDIT AT THE SEED ONLY (\`getSeedPath\` root, \`.claude/skills/<name>\`),
+    then call \`skills_sync\` to fan the change out. Never hand-copy between
+    the folders; never edit a workspace or global copy directly.
+  - Any chat may call it; one run fixes every session at once, because a
+    session reads a skill's body from disk at the moment it uses it. No
+    restart needed for skill edits. (These SERVER_INSTRUCTIONS themselves
+    are the exception: a changed manual only reaches a chat when its MCP
+    connection restarts.)
+  - The server checks about once an hour that all copies still match the
+    seed; if a tool response carries the out-of-sync line, run
+    \`skills_sync\` and echo its report.
+
 EXPLICIT MENU (\`/sprint-helper\`): Moran has a user-level skill at
 \`~/.claude/skills/sprint-helper/SKILL.md\` that pops a menu of common
 operations. When he types \`/sprint-helper\` you'll be handed instructions
@@ -1302,9 +1327,10 @@ const server = new McpServer(
 
 /**
  * MCP results return content blocks; this is the boring JSON-in-text variant.
- * Every successful tool response also gets a stale-session-log check appended
- * — if any open session hasn't seen activity in 45 min, the assistant gets
- * a one-line nudge inside its own context. See server/log-nudge.ts.
+ * Every successful tool response also gets two checks appended: the stale
+ * session-log nudge (server/log-nudge.ts) and the managed-skills drift nudge
+ * (server/skills-sync.ts). Both return null almost always; when one fires the
+ * assistant gets a one-line reminder inside its own context.
  */
 function jsonResult(value: unknown) {
   const blocks: Array<{ type: 'text'; text: string }> = [
@@ -1315,6 +1341,8 @@ function jsonResult(value: unknown) {
   ];
   const nudge = checkStaleLogNudge();
   if (nudge) blocks.push({ type: 'text', text: nudge });
+  const drift = checkSkillsDriftNudge();
+  if (drift) blocks.push({ type: 'text', text: drift });
   return { content: blocks };
 }
 
@@ -1322,6 +1350,8 @@ function errorResult(message: string) {
   const blocks: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: message }];
   const nudge = checkStaleLogNudge();
   if (nudge) blocks.push({ type: 'text', text: nudge });
+  const drift = checkSkillsDriftNudge();
+  if (drift) blocks.push({ type: 'text', text: drift });
   return {
     isError: true,
     content: blocks,
@@ -2722,6 +2752,29 @@ server.registerTool(
         }
       }
       return jsonResult({ ...workspaces, current, offer });
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'skills_sync',
+  {
+    title: 'Sync the managed skills from the seed to every copy',
+    description:
+      "Fan the three managed workspace skills (demo, discovery, walkthrough) out from the seed folder to every registered workspace and the global skills folder, overwriting stale copies. The seed is the ONLY place these skills get edited — after any edit there, call this. One run fixes every chat at once (skills are read from disk when used; no restart). Fire when Moran asks to sync/update the skills, or when a tool response carries the out-of-sync nudge. Returns a plain-English report — echo it verbatim.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const seedSkills = join(resolve(expandHome(getSeedPath())), '.claude', 'skills');
+      const paths = getWorkspaces().paths.map(p => resolve(expandHome(p)));
+      const dead = paths.filter(p => !existsSync(p));
+      const live = paths.filter(p => existsSync(p));
+      const destDirs = [...live.map(p => join(p, '.claude', 'skills')), globalSkillsDir()];
+      const outcomes = syncManagedSkills(seedSkills, destDirs);
+      return jsonResult({ report: formatSyncReport(outcomes, dead) });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
