@@ -5111,8 +5111,15 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   overflow: hidden;
   background: var(--bg-0);
 }
-/* right side: facet tab bar on top, reading area below (own scroll) */
-.dnd-main { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+/* right side: facet tab bar on top, reading area below (own scroll).
+   Carries the landing browser's soft accent glow so the reading area has
+   the same lift as the rest of the app instead of bare base background. */
+.dnd-main {
+  display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+  background:
+    radial-gradient(120% 60% at 50% -10%, color-mix(in oklch, var(--accent) 7%, transparent), transparent 60%),
+    var(--bg-0);
+}
 /* ---- LANDING — full-width feature browser (no feature open) ----
    Borrows the home page's presence: a big light-weight title over an
    uppercase caption, generous whitespace, and the live "In progress"
@@ -5211,9 +5218,14 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   .dnd-card-go { opacity: 1; transform: none; }
 }
 
-/* ---- LEVEL 1 — feature list rail ---- */
+/* ---- LEVEL 1 — feature list rail ----
+   Same raised, slightly-violet zone treatment as the app sidebar, so the
+   D&D page sits at the same overall brightness as the other views (it was
+   on --surface-1, the darkest step, and read as a darker page). */
 .dnd-rail {
-  background: var(--surface-1);
+  background:
+    linear-gradient(180deg, var(--zone-side-edge), transparent 30%),
+    var(--zone-side);
   border-right: 1px solid var(--line-soft);
   padding: 24px 14px;
   overflow-y: auto;
@@ -5246,7 +5258,9 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   border-radius: 10px; padding: 11px 12px; margin-bottom: 4px; color: var(--ink-1);
   transition: background 0.15s ease, border-color 0.15s ease;
 }
-.dnd-row:hover { background: var(--surface-2); }
+/* rail rows sit on --zone-side now (same lightness as surface-2), so hover
+   needs the next step up to stay visible */
+.dnd-row:hover { background: var(--surface-3); }
 .dnd-row.is-sel { background: var(--surface-3); border-color: var(--line-strong); }
 .dnd-row.is-sel .dnd-row-name { color: var(--ink-0); }
 .dnd-row-name { font-size: 14px; font-weight: 500; line-height: 1.35; display: block; margin-bottom: 8px; }
