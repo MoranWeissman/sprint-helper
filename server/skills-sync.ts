@@ -15,6 +15,8 @@ import { join, resolve, relative, sep } from 'node:path';
 import { existsSync, mkdirSync, cpSync, rmSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
+import { getSetting, setSetting } from './timers';
+import { getSeedPath, getWorkspaces, expandHome } from './workspace';
 
 export const MANAGED_SKILLS: readonly string[] = ['demo', 'discovery', 'walkthrough'];
 
@@ -97,4 +99,47 @@ export function formatSyncReport(
   }
   lines.push('Every open chat picks the new skill text up on its next use — no restart needed.');
   return lines.join('\n');
+}
+
+export const SKILLS_DRIFT_CHECKED_KEY = 'skills_drift_checked_at';
+const DRIFT_CHECK_INTERVAL_MS = 60 * 60 * 1000; // at most one check per hour
+
+/**
+ * Throttled drift check for the every-tool-response nudge pipe (same idea as
+ * checkStaleLogNudge). Compares the seed's managed skills against every live
+ * destination; when any copy differs, returns one plain-English line telling
+ * the assistant to run `skills_sync`. Never throws — a broken fs read must
+ * not break a tool response.
+ */
+export function checkSkillsDriftNudge(): string | null {
+  try {
+    const now = Date.now();
+    const last = getSetting(SKILLS_DRIFT_CHECKED_KEY);
+    if (last && now - Date.parse(last) < DRIFT_CHECK_INTERVAL_MS) return null;
+    setSetting(SKILLS_DRIFT_CHECKED_KEY, new Date(now).toISOString());
+
+    const seedSkills = join(resolve(expandHome(getSeedPath())), '.claude', 'skills');
+    const liveWorkspaces = getWorkspaces().paths
+      .map(p => resolve(expandHome(p)))
+      .filter(p => existsSync(p));
+    const destDirs = [...liveWorkspaces.map(p => join(p, '.claude', 'skills')), globalSkillsDir()];
+
+    const drifted: string[] = [];
+    for (const skill of MANAGED_SKILLS) {
+      const seedFp = dirFingerprint(join(seedSkills, skill));
+      if (seedFp === null) continue; // seed missing → skills_sync reports it, not drift
+      if (destDirs.some(d => dirFingerprint(join(d, skill)) !== seedFp)) drifted.push(skill);
+    }
+    if (drifted.length === 0) return null;
+
+    const names = drifted.join(', ');
+    return [
+      '',
+      `🧰 SKILL COPIES OUT OF SYNC — the ${names} skill${drifted.length === 1 ? "'s copies don't" : " copies don't"} all match the seed.`,
+      'Run the `skills_sync` tool to fan the seed version out to every workspace and the global folder.',
+      'This check runs at most once an hour.',
+    ].join('\n');
+  } catch {
+    return null;
+  }
 }

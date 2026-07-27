@@ -16,7 +16,10 @@ import {
   dirFingerprint,
   syncManagedSkills,
   formatSyncReport,
+  checkSkillsDriftNudge,
+  SKILLS_DRIFT_CHECKED_KEY,
 } from './skills-sync';
+import { SEED_KEY, WORKSPACE_PATHS_KEY } from './workspace';
 
 let root: string;
 beforeEach(() => {
@@ -161,5 +164,79 @@ describe('formatSyncReport', () => {
     );
     expect(text).toContain('demo: updated in 1 place');
     expect(text).not.toContain('1 places');
+  });
+});
+
+describe('checkSkillsDriftNudge', () => {
+  // The global skills dir is under the real home folder — tests must never
+  // touch it. Point HOME at a temp dir for the whole describe block.
+  let home: string;
+  let seedRoot: string;
+  let ws: string;
+  const OLD_HOME = process.env.HOME;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-27T09:00:00.000Z'));
+    home = mkdtempSync(join(tmpdir(), 'skills-home-'));
+    process.env.HOME = home;
+    seedRoot = join(root, 'seed-root');
+    ws = join(root, 'ws');
+    store.set(SEED_KEY, seedRoot);
+    store.set(WORKSPACE_PATHS_KEY, JSON.stringify([ws]));
+    mkdirSync(ws, { recursive: true });
+    for (const s of MANAGED_SKILLS) {
+      makeSkill(join(seedRoot, '.claude', 'skills'), s, { 'SKILL.md': 'v1' });
+      makeSkill(join(ws, '.claude', 'skills'), s, { 'SKILL.md': 'v1' });
+      makeSkill(join(home, '.claude', 'skills', 'sprint-helper-plus', 'skills'), s, {
+        'SKILL.md': 'v1',
+      });
+    }
+  });
+
+  afterEach(() => {
+    process.env.HOME = OLD_HOME;
+    vi.useRealTimers();
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it('returns null when every copy matches the seed', () => {
+    expect(checkSkillsDriftNudge()).toBeNull();
+  });
+
+  it('names the drifted skill when a workspace copy differs', () => {
+    writeFileSync(join(ws, '.claude', 'skills', 'demo', 'SKILL.md'), 'hand-edited');
+    const nudge = checkSkillsDriftNudge();
+    expect(nudge).toContain('demo');
+    expect(nudge).toContain('skills_sync');
+  });
+
+  it('throttles: second call within the hour returns null even with drift', () => {
+    writeFileSync(join(ws, '.claude', 'skills', 'demo', 'SKILL.md'), 'hand-edited');
+    expect(checkSkillsDriftNudge()).not.toBeNull();
+    vi.advanceTimersByTime(59 * 60 * 1000);
+    expect(checkSkillsDriftNudge()).toBeNull();
+    vi.advanceTimersByTime(2 * 60 * 1000); // past the hour
+    expect(checkSkillsDriftNudge()).not.toBeNull();
+  });
+
+  it('a missing destination copy counts as drift', () => {
+    rmSync(join(ws, '.claude', 'skills', 'walkthrough'), { recursive: true, force: true });
+    expect(checkSkillsDriftNudge()).toContain('walkthrough');
+  });
+
+  it('a skill missing from the seed is NOT drift (sync reports it instead)', () => {
+    rmSync(join(seedRoot, '.claude', 'skills', 'discovery'), { recursive: true, force: true });
+    expect(checkSkillsDriftNudge()).toBeNull();
+  });
+
+  it('never throws when the seed root is gone entirely', () => {
+    rmSync(seedRoot, { recursive: true, force: true });
+    expect(checkSkillsDriftNudge()).toBeNull();
+  });
+
+  it('a dead workspace path is ignored, not drift', () => {
+    store.set(WORKSPACE_PATHS_KEY, JSON.stringify([ws, join(root, 'gone')]));
+    expect(checkSkillsDriftNudge()).toBeNull();
   });
 });
