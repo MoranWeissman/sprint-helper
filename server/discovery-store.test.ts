@@ -1,6 +1,6 @@
 // server/discovery-store.test.ts
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { readDiscoveryDoc, writeDiscoveryDoc, discoveryStatus, DISCOVERY_MD, DISCOVERY_DIR, htmlArtifactPath, hasHtmlArtifact, listMeetings, MEETINGS_DIR } from './discovery-store';
@@ -132,5 +132,43 @@ describe('listMeetings', () => {
 
   it('never throws on an unreadable folder path', () => {
     expect(listMeetings(join(dir, 'no-such-feature'))).toEqual([]);
+  });
+
+  it('falls back to the filename when the first non-blank line is a paragraph, even with a heading mid-file', () => {
+    addMeeting(
+      '2026-07-27-sync.md',
+      'Quick notes before the call started.\n\n# Decisions\n- moved to argocd\n',
+    );
+    const [m] = listMeetings(dir);
+    expect(m.title).toBe('2026-07-27-sync');
+    expect(m.body).toContain('Quick notes before the call started.');
+    expect(m.body).toContain('**Decisions**\n- moved to argocd');
+  });
+
+  it('detects the title heading even after leading blank lines', () => {
+    addMeeting('2026-07-27.md', '\n\n  # Platform team\nBody line.');
+    const [m] = listMeetings(dir);
+    expect(m.title).toBe('Platform team');
+    expect(m.body).toBe('Body line.');
+  });
+
+  it('skips an unreadable file but still lists the readable ones', () => {
+    addMeeting('2026-07-27.md', '# Good\nFine.');
+    const badPath = join(meetingsDir(), '2026-07-20-bad.md');
+    writeFileSync(badPath, '# Bad\nUnreachable.');
+    chmodSync(badPath, 0o000);
+    try {
+      // Guard: only assert the skip behavior if this environment actually
+      // enforces the permission bits (e.g. not running as root, where
+      // reads succeed regardless of chmod).
+      readFileSync(badPath, 'utf8');
+      // If we get here, chmod 000 did not block the read on this host —
+      // skip the assertion rather than leave a flaky test.
+    } catch {
+      const out = listMeetings(dir);
+      expect(out.map(m => m.file)).toEqual(['2026-07-27.md']);
+    } finally {
+      chmodSync(badPath, 0o644);
+    }
   });
 });

@@ -5598,7 +5598,7 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 }
 .dnd-artifact-empty { font-size: 15px; color: var(--ink-3); padding: 24px 0; }
 
-/* ---- Discovery inner sub-tabs (Review / Walkthrough / Demo) ---- */
+/* ---- Discovery inner sub-tabs (Review / Meetings / Walkthrough / Demo) ---- */
 .dnd-discovery-wrap { display: flex; flex-direction: column; }
 .dnd-subtabs { display: flex; gap: 6px; margin: 0 0 22px; border-bottom: 1px solid var(--line-soft); }
 .dnd-subtab {

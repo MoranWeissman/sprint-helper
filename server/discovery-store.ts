@@ -57,32 +57,43 @@ export interface DiscoveryMeeting {
  *  the date prefix makes that chronological). Missing folder → []. Never throws. */
 export function listMeetings(featureFolderPath: string): DiscoveryMeeting[] {
   const dir = join(featureFolderPath, DISCOVERY_DIR, MEETINGS_DIR);
+  let files: string[];
   try {
-    return readdirSync(dir, { withFileTypes: true })
+    files = readdirSync(dir, { withFileTypes: true })
       .filter(e => e.isFile() && e.name.endsWith('.md'))
       .map(e => e.name)
       .sort()
-      .reverse()
-      .map(file => {
-        const raw = readFileSync(join(dir, file), 'utf8');
-        const lines = raw.split('\n');
-        const headIdx = lines.findIndex(l => /^#\s+\S/.test(l.trim()));
-        const title =
-          headIdx >= 0 ? lines[headIdx].trim().replace(/^#\s+/, '') : file.replace(/\.md$/, '');
-        const bodyLines = headIdx >= 0 ? lines.slice(headIdx + 1) : lines;
-        const body = bodyLines
-          .map(l => {
-            const h = l.trim().match(/^#{1,3}\s+(.+)$/);
-            return h ? `**${h[1]}**` : l;
-          })
-          .join('\n')
-          .trim();
-        const date = /^(\d{4}-\d{2}-\d{2})/.exec(file)?.[1] ?? '';
-        return { file, date, title, body };
-      });
+      .reverse();
   } catch {
-    return []; // missing folder or unreadable entry — an empty list, never an error
+    return []; // missing folder — an empty list, never an error
   }
+  const meetings: DiscoveryMeeting[] = [];
+  for (const file of files) {
+    try {
+      const raw = readFileSync(join(dir, file), 'utf8');
+      const lines = raw.split('\n');
+      // Only the first NON-BLANK line is a title candidate — a hand-written
+      // file that opens with a paragraph and has a heading further down
+      // (e.g. "# Decisions") keeps that paragraph instead of losing it.
+      const firstIdx = lines.findIndex(l => l.trim() !== '');
+      const firstLine = firstIdx >= 0 ? lines[firstIdx].trim() : '';
+      const hasTitle = /^#\s+\S/.test(firstLine);
+      const title = hasTitle ? firstLine.replace(/^#\s+/, '') : file.replace(/\.md$/, '');
+      const bodyLines = hasTitle ? lines.slice(firstIdx + 1) : lines;
+      const body = bodyLines
+        .map(l => {
+          const h = l.trim().match(/^#{1,3}\s+(.+)$/);
+          return h ? `**${h[1]}**` : l;
+        })
+        .join('\n')
+        .trim();
+      const date = /^(\d{4}-\d{2}-\d{2})/.exec(file)?.[1] ?? '';
+      meetings.push({ file, date, title, body });
+    } catch {
+      // unreadable file — skip it, the rest still list
+    }
+  }
+  return meetings;
 }
 
 /** The discovery file's path, preferring the `discovery/` subfolder but falling
