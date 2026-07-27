@@ -581,11 +581,15 @@ function DiscoveryFacet(props: {
 }): JSX.Element {
   const { sub, onSub, featureId, payload, onReloadDoc } = props;
   const demoStatus = payload.doc?.demo.status ?? 'none';
+  // Defensive: a payload from an older server (dev server started before the
+  // meetings field shipped, or a cached response) has no `meetings` — render
+  // an empty list instead of crashing the whole facet.
+  const meetings = payload.meetings ?? [];
   return (
     <div className="dnd-discovery-wrap">
-      <DiscoverySubBar sub={sub} onSub={onSub} demoStatus={demoStatus} meetingCount={payload.meetings.length} />
+      <DiscoverySubBar sub={sub} onSub={onSub} demoStatus={demoStatus} meetingCount={meetings.length} />
       {sub === 'review' && <DiscoveryReview doc={payload.doc} />}
-      {sub === 'meetings' && <MeetingsFacet meetings={payload.meetings} />}
+      {sub === 'meetings' && <MeetingsFacet meetings={meetings} />}
       {sub === 'walkthrough' && (
         payload.hasWalkthrough
           ? <ArtifactView featureId={featureId} kind="walkthrough" title="Discovery walkthrough" />

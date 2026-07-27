@@ -5176,7 +5176,11 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 }
 .dnd-browse-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  /* auto-fit (not auto-fill): empty tracks collapse, so with only one or two
+     features the cards GROW to a comfortable width instead of sitting as
+     skinny slivers in an empty row. Capped at 560px so a lone card still
+     reads as a card, not a banner. */
+  grid-template-columns: repeat(auto-fit, minmax(320px, 560px));
   gap: 16px;
 }
 
