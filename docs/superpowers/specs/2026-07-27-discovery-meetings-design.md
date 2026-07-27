@@ -33,15 +33,19 @@ Decisions made in chat (2026-07-27):
   `hasWalkthrough`/`hasDemoHtml`) also returns the meetings — **no new request**;
   the Meetings tab is instant like the rest of Discovery and never waits on ADO.
 - Payload addition to `DiscoveryDocPayload`:
-  `meetings: Array<{ file: string; date: string; title: string; html: string }>`
+  `meetings: Array<{ file: string; date: string; title: string; body: string }>`
   sorted newest first (by filename, descending — the date prefix makes that
   chronological).
 - `title` = the first `#` heading's text; fallback = the filename without
   extension. `date` = the filename's `YYYY-MM-DD` prefix; a file without a
   valid date prefix is still listed (sorted by name, date shown empty) — never
   silently dropped.
-- `html` = the markdown body rendered and sanitized server-side through the
-  same path the discovery doc already uses. No new rendering pipeline.
+- `body` = the raw markdown after the title line, with one server-side
+  normalization: `#`/`##`/`###` heading lines become the house `**bold**`
+  header lines, so the dashboard's EXISTING block renderer (the one the
+  Overview description already uses) turns them into collapsible sections.
+  No new rendering pipeline, no HTML strings shipped, no HTML injection —
+  the client renders React elements as it does everywhere else.
 - Missing `meetings/` folder → empty array, not an error.
 - Pure helpers (listing, sorting, title/date extraction) live in
   `server/discovery-store.ts` alongside the existing artifact helpers.
@@ -90,9 +94,9 @@ fans out via `skills_sync` — gains a "Discovery meetings" section:
   sort, same-day slug files, title extraction with fallback, date-prefix
   parsing incl. the no-date fallback, missing folder → empty.
 - Route and UI are user-smoked (project convention): Moran opens the Meetings
-  sub-tab on a feature with and without meeting files.
-- Existing sub-tab tests (URL state, reset-on-feature-switch) extend to the
-  fourth tab.
+  sub-tab on a feature with and without meeting files, checks `?sub=meetings`
+  survives a refresh, and that switching features still lands on Review.
+  (No client-side sub-tab tests exist today; that stays true.)
 
 ## Success criteria
 
