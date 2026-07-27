@@ -431,7 +431,7 @@ function adoApiPlugin() {
 
           const { getWorkspaces, getActiveFeature } = await import('./server/workspace');
           const { listTouchedFeatureFolders, deriveDndStatus, groupByDndStatus } = await import('./server/discovery-list');
-          const { discoveryStatus, readDiscoveryDoc, writeDiscoveryDoc, hasHtmlArtifact, htmlArtifactPath } = await import('./server/discovery-store');
+          const { discoveryStatus, readDiscoveryDoc, writeDiscoveryDoc, hasHtmlArtifact, htmlArtifactPath, listMeetings } = await import('./server/discovery-store');
           const { getWorkItem } = await import('./server/ado');
           const { downloadAttachment } = await import('./server/ado-client');
           const { htmlToText } = await import('./server/html-preview');
@@ -499,6 +499,7 @@ function adoApiPlugin() {
               doc: readDiscoveryDoc(folderPath),
               hasWalkthrough: hasHtmlArtifact(folderPath, 'walkthrough'),
               hasDemoHtml: hasHtmlArtifact(folderPath, 'demo'),
+              meetings: listMeetings(folderPath),
             }));
             return;
           }

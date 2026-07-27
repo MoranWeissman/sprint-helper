@@ -265,6 +265,15 @@ export interface ApiDiscoveryChild {
   type: string;
   state: string;
 }
+/** One discovery-meeting summary (a dated markdown file the chat wrote). */
+export interface ApiDiscoveryMeeting {
+  file: string;
+  /** YYYY-MM-DD from the filename; '' when the name has no date prefix. */
+  date: string;
+  title: string;
+  /** Markdown body; headings pre-normalized to the house **bold** lines. */
+  body: string;
+}
 /** Disk-backed part of a feature — reads instantly, never waits on the board. */
 export interface DiscoveryDocPayload {
   folderPath: string;
@@ -272,6 +281,8 @@ export interface DiscoveryDocPayload {
   /** Whether the session has built each HTML artifact (shown in Discovery sub-tabs). */
   hasWalkthrough: boolean;
   hasDemoHtml: boolean;
+  /** Meeting summaries from discovery/meetings/, newest first. */
+  meetings: ApiDiscoveryMeeting[];
 }
 
 /** Board-backed part of a feature — a separate request so a slow ADO never
