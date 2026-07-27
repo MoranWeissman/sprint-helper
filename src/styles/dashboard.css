@@ -5608,6 +5608,17 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   width: 100%; min-height: 72vh; border: 1px solid var(--line-strong);
   border-radius: 12px; background: #07090f;
 }
+/* Walkthrough tab: the artifact is the WHOLE tab (direct child of the wrap),
+   and the inner page is a full-screen slideshow — so the frame must fill the
+   pane exactly instead of guessing a height, or you get scrollbars inside
+   scrollbars. The Demo tab nests its frame between other sections and keeps
+   the normal flowing layout. */
+.dnd-read-scroll:has(.dnd-discovery-wrap > .dnd-artifact) {
+  overflow: hidden; display: flex; flex-direction: column; padding-bottom: 24px;
+}
+.dnd-read-scroll:has(.dnd-discovery-wrap > .dnd-artifact) .dnd-discovery-wrap { flex: 1; min-height: 0; }
+.dnd-discovery-wrap > .dnd-artifact { flex: 1; min-height: 0; }
+.dnd-discovery-wrap > .dnd-artifact .dnd-artifact-frame { flex: 1; min-height: 0; }
 .dnd-artifact-empty { font-size: 15px; color: var(--ink-3); padding: 24px 0; }
 
 /* ---- Discovery inner sub-tabs (Review / Meetings / Walkthrough / Demo) ---- */
