@@ -18,6 +18,8 @@ import {
   formatSyncReport,
   checkSkillsDriftNudge,
   SKILLS_DRIFT_CHECKED_KEY,
+  seedSkillsDir,
+  managedDestinations,
 } from './skills-sync';
 import { SEED_KEY, WORKSPACE_PATHS_KEY } from './workspace';
 
@@ -164,6 +166,43 @@ describe('formatSyncReport', () => {
     );
     expect(text).toContain('demo: updated in 1 place');
     expect(text).not.toContain('1 places');
+  });
+
+  it('omits the no-restart line when nothing was updated', () => {
+    const text = formatSyncReport(
+      [
+        { skill: 'demo', missingSeed: false, updated: [], current: ['/a'] },
+        { skill: 'discovery', missingSeed: true, updated: [], current: [] },
+      ],
+      [],
+    );
+    expect(text).not.toContain('no restart needed');
+  });
+
+  it('keeps the no-restart line when something was updated', () => {
+    const text = formatSyncReport(
+      [{ skill: 'demo', missingSeed: false, updated: ['/a'], current: [] }],
+      [],
+    );
+    expect(text).toContain('no restart needed');
+  });
+});
+
+describe('seedSkillsDir / managedDestinations', () => {
+  it('point at the seed and every live destination, skipping dead workspaces', () => {
+    const seedRoot = join(root, 'seed-root');
+    const ws = join(root, 'ws');
+    mkdirSync(ws, { recursive: true });
+    const deadWs = join(root, 'gone');
+    store.set(SEED_KEY, seedRoot);
+    store.set(WORKSPACE_PATHS_KEY, JSON.stringify([ws, deadWs]));
+
+    expect(seedSkillsDir()).toBe(join(seedRoot, '.claude', 'skills'));
+
+    const { destDirs, deadWorkspaces } = managedDestinations();
+    expect(destDirs).toContain(join(ws, '.claude', 'skills'));
+    expect(destDirs.some(d => d.endsWith(join('sprint-helper-plus', 'skills')))).toBe(true);
+    expect(deadWorkspaces).toEqual([deadWs]);
   });
 });
 

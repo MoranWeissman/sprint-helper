@@ -25,6 +25,19 @@ export function globalSkillsDir(): string {
   return join(homedir(), '.claude', 'skills', 'sprint-helper-plus', 'skills');
 }
 
+/** The seed's skills folder — the single place managed skills get edited. */
+export function seedSkillsDir(): string {
+  return join(resolve(expandHome(getSeedPath())), '.claude', 'skills');
+}
+
+/** Destination skills dirs (live workspaces + global) and dead workspace roots. */
+export function managedDestinations(): { destDirs: string[]; deadWorkspaces: string[] } {
+  const paths = getWorkspaces().paths.map(p => resolve(expandHome(p)));
+  const deadWorkspaces = paths.filter(p => !existsSync(p));
+  const live = paths.filter(p => existsSync(p));
+  return { destDirs: [...live.map(p => join(p, '.claude', 'skills')), globalSkillsDir()], deadWorkspaces };
+}
+
 /** Recursive list of a dir's file paths relative to it, sorted for stability. */
 function listFiles(dir: string): string[] {
   const out: string[] = [];
@@ -97,7 +110,9 @@ export function formatSyncReport(
   for (const w of deadWorkspaces) {
     lines.push(`Skipped a workspace folder that no longer exists on disk: ${w}`);
   }
-  lines.push('Every open chat picks the new skill text up on its next use — no restart needed.');
+  if (outcomes.some(o => o.updated.length > 0)) {
+    lines.push('Every open chat picks the new skill text up on its next use — no restart needed.');
+  }
   return lines.join('\n');
 }
 
@@ -118,11 +133,8 @@ export function checkSkillsDriftNudge(): string | null {
     if (last && now - Date.parse(last) < DRIFT_CHECK_INTERVAL_MS) return null;
     setSetting(SKILLS_DRIFT_CHECKED_KEY, new Date(now).toISOString());
 
-    const seedSkills = join(resolve(expandHome(getSeedPath())), '.claude', 'skills');
-    const liveWorkspaces = getWorkspaces().paths
-      .map(p => resolve(expandHome(p)))
-      .filter(p => existsSync(p));
-    const destDirs = [...liveWorkspaces.map(p => join(p, '.claude', 'skills')), globalSkillsDir()];
+    const seedSkills = seedSkillsDir();
+    const { destDirs } = managedDestinations();
 
     const drifted: string[] = [];
     for (const skill of MANAGED_SKILLS) {

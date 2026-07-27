@@ -22,8 +22,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { existsSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readdirSync } from 'node:fs';
 
 import { mirrorSprintSummary, mirrorStandupForToday, mirrorTaskFile } from '../server/archive.js';
 import { getCalendarUrl, setCalendarUrl } from '../server/calendar.js';
@@ -37,8 +36,9 @@ import { checkStaleLogNudge } from '../server/log-nudge.js';
 import {
   syncManagedSkills,
   formatSyncReport,
-  globalSkillsDir,
   checkSkillsDriftNudge,
+  seedSkillsDir,
+  managedDestinations,
 } from '../server/skills-sync.js';
 import { buildOrientPacket } from '../server/orient.js';
 import { getPlanningHome, isPlanningHomeCwd, setPlanningHome } from '../server/planning-home.js';
@@ -81,8 +81,6 @@ import {
   workspaceOfferFor,
   setActiveFeature,
   getActiveFeature,
-  getSeedPath,
-  expandHome,
   type OrientWorkspaceOffer,
 } from '../server/workspace.js';
 import { isDiscoveryStoryTitle, discoveryCloseBlockMessage, discoveryFinishedCheck } from '../server/discovery.js';
@@ -2768,13 +2766,9 @@ server.registerTool(
   },
   async () => {
     try {
-      const seedSkills = join(resolve(expandHome(getSeedPath())), '.claude', 'skills');
-      const paths = getWorkspaces().paths.map(p => resolve(expandHome(p)));
-      const dead = paths.filter(p => !existsSync(p));
-      const live = paths.filter(p => existsSync(p));
-      const destDirs = [...live.map(p => join(p, '.claude', 'skills')), globalSkillsDir()];
-      const outcomes = syncManagedSkills(seedSkills, destDirs);
-      return jsonResult({ report: formatSyncReport(outcomes, dead) });
+      const { destDirs, deadWorkspaces } = managedDestinations();
+      const outcomes = syncManagedSkills(seedSkillsDir(), destDirs);
+      return jsonResult({ report: formatSyncReport(outcomes, deadWorkspaces) });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
