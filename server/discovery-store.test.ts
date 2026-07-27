@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { readDiscoveryDoc, writeDiscoveryDoc, discoveryStatus, DISCOVERY_MD, DISCOVERY_DIR, htmlArtifactPath, hasHtmlArtifact } from './discovery-store';
+import { readDiscoveryDoc, writeDiscoveryDoc, discoveryStatus, DISCOVERY_MD, DISCOVERY_DIR, htmlArtifactPath, hasHtmlArtifact, listMeetings, MEETINGS_DIR } from './discovery-store';
 import { emptyDiscoveryDoc } from './discovery';
 
 let dir: string;
@@ -72,5 +72,65 @@ describe('discovery-store', () => {
     writeFileSync(join(dir, 'demo', 'concept-demo.html'), '<!doctype html><title>x</title>');
     expect(hasHtmlArtifact(dir, 'demo')).toBe(true);
     expect(hasHtmlArtifact(dir, 'walkthrough')).toBe(false);
+  });
+});
+
+describe('listMeetings', () => {
+  const meetingsDir = () => join(dir, DISCOVERY_DIR, MEETINGS_DIR);
+  const addMeeting = (name: string, content: string) => {
+    mkdirSync(meetingsDir(), { recursive: true });
+    writeFileSync(join(meetingsDir(), name), content);
+  };
+
+  it('returns [] when the meetings folder does not exist', () => {
+    expect(listMeetings(dir)).toEqual([]);
+  });
+
+  it('lists meetings newest first by filename', () => {
+    addMeeting('2026-07-20.md', '# Kickoff\nFirst talk.');
+    addMeeting('2026-07-27.md', '# Platform team\nSecond talk.');
+    const out = listMeetings(dir);
+    expect(out.map(m => m.file)).toEqual(['2026-07-27.md', '2026-07-20.md']);
+  });
+
+  it('extracts title from the first # heading and body without it', () => {
+    addMeeting('2026-07-27.md', '# Platform team — deploy flow\n\nWe agreed on X.\n');
+    const [m] = listMeetings(dir);
+    expect(m.title).toBe('Platform team — deploy flow');
+    expect(m.body).toBe('We agreed on X.');
+    expect(m.date).toBe('2026-07-27');
+  });
+
+  it('falls back to the filename when there is no # heading', () => {
+    addMeeting('2026-07-27-sync.md', 'Just notes, no heading.');
+    const [m] = listMeetings(dir);
+    expect(m.title).toBe('2026-07-27-sync');
+    expect(m.body).toBe('Just notes, no heading.');
+    expect(m.date).toBe('2026-07-27');
+  });
+
+  it('keeps a file without a date prefix, with empty date', () => {
+    addMeeting('notes.md', '# Old notes\nBody.');
+    const [m] = listMeetings(dir);
+    expect(m.file).toBe('notes.md');
+    expect(m.date).toBe('');
+    expect(m.title).toBe('Old notes');
+  });
+
+  it('normalizes ##/### sub-headings in the body to the house **bold** lines', () => {
+    addMeeting('2026-07-27.md', '# Title\n\n## Decisions\n- moved to argocd\n### Details\ntext');
+    const [m] = listMeetings(dir);
+    expect(m.body).toBe('**Decisions**\n- moved to argocd\n**Details**\ntext');
+  });
+
+  it('ignores non-md files and subdirectories', () => {
+    addMeeting('2026-07-27.md', '# Real\nBody.');
+    writeFileSync(join(meetingsDir(), 'image.png'), 'binary');
+    mkdirSync(join(meetingsDir(), 'drafts'), { recursive: true });
+    expect(listMeetings(dir).map(m => m.file)).toEqual(['2026-07-27.md']);
+  });
+
+  it('never throws on an unreadable folder path', () => {
+    expect(listMeetings(join(dir, 'no-such-feature'))).toEqual([]);
   });
 });

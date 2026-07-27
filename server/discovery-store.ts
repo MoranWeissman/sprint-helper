@@ -5,7 +5,7 @@
  * and exposes the read-from-any-session status summary. Reads never throw.
  */
 import { join } from 'node:path';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import {
   parseDiscoveryDoc, renderDiscoveryMarkdown, discoveryFinishedCheck,
   type DiscoveryDoc,
@@ -33,6 +33,56 @@ export function htmlArtifactPath(featureFolderPath: string, kind: HtmlArtifactKi
 /** True when that artifact file exists on disk. */
 export function hasHtmlArtifact(featureFolderPath: string, kind: HtmlArtifactKind): boolean {
   return existsSync(htmlArtifactPath(featureFolderPath, kind));
+}
+
+/** Discovery-meeting summaries live under `discovery/meetings/`, one dated
+ *  markdown file per meeting (`YYYY-MM-DD.md`, extra same-day meetings get a
+ *  slug suffix). Chat-written, human-readable, never overwritten — the record
+ *  of what each discovery meeting said. */
+export const MEETINGS_DIR = 'meetings';
+
+export interface DiscoveryMeeting {
+  file: string;
+  /** The filename's YYYY-MM-DD prefix; '' when the name has none. */
+  date: string;
+  /** First `# ` heading's text; the filename (no extension) when absent. */
+  title: string;
+  /** Raw markdown after the title line; `#`-headings normalized to the house
+   *  `**bold**` header lines so the dashboard's existing block renderer shows
+   *  them as collapsible sections. */
+  body: string;
+}
+
+/** List a feature's meeting summaries, newest first (filename descending —
+ *  the date prefix makes that chronological). Missing folder → []. Never throws. */
+export function listMeetings(featureFolderPath: string): DiscoveryMeeting[] {
+  const dir = join(featureFolderPath, DISCOVERY_DIR, MEETINGS_DIR);
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter(e => e.isFile() && e.name.endsWith('.md'))
+      .map(e => e.name)
+      .sort()
+      .reverse()
+      .map(file => {
+        const raw = readFileSync(join(dir, file), 'utf8');
+        const lines = raw.split('\n');
+        const headIdx = lines.findIndex(l => /^#\s+\S/.test(l.trim()));
+        const title =
+          headIdx >= 0 ? lines[headIdx].trim().replace(/^#\s+/, '') : file.replace(/\.md$/, '');
+        const bodyLines = headIdx >= 0 ? lines.slice(headIdx + 1) : lines;
+        const body = bodyLines
+          .map(l => {
+            const h = l.trim().match(/^#{1,3}\s+(.+)$/);
+            return h ? `**${h[1]}**` : l;
+          })
+          .join('\n')
+          .trim();
+        const date = /^(\d{4}-\d{2}-\d{2})/.exec(file)?.[1] ?? '';
+        return { file, date, title, body };
+      });
+  } catch {
+    return []; // missing folder or unreadable entry — an empty list, never an error
+  }
 }
 
 /** The discovery file's path, preferring the `discovery/` subfolder but falling
