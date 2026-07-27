@@ -5623,3 +5623,12 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   .dnd { grid-template-columns: 240px minmax(0, 1fr); }
   .dnd-tabbar { overflow-x: auto; padding: 0 16px; }
 }
+
+/* ---- Meetings sub-tab ---- */
+.dnd-meetings { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
+.dnd-meeting-date {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px; color: var(--ink-3);
+  background: var(--bg-1); border: 1px solid var(--line-hair);
+  border-radius: 6px; padding: 2px 7px; margin-right: 10px; flex: none;
+}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   fetchDiscoveryList, fetchDiscoveryDoc, fetchDiscoveryBoard, markDiscoveryDemo, openDiscoveryFolder,
   type ApiFeatureSection, type ApiFeatureListEntry, type DiscoveryDocPayload, type DiscoveryBoardPayload,
-  type ApiDiscoveryChild, type DndStatus,
+  type ApiDiscoveryChild, type ApiDiscoveryMeeting, type DndStatus,
 } from '../lib/api';
 
 const STATUS_LABEL: Record<DndStatus, string> = {
@@ -12,7 +12,7 @@ const STATUS_LABEL: Record<DndStatus, string> = {
 };
 
 type Facet = 'overview' | 'discovery' | 'design';
-type DiscoverySub = 'review' | 'walkthrough' | 'demo';
+type DiscoverySub = 'review' | 'meetings' | 'walkthrough' | 'demo';
 
 /** Render a displayName's **bold** span without showing raw asterisks. */
 function renderDisplayName(s: string): JSX.Element {
@@ -139,7 +139,7 @@ function renderDescription(text: string): JSX.Element {
 }
 
 const FACETS: Facet[] = ['overview', 'discovery', 'design'];
-const DISCOVERY_SUBS: DiscoverySub[] = ['review', 'walkthrough', 'demo'];
+const DISCOVERY_SUBS: DiscoverySub[] = ['review', 'meetings', 'walkthrough', 'demo'];
 
 /** Read the open feature + facet + discovery sub-tab from the URL so a refresh
  *  restores them. */
@@ -545,10 +545,12 @@ function DiscoverySubBar(props: {
   sub: DiscoverySub;
   onSub: (s: DiscoverySub) => void;
   demoStatus: 'none' | 'scheduled' | 'built';
+  meetingCount: number;
 }): JSX.Element {
-  const { sub, onSub, demoStatus } = props;
+  const { sub, onSub, demoStatus, meetingCount } = props;
   const tabs: { id: DiscoverySub; label: string; hint?: string }[] = [
     { id: 'review', label: 'Review' },
+    { id: 'meetings', label: 'Meetings', hint: meetingCount > 0 ? String(meetingCount) : undefined },
     { id: 'walkthrough', label: 'Walkthrough' },
     { id: 'demo', label: 'Demo', hint: demoStatus === 'none' ? undefined : demoStatus },
   ];
@@ -581,8 +583,9 @@ function DiscoveryFacet(props: {
   const demoStatus = payload.doc?.demo.status ?? 'none';
   return (
     <div className="dnd-discovery-wrap">
-      <DiscoverySubBar sub={sub} onSub={onSub} demoStatus={demoStatus} />
+      <DiscoverySubBar sub={sub} onSub={onSub} demoStatus={demoStatus} meetingCount={payload.meetings.length} />
       {sub === 'review' && <DiscoveryReview doc={payload.doc} />}
+      {sub === 'meetings' && <MeetingsFacet meetings={payload.meetings} />}
       {sub === 'walkthrough' && (
         payload.hasWalkthrough
           ? <ArtifactView featureId={featureId} kind="walkthrough" title="Discovery walkthrough" />
@@ -642,6 +645,34 @@ function DiscoveryReview(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Elemen
       {doc.openQuestions.length === 0
         ? <p className="dnd-muted">None noted.</p>
         : <ul className="dnd-qs">{doc.openQuestions.map((q, i) => <li key={i}>{q}</li>)}</ul>}
+    </div>
+  );
+}
+
+/** The Meetings sub-tab: one collapsible card per discovery meeting, newest
+ *  first, in the Review cards' style. The files on disk are the record; the
+ *  dashboard only shows them. */
+function MeetingsFacet(props: { meetings: ApiDiscoveryMeeting[] }): JSX.Element {
+  const { meetings } = props;
+  if (meetings.length === 0) {
+    return (
+      <p className="dnd-artifact-empty">
+        No meeting summaries yet. Tell your work chat about a discovery meeting and it will land here.
+      </p>
+    );
+  }
+  return (
+    <div className="dnd-meetings">
+      {meetings.map(m => (
+        <details key={m.file} className="dnd-group">
+          <summary className="dnd-group-sum">
+            <span className="dnd-group-chev" aria-hidden="true" />
+            {m.date && <span className="dnd-meeting-date">{m.date}</span>}
+            <span className="dnd-group-name">{m.title}</span>
+          </summary>
+          <div className="dnd-ov-body">{renderDescription(m.body)}</div>
+        </details>
+      ))}
     </div>
   );
 }
