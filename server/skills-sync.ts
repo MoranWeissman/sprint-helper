@@ -18,7 +18,7 @@ import { createHash } from 'node:crypto';
 import { getSetting, setSetting } from './timers';
 import { getSeedPath, getWorkspaces, expandHome } from './workspace';
 
-export const MANAGED_SKILLS: readonly string[] = ['demo', 'discovery', 'walkthrough'];
+export const MANAGED_SKILLS: readonly string[] = ['demo', 'design', 'discovery', 'walkthrough'];
 
 /** Where the always-on copies live (the `sprint-helper-plus` skill's subs). */
 export function globalSkillsDir(): string {

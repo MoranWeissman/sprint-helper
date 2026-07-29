@@ -42,8 +42,8 @@ function makeSkill(base: string, name: string, files: Record<string, string>) {
 }
 
 describe('MANAGED_SKILLS', () => {
-  it('is exactly the three workspace-craft skills', () => {
-    expect([...MANAGED_SKILLS]).toEqual(['demo', 'discovery', 'walkthrough']);
+  it('is exactly the four workspace-craft skills', () => {
+    expect([...MANAGED_SKILLS]).toEqual(['demo', 'design', 'discovery', 'walkthrough']);
   });
 });
 
