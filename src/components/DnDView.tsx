@@ -170,9 +170,14 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
   const [sub, setSub] = useState<DiscoverySub>(initial.sub);
   const [designSub, setDesignSub] = useState<DesignSub>(initial.designSub);
   // Design's Meetings sub-tab hint lives in the pinned head (DesignSubBar),
-  // sitting outside DesignFacet — DesignFacet reports the count up once its
-  // own fetch lands, same way a child reports state to a sibling.
-  const [designMeetingCount, setDesignMeetingCount] = useState(0);
+  // sitting outside DesignFacet — so the raw meetings array (not a pre-reduced
+  // count) is lifted here, same shape as Discovery's `doc.meetings`, and the
+  // count is computed inline where it's used. DesignFacet clears this on the
+  // very same effect tick where it clears its own payload (keyed on
+  // featureId), so there's no separate reset to remember on any path
+  // (feature switch, facet switch, or browser back/forward) — one effect,
+  // one place data can go stale, and it can't.
+  const [designMeetings, setDesignMeetings] = useState<ApiDiscoveryMeeting[]>([]);
   // Disk-backed doc (Discovery/Demo) and board data (Overview) load separately,
   // so a slow board never stalls the doc that's sitting ready on disk.
   const [doc, setDoc] = useState<DiscoveryDocPayload | null>(null);
@@ -234,7 +239,6 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
     setFacet('discovery');
     setSub('review'); // land on the data view, not a "not built yet" HTML sub-tab
     setDesignSub('review');
-    setDesignMeetingCount(0);
   }
 
   // Clicking into the Design tab always lands on Review, same reasoning as
@@ -276,8 +280,8 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
           onSub={setSub}
           designSub={designSub}
           onDesignSub={setDesignSub}
-          designMeetingCount={designMeetingCount}
-          onDesignMeetingCount={setDesignMeetingCount}
+          designMeetings={designMeetings}
+          onDesignMeetings={setDesignMeetings}
           featureId={selectedId}
           displayName={selectedName}
           doc={doc}
@@ -462,8 +466,8 @@ function FacetReadingArea(props: {
   onSub: (s: DiscoverySub) => void;
   designSub: DesignSub;
   onDesignSub: (s: DesignSub) => void;
-  designMeetingCount: number;
-  onDesignMeetingCount: (n: number) => void;
+  designMeetings: ApiDiscoveryMeeting[];
+  onDesignMeetings: (m: ApiDiscoveryMeeting[]) => void;
   featureId: number;
   displayName: string;
   doc: DiscoveryDocPayload | null;
@@ -473,7 +477,7 @@ function FacetReadingArea(props: {
   onOpenItem?: (id: string) => void;
 }): JSX.Element {
   const {
-    facet, sub, onSub, designSub, onDesignSub, designMeetingCount, onDesignMeetingCount,
+    facet, sub, onSub, designSub, onDesignSub, designMeetings, onDesignMeetings,
     featureId, displayName, doc, board, error, onReloadDoc, onOpenItem,
   } = props;
 
@@ -500,7 +504,7 @@ function FacetReadingArea(props: {
           />
         )}
         {facet === 'design' && (
-          <DesignSubBar sub={designSub} onSub={onDesignSub} meetingCount={designMeetingCount} />
+          <DesignSubBar sub={designSub} onSub={onDesignSub} meetingCount={(designMeetings ?? []).length} />
         )}
       </div>
       <div className="dnd-read-scroll" key={`${facet}:${facet === 'design' ? designSub : sub}`}>
@@ -514,7 +518,7 @@ function FacetReadingArea(props: {
           />
         )}
         {facet === 'design' && (
-          <DesignFacet sub={designSub} featureId={featureId} onMeetingCount={onDesignMeetingCount} />
+          <DesignFacet sub={designSub} featureId={featureId} onMeetings={onDesignMeetings} />
         )}
       </div>
     </main>
@@ -799,26 +803,31 @@ function MeetingsFacet(props: { meetings: ApiDiscoveryMeeting[] }): JSX.Element 
  *  the pinned read-head above, via DesignSubBar). Design's payload is
  *  disk-backed like Discovery's, but it's fetched right here instead of
  *  lifted to DnDView — the Design facet is the only reader of it. The
- *  meeting count still needs to reach the pinned sub-tab strip above, so it's
- *  reported upward once the fetch lands. */
+ *  Meetings-tab hint in the pinned head needs the raw meetings array, though,
+ *  so it's reported upward on the SAME effect tick that clears/refills this
+ *  component's own payload — one effect, keyed on featureId, so there's no
+ *  second reset to remember on any path (feature switch, facet switch, or
+ *  browser back/forward all just change featureId or unmount this component;
+ *  either way the lifted array can't outlive the feature it belongs to). */
 function DesignFacet(props: {
   sub: DesignSub;
   featureId: number;
-  onMeetingCount: (n: number) => void;
+  onMeetings: (m: ApiDiscoveryMeeting[]) => void;
 }): JSX.Element {
-  const { sub, featureId, onMeetingCount } = props;
+  const { sub, featureId, onMeetings } = props;
   const [payload, setPayload] = useState<DesignPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setPayload(null);
     setError(null);
+    onMeetings([]); // clear the previous feature's meetings the instant featureId changes
     fetchDesign(featureId)
-      .then(p => { setPayload(p); onMeetingCount((p.meetings ?? []).length); })
+      .then(p => { setPayload(p); onMeetings(p.meetings ?? []); })
       .catch(e => setError(String(e)));
-    // onMeetingCount is a useState setter (setDesignMeetingCount) — its
-    // identity is stable across renders, so it's safe to depend on here.
-  }, [featureId, onMeetingCount]);
+    // onMeetings is a useState setter (setDesignMeetings) — its identity is
+    // stable across renders, so it's safe to depend on here.
+  }, [featureId, onMeetings]);
 
   if (error) return <div className="dnd-error">Couldn't read the design: {error}</div>;
   if (!payload) return <div className="dnd-loading">Loading…</div>;
