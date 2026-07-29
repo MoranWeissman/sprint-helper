@@ -5435,6 +5435,8 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 .dnd-item.is-risk   { border-left-color: var(--st-blocked);  background: color-mix(in oklch, var(--st-blocked) 9%, var(--surface-2)); }
 .dnd-item.is-option { border-left-color: var(--st-waiting);  background: color-mix(in oklch, var(--st-waiting) 8%, var(--surface-2)); }
 .dnd-item.is-fact   { border-left-color: var(--line-strong); }
+.dnd-item.is-dep    { border-left-color: var(--st-waiting); background: color-mix(in oklch, var(--st-waiting) 8%, var(--surface-2)); }
+.dnd-item.is-mitigation { border-left-color: var(--st-done); background: color-mix(in oklch, var(--st-done) 7%, var(--surface-2)); }
 /* Cap the reading measure — long lines are what make text feel "squashed".
    ~68 characters is the comfortable range; the card can be wider, the text won't. */
 .dnd-item-main { flex: 1; min-width: 0; max-width: 68ch; }
@@ -5459,6 +5461,26 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 .dnd-tag.is-risk { background: var(--st-blocked-bg); color: var(--st-blocked); }
 .dnd-tag.is-fact { background: var(--bg-2); color: var(--ink-3); }
 .dnd-tag.is-option { background: var(--st-waiting-bg); color: var(--st-waiting); }
+.dnd-tag.is-dep { background: var(--st-waiting-bg); color: var(--st-waiting); }
+.dnd-tag.is-mitigation { background: var(--st-done-bg); color: var(--st-done); }
+
+/* Agree-per-part state on Discovery review cards. Quiet by design:
+   the ✓ is muted sage, the "not agreed yet" is ink-3 — informative, not an alarm. */
+.dnd-agreed {
+  flex: none; font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--ink-3); white-space: nowrap;
+}
+.dnd-agreed.is-on { color: var(--st-done); }
+.dnd-problem .dnd-agreed { display: block; margin-top: 10px; }
+
+/* "What we don't accept as-is" list — amber spine, same row anatomy as context items. */
+.dnd-push { list-style: none; padding: 0; margin: 0 0 4px; display: grid; gap: 8px; }
+.dnd-push li {
+  padding: 12px 16px; font-size: 15px; color: var(--ink-1); line-height: 1.7;
+  background: color-mix(in oklch, var(--st-waiting) 7%, var(--surface-2));
+  border: 1px solid var(--line-hair); border-left: 3px solid var(--st-waiting);
+  border-radius: 10px;
+}
 .dnd-lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
 .dnd-lane { background: var(--surface-2); border: 1px solid var(--line-hair); border-radius: 10px; padding: 14px 15px; }
 .dnd-lane-lab { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; color: var(--ink-2); margin-bottom: 7px; }

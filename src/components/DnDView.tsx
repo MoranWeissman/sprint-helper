@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   fetchDiscoveryList, fetchDiscoveryDoc, fetchDiscoveryBoard, markDiscoveryDemo, openDiscoveryFolder,
   type ApiFeatureSection, type ApiFeatureListEntry, type DiscoveryDocPayload, type DiscoveryBoardPayload,
-  type ApiDiscoveryChild, type ApiDiscoveryMeeting, type DndStatus,
+  type ApiDiscoveryChild, type ApiDiscoveryMeeting, type ApiDiscoveryTag, type DndStatus,
 } from '../lib/api';
 
 const STATUS_LABEL: Record<DndStatus, string> = {
@@ -524,9 +524,10 @@ function OverviewFacet(props: { board: DiscoveryBoardPayload | null; onOpenItem?
 }
 
 /** An item can carry several tags; the spine colour follows the most important
- *  one — a risk outranks a change, which outranks an option, then a plain fact. */
-function dominantTag(tags: ('diff' | 'risk' | 'fact' | 'option')[]): string {
-  for (const t of ['risk', 'diff', 'option', 'fact'] as const) if (tags.includes(t)) return t;
+ *  one — a risk outranks a dependency, which outranks a change; a mitigation
+ *  is calmer than all three; then an option, then a plain fact. */
+function dominantTag(tags: ApiDiscoveryTag[]): string {
+  for (const t of ['risk', 'dep', 'diff', 'mitigation', 'option', 'fact'] as const) if (tags.includes(t)) return t;
   return 'fact';
 }
 
@@ -534,7 +535,7 @@ function dominantTag(tags: ('diff' | 'risk' | 'fact' | 'option')[]): string {
  *  a "Show more" toggle reveals the rest. Short items render whole, no toggle. */
 const ITEM_CLAMP_CHARS = 240;
 
-function ContextItem(props: { item: { text: string; tags: ('diff' | 'risk' | 'fact' | 'option')[] } }): JSX.Element {
+function ContextItem(props: { item: { text: string; tags: ApiDiscoveryTag[] } }): JSX.Element {
   const { item } = props;
   const isLong = item.text.length > ITEM_CLAMP_CHARS;
   const [open, setOpen] = useState(false);
@@ -621,14 +622,36 @@ function DiscoveryFacet(props: {
   );
 }
 
+/** The agree-per-part state of one Discovery card. Calm: the ✓ is quiet
+ *  sage, the absence is muted text — never an alarm. */
+function AgreedMark(props: { on: boolean }): JSX.Element {
+  return props.on
+    ? <span className="dnd-agreed is-on">agreed ✓</span>
+    : <span className="dnd-agreed">not agreed yet</span>;
+}
+
 function DiscoveryReview(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Element {
   const { doc } = props;
   if (!doc) return <div className="dnd-empty">This feature has no discovery yet.</div>;
+  const agreed = doc.agreed ?? [];
+  const pushback = doc.pushback ?? [];
+  const mark = (key: string) => <AgreedMark on={agreed.includes(key)} />;
   return (
     <div className="dnd-discovery">
-      <div className="dnd-problem">{doc.problem || '—'}</div>
+      <div className="dnd-problem">
+        {doc.problem || '—'}
+        {doc.problem !== '' && mark('problem')}
+      </div>
 
-      <h2 className="dnd-h2">The feature end-to-end</h2>
+      {pushback.length > 0 && (
+        <>
+          <h2 className="dnd-h2">What we don't accept as-is {mark('pushback')}</h2>
+          <p className="dnd-section-note">Things in this feature we question — to raise with the product side before designing. Never blocks the work.</p>
+          <ul className="dnd-push">{pushback.map((p, i) => <li key={i}>{p}</li>)}</ul>
+        </>
+      )}
+
+      <h2 className="dnd-h2">The feature end-to-end {doc.flow.length > 0 && mark('flow')}</h2>
       <ol className="dnd-flow">{doc.flow.map((s, i) => <li key={i}>{s}</li>)}</ol>
 
       <h2 className="dnd-h2">Context groups</h2>
@@ -637,6 +660,7 @@ function DiscoveryReview(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Elemen
           <summary className="dnd-group-sum">
             <span className="dnd-group-chev" aria-hidden="true" />
             <span className="dnd-group-name">{g.name}</span>
+            {g.items.length > 0 && <AgreedMark on={agreed.includes(`group:${g.name}`)} />}
             <span className="dnd-group-count">{g.items.length}</span>
           </summary>
           <ul className="dnd-items">
@@ -645,7 +669,7 @@ function DiscoveryReview(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Elemen
         </details>
       ))}
 
-      <h2 className="dnd-h2">Lanes</h2>
+      <h2 className="dnd-h2">Lanes {(doc.lanes.ours !== '' || doc.lanes.techLead !== '') && mark('lanes')}</h2>
       <div className="dnd-lanes">
         <div className="dnd-lane">
           <div className="dnd-lane-lab">Ours</div>
@@ -657,7 +681,7 @@ function DiscoveryReview(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Elemen
         </div>
       </div>
 
-      <h2 className="dnd-h2">Open questions</h2>
+      <h2 className="dnd-h2">Open questions {doc.openQuestions.length > 0 && mark('openQuestions')}</h2>
       <p className="dnd-section-note">Still unanswered — your agenda for the talk with the platform team.</p>
       {doc.openQuestions.length === 0
         ? <p className="dnd-muted">None noted.</p>
