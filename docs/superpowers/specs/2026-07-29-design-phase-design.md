@@ -142,8 +142,10 @@ The Design tab replaces its placeholder with sub-tabs mirroring Discovery:
   `design-walkthrough` kind reading from `design/`).
 
 URL state: `facet=design&sub=review|meetings|walkthrough` (the facet exists;
-subs are new). The feature card's design row shows "day N" elapsed (label
-only — NO nudge anywhere; this is the no-clock decision).
+subs are new). NO clock and NO nudges anywhere for design (explicit
+decision). A "day N" elapsed label was considered and CUT from this build:
+computing it needs board+session data, which would break the Design tab's
+disk-only instant load. Revisit only if Moran asks for it.
 
 The API follows the discovery split: the disk-backed design payload gets its
 OWN route, `/api/discovery/<id>/design` — disk-only, never waits on ADO,
