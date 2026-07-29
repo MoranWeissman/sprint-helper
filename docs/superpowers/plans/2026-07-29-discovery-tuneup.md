@@ -103,7 +103,7 @@ describe('discoveryFinishedCheck — agreement coverage', () => {
     expect(r.ok).toBe(false);
     expect(r.missing).toContain('your agreement on the problem');
     expect(r.missing).toContain('your agreement on the lanes');
-    expect(r.missing).toContain('your agreement on the pushback list');
+    expect(r.missing).toContain("your agreement on the list of things we don't accept as-is");
     expect(r.missing).toContain('your agreement on the open questions');
   });
 
@@ -194,7 +194,7 @@ const VALID_TAGS: ReadonlySet<string> = new Set(['diff', 'risk', 'fact', 'option
       present: doc.lanes.ours.trim() !== '' || doc.lanes.techLead.trim() !== '',
       label: 'the lanes',
     },
-    { key: 'pushback', present: doc.pushback.length > 0, label: 'the pushback list' },
+    { key: 'pushback', present: doc.pushback.length > 0, label: "the list of things we don't accept as-is" },
     { key: 'openQuestions', present: doc.openQuestions.length > 0, label: 'the open questions' },
   ];
   for (const p of parts) {
@@ -326,7 +326,7 @@ function DiscoveryReview(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Elemen
       {pushback.length > 0 && (
         <>
           <h2 className="dnd-h2">What we don't accept as-is {mark('pushback')}</h2>
-          <p className="dnd-section-note">Pushback for the product talk — parts of the feature we question before designing. It never blocks the work.</p>
+          <p className="dnd-section-note">Things in this feature we question — to raise with the product side before designing. Never blocks the work.</p>
           <ul className="dnd-push">{pushback.map((p, i) => <li key={i}>{p}</li>)}</ul>
         </>
       )}
@@ -395,7 +395,7 @@ Add the chip rules directly after `.dnd-tag.is-option`:
 .dnd-agreed.is-on { color: var(--st-done); }
 .dnd-problem .dnd-agreed { display: block; margin-top: 10px; }
 
-/* Pushback list — amber spine, same row anatomy as context items. */
+/* "What we don't accept as-is" list — amber spine, same row anatomy as context items. */
 .dnd-push { list-style: none; padding: 0; margin: 0 0 4px; display: grid; gap: 8px; }
 .dnd-push li {
   padding: 12px 16px; font-size: 15px; color: var(--ink-1); line-height: 1.7;
@@ -504,7 +504,7 @@ Two more tags complete the set:
 **(f)** Add a new section right after `## The rules`:
 
 ```markdown
-## Check the feature before you start — the pushback list
+## Check the feature before you start — what we don't accept as-is
 
 The VERY FIRST step of a discovery, before any group is written: read the
 feature's description and check two things:
@@ -545,7 +545,7 @@ they see? Or is it behind-the-scenes plumbing nobody touches?
 ```markdown
 ## Agree per part — never hand USER a finished wall
 
-Build the discovery ONE PART at a time: the pushback check, the problem, the
+Build the discovery ONE PART at a time: the "accept as-is" check, the problem, the
 flow, each context group, the lanes, the open questions. After drafting each
 part:
 
