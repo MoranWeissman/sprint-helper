@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  fetchDiscoveryList, fetchDiscoveryDoc, fetchDiscoveryBoard, markDiscoveryDemo, openDiscoveryFolder,
+  fetchDiscoveryList, fetchDiscoveryDoc, fetchDiscoveryBoard, markDiscoveryDemo, openDiscoveryFolder, fetchDesign,
   type ApiFeatureSection, type ApiFeatureListEntry, type DiscoveryDocPayload, type DiscoveryBoardPayload,
   type ApiDiscoveryChild, type ApiDiscoveryMeeting, type ApiDiscoveryTag, type DndStatus,
+  type DesignPayload, type ApiDesignDoc,
 } from '../lib/api';
 
 const STATUS_LABEL: Record<DndStatus, string> = {
@@ -13,6 +14,7 @@ const STATUS_LABEL: Record<DndStatus, string> = {
 
 type Facet = 'overview' | 'discovery' | 'design';
 type DiscoverySub = 'review' | 'meetings' | 'walkthrough' | 'demo';
+type DesignSub = 'review' | 'meetings' | 'walkthrough';
 
 /** Render a displayName's **bold** span without showing raw asterisks. */
 function renderDisplayName(s: string): JSX.Element {
@@ -140,11 +142,13 @@ function renderDescription(text: string): JSX.Element {
 
 const FACETS: Facet[] = ['overview', 'discovery', 'design'];
 const DISCOVERY_SUBS: DiscoverySub[] = ['review', 'meetings', 'walkthrough', 'demo'];
+const DESIGN_SUBS: DesignSub[] = ['review', 'meetings', 'walkthrough'];
 
-/** Read the open feature + facet + discovery sub-tab from the URL so a refresh
- *  restores them. */
-function readUrlState(): { id: number | null; facet: Facet; sub: DiscoverySub } {
-  if (typeof window === 'undefined') return { id: null, facet: 'discovery', sub: 'review' };
+/** Read the open feature + facet + discovery/design sub-tab from the URL so a
+ *  refresh restores them. Both facets share the one `?sub=` param — only one
+ *  of `sub`/`designSub` is ever meaningful at a time, based on `facet`. */
+function readUrlState(): { id: number | null; facet: Facet; sub: DiscoverySub; designSub: DesignSub } {
+  if (typeof window === 'undefined') return { id: null, facet: 'discovery', sub: 'review', designSub: 'review' };
   const p = new URL(window.location.href).searchParams;
   const rawId = Number(p.get('feature'));
   const id = Number.isInteger(rawId) && rawId > 0 ? rawId : null;
@@ -154,6 +158,7 @@ function readUrlState(): { id: number | null; facet: Facet; sub: DiscoverySub } 
     id,
     facet: FACETS.includes(f as Facet) ? (f as Facet) : 'discovery',
     sub: DISCOVERY_SUBS.includes(s as DiscoverySub) ? (s as DiscoverySub) : 'review',
+    designSub: DESIGN_SUBS.includes(s as DesignSub) ? (s as DesignSub) : 'review',
   };
 }
 
@@ -163,6 +168,11 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
   const [selectedId, setSelectedId] = useState<number | null>(initial.id);
   const [facet, setFacet] = useState<Facet>(initial.facet);
   const [sub, setSub] = useState<DiscoverySub>(initial.sub);
+  const [designSub, setDesignSub] = useState<DesignSub>(initial.designSub);
+  // Design's Meetings sub-tab hint lives in the pinned head (DesignSubBar),
+  // sitting outside DesignFacet — DesignFacet reports the count up once its
+  // own fetch lands, same way a child reports state to a sibling.
+  const [designMeetingCount, setDesignMeetingCount] = useState(0);
   // Disk-backed doc (Discovery/Demo) and board data (Overview) load separately,
   // so a slow board never stalls the doc that's sitting ready on disk.
   const [doc, setDoc] = useState<DiscoveryDocPayload | null>(null);
@@ -202,14 +212,19 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
     } else {
       url.searchParams.set('feature', String(selectedId));
       url.searchParams.set('facet', facet);
-      if (facet === 'discovery') url.searchParams.set('sub', sub); else url.searchParams.delete('sub');
+      if (facet === 'discovery') url.searchParams.set('sub', sub);
+      else if (facet === 'design') url.searchParams.set('sub', designSub);
+      else url.searchParams.delete('sub');
     }
     window.history.replaceState(null, '', url.toString());
-  }, [selectedId, facet, sub]);
+  }, [selectedId, facet, sub, designSub]);
 
   // Back/forward should move between features too.
   useEffect(() => {
-    const handler = () => { const s = readUrlState(); setSelectedId(s.id); setFacet(s.facet); setSub(s.sub); };
+    const handler = () => {
+      const s = readUrlState();
+      setSelectedId(s.id); setFacet(s.facet); setSub(s.sub); setDesignSub(s.designSub);
+    };
     window.addEventListener('popstate', handler);
     return () => window.removeEventListener('popstate', handler);
   }, []);
@@ -218,6 +233,16 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
     setSelectedId(id);
     setFacet('discovery');
     setSub('review'); // land on the data view, not a "not built yet" HTML sub-tab
+    setDesignSub('review');
+    setDesignMeetingCount(0);
+  }
+
+  // Clicking into the Design tab always lands on Review, same reasoning as
+  // selectFeature above — never strand the user on a sub-tab from a
+  // different feature or a different visit.
+  function pickFacet(f: Facet): void {
+    if (f === 'design' && facet !== 'design') setDesignSub('review');
+    setFacet(f);
   }
 
   function goHome(): void {
@@ -244,11 +269,15 @@ export function DnDView({ onOpenItem }: { onOpenItem?: (id: string) => void }): 
         onBack={goHome}
       />
       <div className="dnd-main">
-        <FeatureFacetBar facet={facet} onPick={setFacet} />
+        <FeatureFacetBar facet={facet} onPick={pickFacet} />
         <FacetReadingArea
           facet={facet}
           sub={sub}
           onSub={setSub}
+          designSub={designSub}
+          onDesignSub={setDesignSub}
+          designMeetingCount={designMeetingCount}
+          onDesignMeetingCount={setDesignMeetingCount}
           featureId={selectedId}
           displayName={selectedName}
           doc={doc}
@@ -405,7 +434,7 @@ function FeatureFacetBar(props: {
   const tabs: { id: Facet; label: string; hint?: string }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'discovery', label: 'Discovery' },
-    { id: 'design', label: 'Design', hint: 'soon' },
+    { id: 'design', label: 'Design' },
   ];
   return (
     <nav className="dnd-tabbar" role="tablist" aria-label="This feature">
@@ -431,6 +460,10 @@ function FacetReadingArea(props: {
   facet: Facet;
   sub: DiscoverySub;
   onSub: (s: DiscoverySub) => void;
+  designSub: DesignSub;
+  onDesignSub: (s: DesignSub) => void;
+  designMeetingCount: number;
+  onDesignMeetingCount: (n: number) => void;
   featureId: number;
   displayName: string;
   doc: DiscoveryDocPayload | null;
@@ -439,7 +472,10 @@ function FacetReadingArea(props: {
   onReloadDoc: () => void;
   onOpenItem?: (id: string) => void;
 }): JSX.Element {
-  const { facet, sub, onSub, featureId, displayName, doc, board, error, onReloadDoc, onOpenItem } = props;
+  const {
+    facet, sub, onSub, designSub, onDesignSub, designMeetingCount, onDesignMeetingCount,
+    featureId, displayName, doc, board, error, onReloadDoc, onOpenItem,
+  } = props;
 
   if (error) {
     return <main className="dnd-read"><div className="dnd-read-scroll"><div className="dnd-error">Couldn't read this feature: {error}</div></div></main>;
@@ -448,9 +484,9 @@ function FacetReadingArea(props: {
     return <main className="dnd-read"><div className="dnd-read-scroll"><div className="dnd-loading">Loading…</div></div></main>;
   }
 
-  // The head (title + discovery sub-tabs) stays pinned; only the content below
-  // scrolls. The scroller is keyed by facet+sub so every tab click starts its
-  // page from the top instead of inheriting the previous tab's scroll depth.
+  // The head (title + sub-tabs) stays pinned; only the content below scrolls.
+  // The scroller is keyed by facet+sub so every tab click starts its page
+  // from the top instead of inheriting the previous tab's scroll depth.
   return (
     <main className="dnd-read">
       <div className="dnd-read-head">
@@ -463,8 +499,11 @@ function FacetReadingArea(props: {
             meetingCount={(doc.meetings ?? []).length}
           />
         )}
+        {facet === 'design' && (
+          <DesignSubBar sub={designSub} onSub={onDesignSub} meetingCount={designMeetingCount} />
+        )}
       </div>
-      <div className="dnd-read-scroll" key={`${facet}:${sub}`}>
+      <div className="dnd-read-scroll" key={`${facet}:${facet === 'design' ? designSub : sub}`}>
         {facet === 'overview' && <OverviewFacet board={board} onOpenItem={onOpenItem} />}
         {facet === 'discovery' && (
           <DiscoveryFacet
@@ -474,7 +513,9 @@ function FacetReadingArea(props: {
             onReloadDoc={onReloadDoc}
           />
         )}
-        {facet === 'design' && <DesignFacet />}
+        {facet === 'design' && (
+          <DesignFacet sub={designSub} featureId={featureId} onMeetingCount={onDesignMeetingCount} />
+        )}
       </div>
     </main>
   );
@@ -575,6 +616,38 @@ function DiscoverySubBar(props: {
   ];
   return (
     <nav className="dnd-subtabs" role="tablist" aria-label="Discovery views">
+      {tabs.map(t => (
+        <button
+          key={t.id}
+          role="tab"
+          aria-selected={t.id === sub}
+          className={`dnd-subtab${t.id === sub ? ' is-sel' : ''}`}
+          onClick={() => onSub(t.id)}
+        >
+          {t.label}
+          {t.hint && <span className="dnd-subtab-hint">{t.hint}</span>}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/** Design's sub-tab strip — same anatomy as DiscoverySubBar, minus the Demo
+ *  tab (Design has no demo of its own) and minus a hint on Walkthrough (it's
+ *  just enabled or not, no status word to show). */
+function DesignSubBar(props: {
+  sub: DesignSub;
+  onSub: (s: DesignSub) => void;
+  meetingCount: number;
+}): JSX.Element {
+  const { sub, onSub, meetingCount } = props;
+  const tabs: { id: DesignSub; label: string; hint?: string }[] = [
+    { id: 'review', label: 'Review' },
+    { id: 'meetings', label: 'Meetings', hint: meetingCount > 0 ? String(meetingCount) : undefined },
+    { id: 'walkthrough', label: 'Walkthrough' },
+  ];
+  return (
+    <nav className="dnd-subtabs" role="tablist" aria-label="Design views">
       {tabs.map(t => (
         <button
           key={t.id}
@@ -702,7 +775,7 @@ function MeetingsFacet(props: { meetings: ApiDiscoveryMeeting[] }): JSX.Element 
   if (meetings.length === 0) {
     return (
       <p className="dnd-artifact-empty">
-        No meeting summaries yet. Tell your work chat about a discovery meeting and it will land here.
+        No meeting summaries yet. Tell your work chat about a meeting and it will land here.
       </p>
     );
   }
@@ -722,11 +795,163 @@ function MeetingsFacet(props: { meetings: ApiDiscoveryMeeting[] }): JSX.Element 
   );
 }
 
-function DesignFacet(): JSX.Element {
+/** The active Design sub-tab's content (the sub-tab STRIP itself renders in
+ *  the pinned read-head above, via DesignSubBar). Design's payload is
+ *  disk-backed like Discovery's, but it's fetched right here instead of
+ *  lifted to DnDView — the Design facet is the only reader of it. The
+ *  meeting count still needs to reach the pinned sub-tab strip above, so it's
+ *  reported upward once the fetch lands. */
+function DesignFacet(props: {
+  sub: DesignSub;
+  featureId: number;
+  onMeetingCount: (n: number) => void;
+}): JSX.Element {
+  const { sub, featureId, onMeetingCount } = props;
+  const [payload, setPayload] = useState<DesignPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPayload(null);
+    setError(null);
+    fetchDesign(featureId)
+      .then(p => { setPayload(p); onMeetingCount((p.meetings ?? []).length); })
+      .catch(e => setError(String(e)));
+    // onMeetingCount is a useState setter (setDesignMeetingCount) — its
+    // identity is stable across renders, so it's safe to depend on here.
+  }, [featureId, onMeetingCount]);
+
+  if (error) return <div className="dnd-error">Couldn't read the design: {error}</div>;
+  if (!payload) return <div className="dnd-loading">Loading…</div>;
+
+  const meetings = payload.meetings ?? [];
+  const diagrams = payload.diagrams ?? [];
+
   return (
-    <div className="dnd-placeholder">
-      <p className="dnd-muted">Design hasn't started for this feature yet.</p>
-      <p className="dnd-muted-2">It'll live here once the design phase is built.</p>
+    <div className="dnd-discovery-wrap">
+      {sub === 'review' && <DesignReview doc={payload.doc ?? null} diagrams={diagrams} featureId={featureId} />}
+      {sub === 'meetings' && <MeetingsFacet meetings={meetings} />}
+      {sub === 'walkthrough' && (
+        payload.hasWalkthrough
+          ? <ArtifactView featureId={featureId} kind="design-walkthrough" title="Design walkthrough" />
+          : <p className="dnd-artifact-empty">No design walkthrough built yet. In a Discovery &amp; Design chat, ask to build the design walkthrough.</p>
+      )}
+    </div>
+  );
+}
+
+/** The gate-progress line + the design doc's sections, in review order:
+ *  approach → flows → stories → working plan → open decisions. Same
+ *  collapsible-card and AgreedMark anatomy as DiscoveryReview. */
+function DesignReview(props: { doc: ApiDesignDoc | null; diagrams: string[]; featureId: number }): JSX.Element {
+  const { doc, diagrams, featureId } = props;
+  if (!doc) {
+    return (
+      <div className="dnd-placeholder">
+        <p className="dnd-muted">This feature has no design yet.</p>
+        <p className="dnd-muted-2">In a Discovery &amp; Design chat, say "start the design".</p>
+      </div>
+    );
+  }
+
+  const agreed = doc.agreed ?? [];
+  const mark = (key: string) => <AgreedMark on={agreed.includes(key)} />;
+
+  const approachPresent = doc.approach.lines.length > 0 || doc.approach.diagram.trim() !== '';
+  const flowsPresent = doc.flows.length > 0;
+  const planPresent = doc.plan.length > 0;
+  const decisionsPresent = doc.decisions.length > 0;
+
+  // Same present-parts logic as the server's designAgreementCheck: every
+  // non-empty part plus every story needs its key in `agreed` to count.
+  const parts = [
+    { key: 'approach', present: approachPresent },
+    { key: 'flows', present: flowsPresent },
+    ...doc.stories.map(s => ({ key: `story:${s.title}`, present: true })),
+    { key: 'plan', present: planPresent },
+    { key: 'decisions', present: decisionsPresent },
+  ];
+  const presentParts = parts.filter(p => p.present);
+  const agreedCount = presentParts.filter(p => agreed.includes(p.key)).length;
+  const pushedLabel = doc.pushed.storyIds.length > 0 ? String(doc.pushed.storyIds.length) : 'not yet';
+
+  const diagramImg = (name: string) =>
+    diagrams.includes(name)
+      ? <img src={`/api/discovery/${featureId}/diagram/${name}`} className="dnd-diagram" alt="architecture picture" />
+      : null;
+
+  return (
+    <div className="dnd-discovery">
+      <p className="dnd-section-note">
+        Parts agreed: {agreedCount} of {presentParts.length} · review: {doc.review.status} · stories pushed: {pushedLabel}
+      </p>
+
+      <h2 className="dnd-h2">The approach {approachPresent && mark('approach')}</h2>
+      {doc.approach.lines.length > 0
+        ? <ul className="dnd-flow">{doc.approach.lines.map((l, i) => <li key={i}>{l}</li>)}</ul>
+        : <p className="dnd-muted">Not filled in yet.</p>}
+      {doc.approach.diagram && diagramImg(doc.approach.diagram)}
+
+      <h2 className="dnd-h2">The flows {flowsPresent && mark('flows')}</h2>
+      {doc.flows.length === 0
+        ? <p className="dnd-muted">None yet.</p>
+        : doc.flows.map((f, fi) => (
+          <details key={fi} className="dnd-group">
+            <summary className="dnd-group-sum">
+              <span className="dnd-group-chev" aria-hidden="true" />
+              <span className="dnd-group-name">{f.name}</span>
+            </summary>
+            <div className="dnd-ov-body">
+              <ol className="dnd-flow">{f.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
+              {f.diagram && diagramImg(f.diagram)}
+            </div>
+          </details>
+        ))}
+
+      <h2 className="dnd-h2">The stories</h2>
+      {doc.stories.length === 0
+        ? <p className="dnd-muted">None yet.</p>
+        : doc.stories.map((s, si) => (
+          <details key={si} className="dnd-group">
+            <summary className="dnd-group-sum">
+              <span className="dnd-group-chev" aria-hidden="true" />
+              <span className="dnd-group-name">{s.title}</span>
+              <span className="dnd-hours">{s.estimateHours}h</span>
+              <AgreedMark on={agreed.includes(`story:${s.title}`)} />
+            </summary>
+            <div className="dnd-ov-body">
+              <p>{s.covers || '—'}</p>
+              <p className="dnd-muted">Why this estimate: {s.why || '—'}</p>
+            </div>
+          </details>
+        ))}
+
+      <h2 className="dnd-h2">The working plan {planPresent && mark('plan')}</h2>
+      {doc.plan.length === 0
+        ? <p className="dnd-muted">None yet.</p>
+        : (
+          <ol className="dnd-flow">
+            {doc.plan.map((p, i) => (
+              <li key={i}>
+                {p.step}
+                {p.stories.length > 0 && <> — {p.stories.join(', ')}</>}
+                {p.note && <> ({p.note})</>}
+              </li>
+            ))}
+          </ol>
+        )}
+
+      <h2 className="dnd-h2">Open decisions {decisionsPresent && mark('decisions')}</h2>
+      {doc.decisions.length === 0
+        ? <p className="dnd-muted">None noted.</p>
+        : (
+          <ul className="dnd-qs">
+            {doc.decisions.map((d, i) => (
+              <li key={i}>
+                {d.question} → {d.choice ? d.choice : <span className="dnd-muted">not decided yet</span>}
+              </li>
+            ))}
+          </ul>
+        )}
     </div>
   );
 }
@@ -734,10 +959,11 @@ function DesignFacet(): JSX.Element {
 /** Shows a session-built HTML artifact in a sealed frame. The sandbox allows
  *  scripts (the demo's animated flow, the slideshow) but NOT same-origin, so the
  *  artifact's loud styling can never leak into the calm dashboard. */
-function ArtifactView(props: { featureId: number; kind: 'walkthrough' | 'demo'; title: string }): JSX.Element {
+function ArtifactView(props: { featureId: number; kind: 'walkthrough' | 'demo' | 'design-walkthrough'; title: string }): JSX.Element {
   const { featureId, kind, title } = props;
   const url = `/api/discovery/${featureId}/html/${kind}`;
-  const downloadName = kind === 'walkthrough' ? 'walkthrough.html' : 'concept-demo.html';
+  const downloadName = kind === 'walkthrough' ? 'walkthrough.html'
+    : kind === 'design-walkthrough' ? 'design-walkthrough.html' : 'concept-demo.html';
   return (
     <div className="dnd-artifact">
       <div className="dnd-artifact-bar">

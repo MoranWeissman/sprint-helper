@@ -5501,6 +5501,10 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   border-radius: 10px;
 }
 
+/* Design facet — architecture pictures + the per-story hour chip. */
+.dnd-diagram { max-width: 100%; border: 1px solid var(--line-hair); border-radius: 10px; background: var(--surface-2); }
+.dnd-hours { font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+
 /* Overview facet */
 .dnd-overview-state { margin-bottom: 14px; }
 
