@@ -1,0 +1,186 @@
+/**
+ * Per-feature design phase: the source-file shape, its markdown render, the
+ * agree-per-part coverage check, and the three ordered gates (agreed →
+ * reviewed → pushed). Pure functions over data passed in; never throws;
+ * every reader tolerates missing/garbage input — same discipline as
+ * server/discovery.ts. No fs access here; that's server/design-store.ts.
+ */
+
+export interface DesignStory { title: string; covers: string; estimateHours: number; why: string }
+
+export interface DesignDoc {
+  approach: { lines: string[]; diagram: string };
+  flows: { name: string; steps: string[]; diagram: string }[];
+  stories: DesignStory[];
+  plan: { step: string; stories: string[]; note: string }[];
+  decisions: { question: string; choice: string; decidedInMeeting: string }[];
+  review: { status: 'none' | 'scheduled' | 'done'; date: string };
+  /** Written by the push tool only — chats never hand-write it. */
+  pushed: { at: string; storyIds: number[] };
+  /** Agree-per-part record. Keys: 'approach','flows','plan','decisions','story:<title>'. */
+  agreed: string[];
+}
+
+const VALID_REVIEW: ReadonlySet<string> = new Set(['none', 'scheduled', 'done']);
+const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+const strArray = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+const numArray = (v: unknown): number[] =>
+  Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number' && Number.isFinite(x)) : [];
+const obj = (v: unknown): Record<string, unknown> =>
+  (v != null && typeof v === 'object' && !Array.isArray(v)) ? v as Record<string, unknown> : {};
+
+export function emptyDesignDoc(): DesignDoc {
+  return {
+    approach: { lines: [], diagram: '' },
+    flows: [], stories: [], plan: [], decisions: [],
+    review: { status: 'none', date: '' },
+    pushed: { at: '', storyIds: [] },
+    agreed: [],
+  };
+}
+
+function parseStory(v: unknown): DesignStory | null {
+  const o = obj(v);
+  if (typeof o.title !== 'string' || o.title === '') return null;
+  if (typeof o.estimateHours !== 'number' || !Number.isFinite(o.estimateHours)) return null;
+  return { title: o.title, covers: str(o.covers), estimateHours: o.estimateHours, why: str(o.why) };
+}
+
+export function parseDesignDoc(raw: string | null | undefined): DesignDoc | null {
+  if (!raw) return null;
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return null; }
+  if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const o = parsed as Record<string, unknown>;
+  const approach = obj(o.approach);
+  const review = obj(o.review);
+  const pushed = obj(o.pushed);
+  return {
+    approach: { lines: strArray(approach.lines), diagram: str(approach.diagram) },
+    flows: Array.isArray(o.flows) ? o.flows.map(f => {
+      const fo = obj(f);
+      return typeof fo.name === 'string'
+        ? { name: fo.name, steps: strArray(fo.steps), diagram: str(fo.diagram) } : null;
+    }).filter((f): f is DesignDoc['flows'][number] => f !== null) : [],
+    stories: Array.isArray(o.stories)
+      ? o.stories.map(parseStory).filter((s): s is DesignStory => s !== null) : [],
+    plan: Array.isArray(o.plan) ? o.plan.map(p => {
+      const po = obj(p);
+      return typeof po.step === 'string'
+        ? { step: po.step, stories: strArray(po.stories), note: str(po.note) } : null;
+    }).filter((p): p is DesignDoc['plan'][number] => p !== null) : [],
+    decisions: Array.isArray(o.decisions) ? o.decisions.map(d => {
+      const dd = obj(d);
+      return typeof dd.question === 'string'
+        ? { question: dd.question, choice: str(dd.choice), decidedInMeeting: str(dd.decidedInMeeting) } : null;
+    }).filter((d): d is DesignDoc['decisions'][number] => d !== null) : [],
+    review: {
+      status: (typeof review.status === 'string' && VALID_REVIEW.has(review.status)
+        ? review.status : 'none') as DesignDoc['review']['status'],
+      date: str(review.date),
+    },
+    pushed: { at: str(pushed.at), storyIds: numArray(pushed.storyIds) },
+    agreed: strArray(o.agreed),
+  };
+}
+
+/** Agree-per-part coverage: every part with content + every story needs its
+ *  key in `agreed`. Labels are plain English for the block message. */
+export function designAgreementCheck(doc: DesignDoc): { ok: boolean; unagreed: string[] } {
+  const unagreed: string[] = [];
+  const parts: { key: string; present: boolean; label: string }[] = [
+    { key: 'approach', present: doc.approach.lines.length > 0 || doc.approach.diagram.trim() !== '', label: 'the approach' },
+    { key: 'flows', present: doc.flows.length > 0, label: 'the flows' },
+    ...doc.stories.map(s => ({ key: `story:${s.title}`, present: true, label: `the story "${s.title}"` })),
+    { key: 'plan', present: doc.plan.length > 0, label: 'the working plan' },
+    { key: 'decisions', present: doc.decisions.length > 0, label: 'the open decisions' },
+  ];
+  for (const p of parts) {
+    if (p.present && !doc.agreed.includes(p.key)) unagreed.push(p.label);
+  }
+  return { ok: unagreed.length === 0, unagreed };
+}
+
+/** Title-based: design stories are titled "Design: X" (mirror of discovery). */
+export function isDesignStoryTitle(title: string): boolean {
+  return /^\s*design\b/i.test(title);
+}
+
+/** The story-close gate's message. Names ONLY the first unmet gate —
+ *  one instruction at a time, never a wall. null = allowed to close. */
+export function designGateMessage(args: {
+  isDesignStory: boolean;
+  doc: DesignDoc | null;
+  meetingCount: number;
+}): string | null {
+  if (!args.isDesignStory) return null;
+  if (!args.doc) {
+    return 'This design story has no design yet. Start the design (the design skill walks it part by part), then close.';
+  }
+  const check = designAgreementCheck(args.doc);
+  if (!check.ok) {
+    return `These parts of the design aren't agreed yet: ${check.unagreed.join(', ')}. Explain each one to the user in plain words, get their yes, then continue.`;
+  }
+  const reviewed = args.doc.review.status === 'done' && args.meetingCount > 0;
+  if (!reviewed) {
+    return 'All parts are agreed. Next: hold the design review with the team, record it as a meeting summary, and mark the review done. Then the stories can go to the board.';
+  }
+  if (args.doc.pushed.storyIds.length === 0) {
+    return 'Agreed and reviewed. Next: push the stories to the board with the push tool, then close this design story.';
+  }
+  return null;
+}
+
+export function renderDesignMarkdown(
+  doc: DesignDoc,
+  opts: { featureDisplayName: string },
+): string {
+  const mark = (key: string): string => (doc.agreed.includes(key) ? ' · agreed ✓' : '');
+  const lines: string[] = [];
+  lines.push(`# Design: ${opts.featureDisplayName}`, '');
+  lines.push(`## The approach${mark('approach')}`, '');
+  if (doc.approach.lines.length === 0) lines.push('_(not filled in)_');
+  else doc.approach.lines.forEach(l => lines.push(`- ${l}`));
+  if (doc.approach.diagram) lines.push('', `Picture: ${doc.approach.diagram}`);
+  lines.push('');
+  lines.push(`## The flows${mark('flows')}`, '');
+  if (doc.flows.length === 0) lines.push('_(none yet)_', '');
+  for (const f of doc.flows) {
+    lines.push(`### ${f.name}`, '');
+    f.steps.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
+    if (f.diagram) lines.push('', `Picture: ${f.diagram}`);
+    lines.push('');
+  }
+  lines.push('## The stories', '');
+  if (doc.stories.length === 0) lines.push('_(none yet)_', '');
+  for (const s of doc.stories) {
+    lines.push(`### ${s.title} — ${s.estimateHours}h${mark(`story:${s.title}`)}`, '');
+    lines.push(s.covers || '_(no description)_', '');
+    lines.push(`Why this estimate: ${s.why || '_(not justified yet)_'}`, '');
+  }
+  lines.push(`## The working plan${mark('plan')}`, '');
+  if (doc.plan.length === 0) lines.push('_(none yet)_');
+  else doc.plan.forEach((p, i) => {
+    const which = p.stories.length ? ` — ${p.stories.join(', ')}` : '';
+    const note = p.note ? ` (${p.note})` : '';
+    lines.push(`${i + 1}. ${p.step}${which}${note}`);
+  });
+  lines.push('');
+  lines.push(`## Open decisions${mark('decisions')}`, '');
+  if (doc.decisions.length === 0) lines.push('_(none)_');
+  else for (const d of doc.decisions) {
+    const settled = d.choice
+      ? `${d.choice}${d.decidedInMeeting ? ` (decided in ${d.decidedInMeeting})` : ''}`
+      : 'not decided yet';
+    lines.push(`- ${d.question} → ${settled}`);
+  }
+  lines.push('');
+  lines.push('## Review and push', '');
+  lines.push(`review: ${doc.review.status}${doc.review.date ? ` · ${doc.review.date}` : ''}`);
+  lines.push(doc.pushed.storyIds.length
+    ? `pushed: ${doc.pushed.storyIds.length} stories · ${doc.pushed.at}`
+    : 'pushed: not yet');
+  lines.push('');
+  return lines.join('\n');
+}
