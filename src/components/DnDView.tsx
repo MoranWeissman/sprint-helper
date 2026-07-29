@@ -883,9 +883,9 @@ function DesignReview(props: { doc: ApiDesignDoc | null; diagrams: string[]; fea
   const agreedCount = presentParts.filter(p => agreed.includes(p.key)).length;
   const pushedLabel = doc.pushed.storyIds.length > 0 ? String(doc.pushed.storyIds.length) : 'not yet';
 
-  const diagramImg = (name: string) =>
+  const diagramImg = (name: string, alt = 'architecture picture') =>
     diagrams.includes(name)
-      ? <img src={`/api/discovery/${featureId}/diagram/${name}`} className="dnd-diagram" alt="architecture picture" />
+      ? <img src={`/api/discovery/${featureId}/diagram/${name}`} className="dnd-diagram" alt={alt} />
       : null;
 
   return (
@@ -896,7 +896,7 @@ function DesignReview(props: { doc: ApiDesignDoc | null; diagrams: string[]; fea
 
       <h2 className="dnd-h2">The approach {approachPresent && mark('approach')}</h2>
       {doc.approach.lines.length > 0
-        ? <ul className="dnd-flow">{doc.approach.lines.map((l, i) => <li key={i}>{l}</li>)}</ul>
+        ? <ul className="dnd-plain-list">{doc.approach.lines.map((l, i) => <li key={i}>{l}</li>)}</ul>
         : <p className="dnd-muted">Not filled in yet.</p>}
       {doc.approach.diagram && diagramImg(doc.approach.diagram)}
 
@@ -911,7 +911,7 @@ function DesignReview(props: { doc: ApiDesignDoc | null; diagrams: string[]; fea
             </summary>
             <div className="dnd-ov-body">
               <ol className="dnd-flow">{f.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
-              {f.diagram && diagramImg(f.diagram)}
+              {f.diagram && diagramImg(f.diagram, f.name)}
             </div>
           </details>
         ))}

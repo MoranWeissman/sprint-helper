@@ -1,6 +1,6 @@
 // server/design.test.ts
 import { describe, it, expect } from 'vitest';
-import { parseDesignDoc, emptyDesignDoc, designAgreementCheck, isDesignStoryTitle, designGateMessage, renderDesignMarkdown } from './design';
+import { parseDesignDoc, emptyDesignDoc, designAgreementCheck, isDesignStoryTitle, designGate, designGateMessage, renderDesignMarkdown } from './design';
 
 function agreedDoc() {
   const d = emptyDesignDoc();
@@ -40,14 +40,15 @@ describe('parseDesignDoc', () => {
     expect(p.pushed).toEqual({ at: '', storyIds: [] });
     expect(p.agreed).toEqual([]);
   });
-  it('drops malformed stories and non-numeric hours rather than throwing', () => {
+  it('keeps stories with unusable hours as 0h; drops the truly malformed', () => {
     const p = parseDesignDoc(JSON.stringify({ stories: [
       { title: 'ok', covers: 'c', estimateHours: 4, why: 'w' },
       { title: 'bad hours', covers: 'c', estimateHours: 'six', why: 'w' },
       'garbage',
     ] }))!;
-    expect(p.stories).toHaveLength(1);
+    expect(p.stories).toHaveLength(2);
     expect(p.stories[0].title).toBe('ok');
+    expect(p.stories[1]).toEqual({ title: 'bad hours', covers: 'c', estimateHours: 0, why: 'w' });
   });
 });
 
@@ -124,6 +125,28 @@ describe('designGateMessage — names only the FIRST unmet gate', () => {
   it('a missing doc blocks with a plain start message', () => {
     const msg = designGateMessage({ isDesignStory: true, doc: null, meetingCount: 0 })!;
     expect(msg).toContain('no design');
+  });
+});
+
+describe('designGate — structured step', () => {
+  it('a story titled with the word push does not fool the agree gate', () => {
+    const d = emptyDesignDoc();
+    d.stories = [{ title: 'Add push notifications', covers: 'c', estimateHours: 4, why: 'w' }];
+    const g = designGate({ isDesignStory: true, doc: d, meetingCount: 0 });
+    expect(g.step).toBe('agree');
+    expect(g.message).toContain('the story "Add push notifications"');
+  });
+  it('steps walk start → agree → review → push → none', () => {
+    expect(designGate({ isDesignStory: true, doc: null, meetingCount: 0 }).step).toBe('start');
+    const d = emptyDesignDoc();
+    d.stories = [{ title: 'S', covers: 'c', estimateHours: 4, why: 'w' }];
+    expect(designGate({ isDesignStory: true, doc: d, meetingCount: 0 }).step).toBe('agree');
+    d.agreed = ['story:S'];
+    expect(designGate({ isDesignStory: true, doc: d, meetingCount: 0 }).step).toBe('review');
+    d.review = { status: 'done', date: '2026-08-02' };
+    expect(designGate({ isDesignStory: true, doc: d, meetingCount: 1 }).step).toBe('push');
+    d.pushed = { at: 'x', storyIds: [1] };
+    expect(designGate({ isDesignStory: true, doc: d, meetingCount: 1 }).step).toBe('none');
   });
 });
 

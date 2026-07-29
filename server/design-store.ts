@@ -8,19 +8,19 @@
 import { join } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { parseDesignDoc, renderDesignMarkdown, type DesignDoc } from './design';
-import { listMeetingsFromDir, type DiscoveryMeeting } from './discovery-store';
+import { listMeetingsFromDir, MEETINGS_DIR, type DiscoveryMeeting } from './discovery-store';
 
 /** Design files live in a `design/` subfolder of the feature folder, mirroring
  *  discovery's `discovery/` split — discovery / design / demo stay separate. */
 export const DESIGN_DIR = 'design';
 export const DESIGN_FILE = 'design.json';
 export const DESIGN_MD = 'design.md';
-export const MEETINGS_DIR = 'meetings';
 export const DIAGRAMS_DIR = 'diagrams';
 
 /** Only names like `deploy-flow.svg` are ever read back off disk — this
- *  guards against `../..` traversal once diagrams are served over HTTP. */
-const SAFE_SVG_NAME = /^[\w][\w.-]*\.svg$/;
+ *  guards against `../..` traversal once diagrams are served over HTTP, and
+ *  keeps names with spaces or other odd characters out of the list too. */
+export const SAFE_SVG_NAME = /^[\w][\w.-]*\.svg$/;
 
 export function readDesignDoc(featureFolderPath: string): DesignDoc | null {
   const p = join(featureFolderPath, DESIGN_DIR, DESIGN_FILE);
@@ -57,7 +57,7 @@ export function listDiagrams(featureFolderPath: string): string[] {
   const dir = join(featureFolderPath, DESIGN_DIR, DIAGRAMS_DIR);
   try {
     return readdirSync(dir, { withFileTypes: true })
-      .filter(e => e.isFile() && e.name.endsWith('.svg'))
+      .filter(e => e.isFile() && SAFE_SVG_NAME.test(e.name))
       .map(e => e.name)
       .sort();
   } catch {

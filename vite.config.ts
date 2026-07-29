@@ -606,7 +606,6 @@ function adoApiPlugin() {
             const { existsSync, readFileSync } = await import('node:fs');
             if (!file || !existsSync(file)) { res.statusCode = 404; res.end(JSON.stringify({ error: 'not found' })); return; }
             res.setHeader('Content-Type', 'image/svg+xml');
-            res.setHeader('Cache-Control', 'max-age=86400');
             res.end(readFileSync(file));
             return;
           }

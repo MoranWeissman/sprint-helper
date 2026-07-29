@@ -85,7 +85,7 @@ import {
 } from '../server/workspace.js';
 import { isDiscoveryStoryTitle, discoveryCloseBlockMessage, discoveryFinishedCheck } from '../server/discovery.js';
 import { readDiscoveryDoc } from '../server/discovery-store.js';
-import { isDesignStoryTitle, designGateMessage } from '../server/design.js';
+import { isDesignStoryTitle, designGate, designGateMessage } from '../server/design.js';
 import { readDesignDoc, writeDesignDoc, listDesignMeetings } from '../server/design-store.js';
 import {
   createStory,
@@ -413,6 +413,8 @@ estimateHours), the working plan, open decisions.
     story on the board in one step (Effort in, Story Points derived
     automatically) and refuses if a part isn't agreed yet, the review
     isn't recorded, or it already pushed once before.
+  - Pushed stories land in the CURRENT sprint; if they're for later, move
+    them on the board after the push.
   - Close the "Design: ..." story only after the push goes through.
   - No clock on this phase — no session/timer tracking, same as discovery.
 
@@ -1999,7 +2001,7 @@ server.registerTool(
   {
     title: 'Push the agreed design stories to the board',
     description:
-      "Create every story drafted in the active feature's design on the board in one step. Refuses unless every design part is agreed AND the design review is recorded as done — and refuses a second push. Estimates come from the design's estimateHours per story (Effort set once; Story Points derived automatically). Returns the created stories so you can echo their displayName.",
+      "Create every story drafted in the active feature's design on the board in one step. Refuses unless every design part is agreed AND the design review is recorded as done — and refuses a second push. Estimates come from the design's estimateHours per story (Effort set once; Story Points derived automatically). Pushed stories land in the CURRENT sprint; if they're for later, move them on the board after the push. Returns the created stories so you can echo their displayName.",
     inputSchema: {},
   },
   async () => {
@@ -2009,14 +2011,17 @@ server.registerTool(
       const doc = readDesignDoc(active.folderPath);
       if (!doc) return errorResult('This feature has no design yet — nothing to push.');
       if (doc.pushed.storyIds.length > 0) {
-        return errorResult(`These design stories are already on the board (pushed ${doc.pushed.at}). A second push would duplicate them. To change a story, edit it on the board.`);
+        return errorResult(`These design stories are already on the board (pushed ${doc.pushed.at.slice(0, 10)}). A second push would duplicate them. To change a story, edit it on the board.`);
       }
-      const gate = designGateMessage({
+      const gate = designGate({
         isDesignStory: true, doc, meetingCount: listDesignMeetings(active.folderPath).length,
       });
-      // The only gate allowed to remain at push time is the push itself.
-      if (gate && !gate.includes('push')) return errorResult(gate);
+      if (gate.step !== 'push' && gate.step !== 'none') return errorResult(gate.message ?? 'The design is not ready to push.');
       if (doc.stories.length === 0) return errorResult('The design has no stories drafted — nothing to push.');
+      const noHours = doc.stories.filter(s => s.estimateHours <= 0);
+      if (noHours.length > 0) {
+        return errorResult(`These stories have no hours yet: ${noHours.map(s => `"${s.title}"`).join(', ')}. Agree an estimate for each, then push.`);
+      }
       const created: { id: number; displayName: string }[] = [];
       try {
         for (const s of doc.stories) {
@@ -2032,8 +2037,10 @@ server.registerTool(
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (created.length > 0) {
+          doc.pushed = { at: new Date().toISOString(), storyIds: created.map(c => c.id) };
+          writeDesignDoc(active.folderPath, doc, { featureDisplayName: displayNameFor(active.id, active.title) });
           const names = created.map(c => c.displayName).join(', ');
-          return errorResult(`${msg} Some stories were already created before this failed — tell Moran plainly which ones so nothing gets pushed twice: ${names}.`);
+          return errorResult(`${msg} Some stories were already created before this failed — tell Moran plainly which ones so nothing gets pushed twice: ${names}. The stories that were created are recorded — do NOT run the push again; it would refuse anyway. Create the remaining stories with story_create under the same feature.`);
         }
         return errorResult(msg);
       }

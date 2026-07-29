@@ -5371,6 +5371,13 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
   font-size: 13px; font-weight: 600;
   display: flex; align-items: center; justify-content: center;
 }
+/* Plain facts, not a sequence — same row rhythm as .dnd-flow, no step badge. */
+.dnd-plain-list { list-style: none; margin: 0; padding: 0; }
+.dnd-plain-list li {
+  max-width: 72ch; font-size: 16px; color: var(--ink-1); line-height: 1.7;
+  padding: 14px 0; border-bottom: 1px solid var(--line-hair);
+}
+.dnd-plain-list li:last-child { border-bottom: none; }
 /* Context groups — collapsible topics. Closed by default keeps the eye calm;
    open only what you want to read. Native <details> = no JS, keyboard-friendly. */
 .dnd-group {

@@ -43,8 +43,8 @@ export function emptyDesignDoc(): DesignDoc {
 function parseStory(v: unknown): DesignStory | null {
   const o = obj(v);
   if (typeof o.title !== 'string' || o.title === '') return null;
-  if (typeof o.estimateHours !== 'number' || !Number.isFinite(o.estimateHours)) return null;
-  return { title: o.title, covers: str(o.covers), estimateHours: o.estimateHours, why: str(o.why) };
+  const hours = (typeof o.estimateHours === 'number' && Number.isFinite(o.estimateHours)) ? o.estimateHours : 0;
+  return { title: o.title, covers: str(o.covers), estimateHours: hours, why: str(o.why) };
 }
 
 export function parseDesignDoc(raw: string | null | undefined): DesignDoc | null {
@@ -107,6 +107,33 @@ export function isDesignStoryTitle(title: string): boolean {
   return /^\s*design\b/i.test(title);
 }
 
+export type DesignGateStep = 'none' | 'start' | 'agree' | 'review' | 'push';
+
+/** The three ordered doors as data. 'none' = all passed (or not a design
+ *  story). The message is the plain-English block text for that step. */
+export function designGate(args: {
+  isDesignStory: boolean;
+  doc: DesignDoc | null;
+  meetingCount: number;
+}): { step: DesignGateStep; message: string | null } {
+  if (!args.isDesignStory) return { step: 'none', message: null };
+  if (!args.doc) {
+    return { step: 'start', message: 'This design story has no design yet. Start the design (the design skill walks it part by part), then close.' };
+  }
+  const check = designAgreementCheck(args.doc);
+  if (!check.ok) {
+    return { step: 'agree', message: `These parts of the design aren't agreed yet: ${check.unagreed.join(', ')}. Explain each one to the user in plain words, get their yes, then continue.` };
+  }
+  const reviewed = args.doc.review.status === 'done' && args.meetingCount > 0;
+  if (!reviewed) {
+    return { step: 'review', message: 'All parts are agreed. Next: hold the design review with the team, record it as a meeting summary, and mark the review done. Then the stories can go to the board.' };
+  }
+  if (args.doc.pushed.storyIds.length === 0) {
+    return { step: 'push', message: 'Agreed and reviewed. Next: push the stories to the board with the push tool, then close this design story.' };
+  }
+  return { step: 'none', message: null };
+}
+
 /** The story-close gate's message. Names ONLY the first unmet gate —
  *  one instruction at a time, never a wall. null = allowed to close. */
 export function designGateMessage(args: {
@@ -114,22 +141,7 @@ export function designGateMessage(args: {
   doc: DesignDoc | null;
   meetingCount: number;
 }): string | null {
-  if (!args.isDesignStory) return null;
-  if (!args.doc) {
-    return 'This design story has no design yet. Start the design (the design skill walks it part by part), then close.';
-  }
-  const check = designAgreementCheck(args.doc);
-  if (!check.ok) {
-    return `These parts of the design aren't agreed yet: ${check.unagreed.join(', ')}. Explain each one to the user in plain words, get their yes, then continue.`;
-  }
-  const reviewed = args.doc.review.status === 'done' && args.meetingCount > 0;
-  if (!reviewed) {
-    return 'All parts are agreed. Next: hold the design review with the team, record it as a meeting summary, and mark the review done. Then the stories can go to the board.';
-  }
-  if (args.doc.pushed.storyIds.length === 0) {
-    return 'Agreed and reviewed. Next: push the stories to the board with the push tool, then close this design story.';
-  }
-  return null;
+  return designGate(args).message;
 }
 
 export function renderDesignMarkdown(

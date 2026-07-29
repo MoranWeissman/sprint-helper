@@ -59,6 +59,7 @@ describe('design-store', () => {
     writeFileSync(join(diagramsDir, 'b-flow.svg'), '<svg></svg>');
     writeFileSync(join(diagramsDir, 'a-flow.svg'), '<svg></svg>');
     writeFileSync(join(diagramsDir, 'notes.txt'), 'not a diagram');
+    writeFileSync(join(diagramsDir, 'deploy flow.svg'), '<svg></svg>');
 
     expect(listDiagrams(dir)).toEqual(['a-flow.svg', 'b-flow.svg']);
 
