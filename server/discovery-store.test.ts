@@ -39,8 +39,8 @@ describe('discovery-store', () => {
 
   it('discoveryStatus reports has/finished/demo from the folder', () => {
     expect(discoveryStatus(dir)).toEqual({
-      hasDiscovery: false, finished: false, missing: expect.any(Array), demoStatus: 'none',
-      hasWalkthrough: false, hasDemoHtml: false,
+      hasDiscovery: false, finished: false, missing: expect.any(Array), unagreed: expect.any(Array),
+      demoStatus: 'none', hasWalkthrough: false, hasDemoHtml: false,
     });
     const doc = emptyDiscoveryDoc();
     doc.flow = ['s1', 's2'];

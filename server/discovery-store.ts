@@ -137,6 +137,9 @@ export interface DiscoveryStatus {
   hasDiscovery: boolean;
   finished: boolean;
   missing: string[];
+  /** Bare labels of non-empty parts USER hasn't agreed to yet — a sibling of
+   *  `missing`, never folded into it (content gaps vs agreement gaps). */
+  unagreed: string[];
   demoStatus: string;
   hasWalkthrough: boolean;
   hasDemoHtml: boolean;
@@ -149,6 +152,7 @@ export function discoveryStatus(featureFolderPath: string): DiscoveryStatus {
     hasDiscovery: doc !== null,
     finished: check.ok,
     missing: check.missing,
+    unagreed: check.unagreed,
     demoStatus: doc?.demo.status ?? 'none',
     hasWalkthrough: hasHtmlArtifact(featureFolderPath, 'walkthrough'),
     hasDemoHtml: hasHtmlArtifact(featureFolderPath, 'demo'),

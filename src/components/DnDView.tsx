@@ -535,6 +535,10 @@ function dominantTag(tags: ApiDiscoveryTag[]): string {
  *  a "Show more" toggle reveals the rest. Short items render whole, no toggle. */
 const ITEM_CLAMP_CHARS = 240;
 
+/** Display words for tag chips — plain English instead of the raw tag string.
+ *  Display only: the CSS class name still uses the raw tag. */
+const TAG_LABEL: Record<string, string> = { dep: 'waits on', mitigation: 'answer' };
+
 function ContextItem(props: { item: { text: string; tags: ApiDiscoveryTag[] } }): JSX.Element {
   const { item } = props;
   const isLong = item.text.length > ITEM_CLAMP_CHARS;
@@ -550,7 +554,7 @@ function ContextItem(props: { item: { text: string; tags: ApiDiscoveryTag[] } })
         )}
       </span>
       <span className="dnd-item-tags">
-        {item.tags.map(t => <span key={t} className={`dnd-tag is-${t}`}>{t}</span>)}
+        {item.tags.map(t => <span key={t} className={`dnd-tag is-${t}`}>{TAG_LABEL[t] ?? t}</span>)}
       </span>
     </li>
   );
@@ -640,7 +644,7 @@ function DiscoveryReview(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Elemen
     <div className="dnd-discovery">
       <div className="dnd-problem">
         {doc.problem || '—'}
-        {doc.problem !== '' && mark('problem')}
+        {doc.problem.trim() !== '' && mark('problem')}
       </div>
 
       {pushback.length > 0 && (
@@ -669,7 +673,7 @@ function DiscoveryReview(props: { doc: DiscoveryDocPayload['doc'] }): JSX.Elemen
         </details>
       ))}
 
-      <h2 className="dnd-h2">Lanes {(doc.lanes.ours !== '' || doc.lanes.techLead !== '') && mark('lanes')}</h2>
+      <h2 className="dnd-h2">Lanes {(doc.lanes.ours.trim() !== '' || doc.lanes.techLead.trim() !== '') && mark('lanes')}</h2>
       <div className="dnd-lanes">
         <div className="dnd-lane">
           <div className="dnd-lane-lab">Ours</div>

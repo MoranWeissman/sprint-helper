@@ -102,10 +102,16 @@ export function isGroupComplete(g: DiscoveryGroup): boolean {
 }
 
 /** The story-close gate reads this. ok = a real flow + at least one complete
- *  group. `missing` is plain-English so the close error can quote it. */
-export function discoveryFinishedCheck(doc: DiscoveryDoc | null): { ok: boolean; missing: string[] } {
+ *  group + every non-empty part agreed. `missing` is content gaps (plain
+ *  English so the close error can quote it); `unagreed` is the bare labels of
+ *  non-empty parts USER hasn't agreed to yet — kept separate so the close
+ *  message can talk about them differently ("fill it in" vs "walk it through
+ *  with USER and get a yes"). */
+export function discoveryFinishedCheck(
+  doc: DiscoveryDoc | null,
+): { ok: boolean; missing: string[]; unagreed: string[] } {
   const missing: string[] = [];
-  if (!doc) return { ok: false, missing: ['a discovery doc (none found)'] };
+  if (!doc) return { ok: false, missing: ['a discovery doc (none found)'], unagreed: [] };
   if (doc.flow.length === 0) missing.push('an end-to-end flow');
   if (!doc.groups.some(isGroupComplete)) {
     missing.push('at least one context group with a difference, a risk, and a fact or option');
@@ -126,12 +132,13 @@ export function discoveryFinishedCheck(doc: DiscoveryDoc | null): { ok: boolean;
     { key: 'pushback', present: doc.pushback.length > 0, label: "the list of things we don't accept as-is" },
     { key: 'openQuestions', present: doc.openQuestions.length > 0, label: 'the open questions' },
   ];
+  const unagreed: string[] = [];
   for (const p of parts) {
     if (p.present && !doc.agreed.includes(p.key)) {
-      missing.push(`your agreement on ${p.label}`);
+      unagreed.push(p.label);
     }
   }
-  return { ok: missing.length === 0, missing };
+  return { ok: missing.length === 0 && unagreed.length === 0, missing, unagreed };
 }
 
 export function renderDiscoveryMarkdown(
@@ -226,16 +233,34 @@ export function isDiscoveryStoryTitle(title: string): boolean {
   return /^\s*discovery\b/i.test(title);
 }
 
-/** The story-close gate's message. null = allowed to close. */
+/** The story-close gate's message. null = allowed to close. Content gaps and
+ *  agreement gaps read as separate sentences — one says "fill it in", the
+ *  other says "walk it through with USER and get a yes" — so a mixed case
+ *  doesn't tell USER to just fill in something that's already written but
+ *  not yet agreed. */
 export function discoveryCloseBlockMessage(args: {
   isDiscoveryStory: boolean;
   folderPath: string | null;
-  check: { ok: boolean; missing: string[] };
+  check: { ok: boolean; missing: string[]; unagreed: string[] };
 }): string | null {
   if (!args.isDiscoveryStory) return null;
   if (args.check.ok) return null;
-  const gaps = args.check.missing.join('; ');
-  return `This discovery isn't finished yet — still needs: ${gaps}. Fill it in, then close the story.`;
+  const { missing, unagreed } = args.check;
+  const sentences: string[] = [];
+  if (missing.length > 0) {
+    const gaps = missing.join('; ');
+    sentences.push(
+      unagreed.length > 0
+        ? `This discovery isn't finished yet — still needs: ${gaps}.`
+        : `This discovery isn't finished yet — still needs: ${gaps}. Fill it in, then close the story.`,
+    );
+  }
+  if (unagreed.length > 0) {
+    sentences.push(
+      `These parts aren't agreed yet: ${unagreed.join(', ')}. Explain each one to the user in plain words, get their yes, then close the story.`,
+    );
+  }
+  return sentences.join(' ');
 }
 
 export function discoveryStartNudge(status: { hasDiscovery: boolean; finished: boolean }): string | null {
