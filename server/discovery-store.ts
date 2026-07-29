@@ -18,16 +18,20 @@ export const DISCOVERY_FILE = 'discovery.json';
 export const DISCOVERY_MD = 'discovery.md';
 
 /** HTML artifacts a session builds for a feature, shown in the dashboard's
- *  Discovery sub-tabs. Both live in the feature's `demo/` subfolder. */
-export type HtmlArtifactKind = 'walkthrough' | 'demo';
-const HTML_ARTIFACT_FILE: Record<HtmlArtifactKind, string> = {
-  walkthrough: 'walkthrough.html',
-  demo: 'concept-demo.html',
+ *  Discovery sub-tabs (walkthrough/demo, in `demo/`) or the design phase
+ *  (design-walkthrough, in `design/`). Each kind carries its own subfolder
+ *  AND file name, since they no longer all share one folder. */
+export type HtmlArtifactKind = 'walkthrough' | 'demo' | 'design-walkthrough';
+const HTML_ARTIFACT_FILE: Record<HtmlArtifactKind, { dir: string; file: string }> = {
+  walkthrough: { dir: 'demo', file: 'walkthrough.html' },
+  demo: { dir: 'demo', file: 'concept-demo.html' },
+  'design-walkthrough': { dir: 'design', file: 'walkthrough.html' },
 };
 
 /** Absolute path to a feature's HTML artifact of the given kind. */
 export function htmlArtifactPath(featureFolderPath: string, kind: HtmlArtifactKind): string {
-  return join(featureFolderPath, 'demo', HTML_ARTIFACT_FILE[kind]);
+  const { dir, file } = HTML_ARTIFACT_FILE[kind];
+  return join(featureFolderPath, dir, file);
 }
 
 /** True when that artifact file exists on disk. */
@@ -53,10 +57,11 @@ export interface DiscoveryMeeting {
   body: string;
 }
 
-/** List a feature's meeting summaries, newest first (filename descending —
- *  the date prefix makes that chronological). Missing folder → []. Never throws. */
-export function listMeetings(featureFolderPath: string): DiscoveryMeeting[] {
-  const dir = join(featureFolderPath, DISCOVERY_DIR, MEETINGS_DIR);
+/** Core of `listMeetings`, taking an already-resolved absolute meetings
+ *  folder — shared by discovery's and design's meeting listings. Newest
+ *  first (filename descending — the date prefix makes that chronological).
+ *  Missing folder → []. Never throws. */
+export function listMeetingsFromDir(dir: string): DiscoveryMeeting[] {
   let files: string[];
   try {
     files = readdirSync(dir, { withFileTypes: true })
@@ -94,6 +99,11 @@ export function listMeetings(featureFolderPath: string): DiscoveryMeeting[] {
     }
   }
   return meetings;
+}
+
+/** List a feature's discovery meeting summaries — see `listMeetingsFromDir`. */
+export function listMeetings(featureFolderPath: string): DiscoveryMeeting[] {
+  return listMeetingsFromDir(join(featureFolderPath, DISCOVERY_DIR, MEETINGS_DIR));
 }
 
 /** The discovery file's path, preferring the `discovery/` subfolder but falling
