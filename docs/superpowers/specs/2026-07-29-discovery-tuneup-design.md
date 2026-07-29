@@ -9,7 +9,7 @@ mitigations, and dependencies only — plus two new muscles: pushing back on
 fat features, and hearing end-clients before design when the feature is
 client-facing.
 
-## What changes (5 things)
+## What changes (6 things)
 
 ### 1. Fast = focused, not sloppy (skill text only)
 
@@ -53,9 +53,10 @@ Code touchpoints:
   family** (an answer/success). Follow the exact pattern of the existing
   diff/risk/fact/option chips.
 
-The **finish gate does not change**: still flow + one group with a diff, a
-risk, and a fact or option. `dep`/`mitigation` are extra vocabulary, not new
-requirements.
+The tags add **no new finish requirement**: still flow + one group with a
+diff, a risk, and a fact or option. `dep`/`mitigation` are extra
+vocabulary. (The gate DOES grow one new check — agreement coverage — but
+that comes from §6, not from the tags.)
 
 ### 3. Pushback: "what we don't accept as-is"
 
@@ -86,7 +87,9 @@ A new top-level field in `discovery.json`:
   stays calm when there's nothing to push back on. Client code must
   tolerate an old payload with the field missing (`payload.pushback ?? []`
   — same defensive rule that already burned us once with `meetings`).
-- `discoveryFinishedCheck`: unchanged.
+- `discoveryFinishedCheck`: pushback adds no requirement (an empty list is
+  a valid answer). But a NON-empty pushback list is a part like any other —
+  §6's agreement coverage applies to it.
 
 ### 4. Client step by judgment (skill text only)
 
@@ -118,6 +121,68 @@ material:
 - The tag-chip guidance gains `dep` (amber) and `mitigation` (green), same
   functional-color meanings as the dashboard.
 
+### 6. Agree-per-part, enforced by the gate
+
+USER never receives a finished discovery to review as one wall. The chat
+builds it part by part, and each part must be explained and agreed before
+the discovery can close.
+
+**The flow (skill text):** after drafting each part — the problem, the
+flow, each context group, the pushback list, lanes, open questions — the
+chat:
+
+1. Explains that part to USER in simple, non-academic English. Simplify the
+   WORDING, never cut the content — every detail stays, said plainly.
+2. Asks for USER's take and waits.
+3. Only on agreement, marks the part agreed and moves to the next part.
+4. If an already-agreed part changes later (an edit, a meeting finding
+   folded in), the chat REMOVES its mark and re-walks that part with USER.
+
+**The file shape:** new top-level field in `discovery.json`:
+
+```json
+"agreed": ["problem", "flow", "group:CD pipeline", "pushback", "lanes", "openQuestions"]
+```
+
+Section keys: `problem`, `flow`, `lanes`, `pushback`, `openQuestions`, and
+`group:<group name>` for each context group (renaming a group drops its
+mark — correct, since a renamed group should be re-confirmed).
+
+**The gate (code — this is the speed bump):** `discoveryFinishedCheck`
+additionally requires: every NON-EMPTY part is listed in `agreed`. Empty
+parts need no mark. The `missing` list names unagreed parts in plain
+English ("the group 'CD pipeline' isn't agreed with you yet"), so the
+close-block message tells the chat exactly what to walk through. A chat
+that drafted everything solo hits this wall and has to come back to USER.
+
+Honest limit: the gate checks COVERAGE, not content — if a chat edits an
+agreed part and dishonestly keeps the mark, code won't catch it (catching
+that would need content hashing; not worth it). The skill text carries
+rule 4 above, and USER sees every card's ✓ state on the page.
+
+**Code touchpoints:**
+
+- `server/discovery.ts`: `DiscoveryDoc` gains `agreed: string[]`
+  (`strArray` parse, `[]` default — old files stay parseable);
+  `discoveryFinishedCheck` gains the coverage check;
+  `renderDiscoveryMarkdown` marks agreed sections (e.g. "· agreed ✓" on
+  section headers).
+- `src/lib/api.ts`: payload type gains `agreed: string[]`.
+- `src/components/DnDView.tsx`: each Discovery card header on the Review
+  sub-tab shows a small "agreed ✓" chip when its key is in `agreed`, and a
+  quiet "not agreed yet" mark when it isn't (calm styling — the ✓ is the
+  accent, the absence is muted, never alarming).
+- SEED discovery skill: the flow above + the `agreed` field in the EXACT
+  file shape example.
+
+**Migration:** already-closed discovery stories are untouched (the gate
+only runs at close). An old discovery still open when this ships will
+show all parts unagreed — one quick walk-through with USER marks them.
+
+**Carries forward:** the design phase (next spec) inherits this exact
+pattern — its parts (stories, plan, estimates) also get explained and
+agreed one by one before anything closes.
+
 ## Where the edits land
 
 | Piece | File(s) |
@@ -141,12 +206,20 @@ and the two new tags, or work chats will keep writing the old shape.
     omits it when empty.
   - `discoveryFinishedCheck` on a doc that ONLY has dep/mitigation items
     still fails (gate vocabulary unchanged).
+  - `agreed`: parse reads it, missing → `[]`; gate fails when a non-empty
+    part (problem / flow / a group / pushback / lanes / openQuestions) has
+    no mark, and names it plainly in `missing`; gate passes when all
+    non-empty parts are marked; empty parts need no mark; a renamed group's
+    old `group:<name>` key does not satisfy the new name.
+  - `renderDiscoveryMarkdown` shows the agreed mark on marked sections.
 - UI stays covered the way it is today (no component unit tests for D&D);
   USER smokes the chips + pushback card in the browser.
 
 ## What does NOT change
 
-- The finish gate, the 2–3 day cap, the day nudges.
+- The gate's CONTENT requirements (flow + one complete group) — §6 only
+  adds the agreement-coverage check on top.
+- The 2–3 day cap, the day nudges.
 - The demo skill and the concept-demo format.
 - The meetings flow (reused as-is for client feedback).
 - `discovery.md` stays regenerated from JSON — never hand-edited.
