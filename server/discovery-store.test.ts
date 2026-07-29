@@ -47,6 +47,7 @@ describe('discovery-store', () => {
     doc.groups = [{ name: 'g', items: [
       { text: 'a', tags: ['diff'] }, { text: 'b', tags: ['risk'] }, { text: 'c', tags: ['fact'] },
     ] }];
+    doc.agreed = ['flow', 'group:g'];
     doc.demo.status = 'scheduled';
     writeDiscoveryDoc(dir, doc, '#100');
     const st = discoveryStatus(dir);

@@ -64,6 +64,34 @@ describe('parseDiscoveryDoc', () => {
     expect(e.flow).toEqual([]);
     expect(e.groups).toEqual([]);
     expect(e.demo.status).toBe('none');
+    expect(e.pushback).toEqual([]);
+    expect(e.agreed).toEqual([]);
+  });
+
+  it('keeps the new dep and mitigation tags, still drops unknown ones', () => {
+    const doc = {
+      problem: 'x', flow: [], groups: [
+        { name: 'g', items: [
+          { text: 'needs platform-team access first', tags: ['dep'] },
+          { text: 'start with one shared app', tags: ['mitigation', 'bogus'] },
+        ] },
+      ], lanes: { ours: '', techLead: '' },
+      demo: { status: 'none', shape: '', date: '' }, openQuestions: [],
+    };
+    const parsed = parseDiscoveryDoc(JSON.stringify(doc));
+    expect(parsed!.groups[0].items[0].tags).toEqual(['dep']);
+    expect(parsed!.groups[0].items[1].tags).toEqual(['mitigation']);
+  });
+
+  it('reads pushback and agreed, defaulting to empty arrays', () => {
+    const withBoth = parseDiscoveryDoc(JSON.stringify({
+      pushback: ['this bundles two features', 7], agreed: ['problem', 'flow'],
+    }));
+    expect(withBoth!.pushback).toEqual(['this bundles two features']); // non-string dropped
+    expect(withBoth!.agreed).toEqual(['problem', 'flow']);
+    const without = parseDiscoveryDoc('{}');
+    expect(without!.pushback).toEqual([]);
+    expect(without!.agreed).toEqual([]);
   });
 });
 
@@ -108,9 +136,85 @@ describe('discoveryFinishedCheck', () => {
     doc.groups = [{ name: 'g', items: [
       { text: 'a', tags: ['diff'] }, { text: 'b', tags: ['risk'] }, { text: 'c', tags: ['option'] },
     ] }];
+    doc.agreed = ['flow', 'group:g'];
     const r = discoveryFinishedCheck(doc);
     expect(r.ok).toBe(true);
     expect(r.missing).toEqual([]);
+  });
+});
+
+describe('discoveryFinishedCheck — agreement coverage', () => {
+  // A doc that satisfies the CONTENT gate (flow + one complete group).
+  function contentOkDoc() {
+    const doc = emptyDiscoveryDoc();
+    doc.flow = ['step 1', 'step 2'];
+    doc.groups = [{ name: 'CD pipeline', items: [
+      { text: 'a', tags: ['diff'] }, { text: 'b', tags: ['risk'] }, { text: 'c', tags: ['fact'] },
+    ] }];
+    return doc;
+  }
+
+  it('fails when non-empty parts are not agreed, naming each plainly', () => {
+    const r = discoveryFinishedCheck(contentOkDoc());
+    expect(r.ok).toBe(false);
+    expect(r.missing).toContain('your agreement on the end-to-end flow');
+    expect(r.missing).toContain('your agreement on the group "CD pipeline"');
+  });
+
+  it('passes when every non-empty part is agreed; empty parts need no mark', () => {
+    const doc = contentOkDoc(); // problem, lanes, pushback, openQuestions all empty
+    doc.agreed = ['flow', 'group:CD pipeline'];
+    const r = discoveryFinishedCheck(doc);
+    expect(r.ok).toBe(true);
+    expect(r.missing).toEqual([]);
+  });
+
+  it('requires agreement on problem, lanes, pushback, and open questions once they have content', () => {
+    const doc = contentOkDoc();
+    doc.agreed = ['flow', 'group:CD pipeline'];
+    doc.problem = 'Move CD to GitHub.';
+    doc.lanes.ours = 'the flow shape';
+    doc.pushback = ['this is a runbook, not a requirement'];
+    doc.openQuestions = ['who owns the runner?'];
+    const r = discoveryFinishedCheck(doc);
+    expect(r.ok).toBe(false);
+    expect(r.missing).toContain('your agreement on the problem');
+    expect(r.missing).toContain('your agreement on the lanes');
+    expect(r.missing).toContain("your agreement on the list of things we don't accept as-is");
+    expect(r.missing).toContain('your agreement on the open questions');
+  });
+
+  it('a renamed group is not covered by its old mark', () => {
+    const doc = contentOkDoc();
+    doc.agreed = ['flow', 'group:Old name'];
+    expect(discoveryFinishedCheck(doc).ok).toBe(false);
+  });
+
+  it('dep/mitigation items alone still do not complete a group', () => {
+    const doc = emptyDiscoveryDoc();
+    doc.flow = ['step 1'];
+    doc.groups = [{ name: 'g', items: [
+      { text: 'a', tags: ['dep'] }, { text: 'b', tags: ['mitigation'] },
+    ] }];
+    doc.agreed = ['flow', 'group:g'];
+    expect(discoveryFinishedCheck(doc).ok).toBe(false); // no diff/risk/fact-or-option
+  });
+});
+
+describe('renderDiscoveryMarkdown — pushback + agreed marks', () => {
+  it('prints the pushback section only when non-empty, and marks agreed sections', () => {
+    const doc = emptyDiscoveryDoc();
+    doc.problem = 'Move CD to GitHub.';
+    doc.flow = ['step 1'];
+    doc.pushback = ['this bundles two features'];
+    doc.agreed = ['problem', 'pushback'];
+    const md = renderDiscoveryMarkdown(doc, { featureDisplayName: '**F** (#1)' });
+    expect(md).toContain("## What we're solving · agreed ✓");
+    expect(md).toContain("## What we don't accept as-is · agreed ✓");
+    expect(md).toContain('- this bundles two features');
+    expect(md).toContain('## The feature end-to-end\n'); // flow not agreed → no mark
+    const empty = renderDiscoveryMarkdown(emptyDiscoveryDoc(), { featureDisplayName: 'F' });
+    expect(empty).not.toContain("What we don't accept");
   });
 });
 

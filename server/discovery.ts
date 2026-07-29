@@ -7,8 +7,8 @@
  */
 import { countWorkingDays, DEFAULT_WORKING_DAYS } from './capacity';
 
-export type DiscoveryTag = 'diff' | 'risk' | 'fact' | 'option';
-const VALID_TAGS: ReadonlySet<string> = new Set(['diff', 'risk', 'fact', 'option']);
+export type DiscoveryTag = 'diff' | 'risk' | 'fact' | 'option' | 'dep' | 'mitigation';
+const VALID_TAGS: ReadonlySet<string> = new Set(['diff', 'risk', 'fact', 'option', 'dep', 'mitigation']);
 
 export interface DiscoveryItem { text: string; tags: DiscoveryTag[] }
 export interface DiscoveryGroup { name: string; items: DiscoveryItem[] }
@@ -24,6 +24,13 @@ export interface DiscoveryDoc {
    *  the demo generator gives it a richer home. */
   demo: { status: DemoStatus; shape: string; date: string; notes: string };
   openQuestions: string[];
+  /** "What we don't accept as-is" — pushback one-liners for the product talk.
+   *  Empty = the feature is accepted as written. Never blocks closing by content. */
+  pushback: string[];
+  /** Parts USER agreed after a plain-English walk-through. Keys: 'problem',
+   *  'flow', 'lanes', 'pushback', 'openQuestions', and `group:<group name>`.
+   *  The close gate requires every non-empty part to be listed here. */
+  agreed: string[];
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
@@ -56,6 +63,7 @@ export function emptyDiscoveryDoc(): DiscoveryDoc {
     lanes: { ours: '', techLead: '' },
     demo: { status: 'none', shape: '', date: '', notes: '' },
     openQuestions: [],
+    pushback: [], agreed: [],
   };
 }
 
@@ -84,6 +92,7 @@ export function parseDiscoveryDoc(raw: string | null | undefined): DiscoveryDoc 
     lanes: { ours: str(lanes.ours), techLead: str(lanes.techLead) },
     demo: { status, shape: str(demo.shape), date: str(demo.date), notes: str(demo.notes) },
     openQuestions: strArray(o.openQuestions),
+    pushback: strArray(o.pushback), agreed: strArray(o.agreed),
   };
 }
 
@@ -101,6 +110,27 @@ export function discoveryFinishedCheck(doc: DiscoveryDoc | null): { ok: boolean;
   if (!doc.groups.some(isGroupComplete)) {
     missing.push('at least one context group with a difference, a risk, and a fact or option');
   }
+  // Agree-per-part: every part with content must be walked through with USER
+  // and marked agreed before the story can close. Empty parts need no mark.
+  const parts: { key: string; present: boolean; label: string }[] = [
+    { key: 'problem', present: doc.problem.trim() !== '', label: 'the problem' },
+    { key: 'flow', present: doc.flow.length > 0, label: 'the end-to-end flow' },
+    ...doc.groups.map(g => ({
+      key: `group:${g.name}`, present: g.items.length > 0, label: `the group "${g.name}"`,
+    })),
+    {
+      key: 'lanes',
+      present: doc.lanes.ours.trim() !== '' || doc.lanes.techLead.trim() !== '',
+      label: 'the lanes',
+    },
+    { key: 'pushback', present: doc.pushback.length > 0, label: "the list of things we don't accept as-is" },
+    { key: 'openQuestions', present: doc.openQuestions.length > 0, label: 'the open questions' },
+  ];
+  for (const p of parts) {
+    if (p.present && !doc.agreed.includes(p.key)) {
+      missing.push(`your agreement on ${p.label}`);
+    }
+  }
   return { ok: missing.length === 0, missing };
 }
 
@@ -108,30 +138,36 @@ export function renderDiscoveryMarkdown(
   doc: DiscoveryDoc,
   opts: { featureDisplayName: string },
 ): string {
+  const agreedMark = (key: string): string => (doc.agreed.includes(key) ? ' · agreed ✓' : '');
   const lines: string[] = [];
   lines.push(`# Discovery: ${opts.featureDisplayName}`, '');
-  lines.push('## What we\'re solving', '', doc.problem || '_(not filled in)_', '');
-  lines.push('## The feature end-to-end', '');
+  lines.push(`## What we're solving${agreedMark('problem')}`, '', doc.problem || '_(not filled in)_', '');
+  if (doc.pushback.length > 0) {
+    lines.push(`## What we don't accept as-is${agreedMark('pushback')}`, '');
+    doc.pushback.forEach(p => lines.push(`- ${p}`));
+    lines.push('');
+  }
+  lines.push(`## The feature end-to-end${agreedMark('flow')}`, '');
   if (doc.flow.length === 0) lines.push('_(no flow yet)_');
   else doc.flow.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
   lines.push('');
   lines.push('## Context groups', '');
   if (doc.groups.length === 0) lines.push('_(no groups yet)_', '');
   for (const g of doc.groups) {
-    lines.push(`### ${g.name}`, '');
+    lines.push(`### ${g.name}${agreedMark(`group:${g.name}`)}`, '');
     for (const it of g.items) {
       const tags = it.tags.length ? ` [${it.tags.join(', ')}]` : '';
       lines.push(`- ${it.text}${tags}`);
     }
     lines.push('');
   }
-  lines.push('## Lanes', '');
+  lines.push(`## Lanes${agreedMark('lanes')}`, '');
   lines.push(`- Ours: ${doc.lanes.ours || '_(not filled in)_'}`);
   lines.push(`- Tech Lead's (parked): ${doc.lanes.techLead || '_(not filled in)_'}`, '');
   lines.push('## Demo', '');
   lines.push(`status: ${doc.demo.status}  ·  shape: ${doc.demo.shape || '—'}  ·  date: ${doc.demo.date || '—'}`, '');
   if (doc.demo.notes) lines.push('', `Candidate: ${doc.demo.notes}`, '');
-  lines.push('## Open questions for the platform-team talk', '');
+  lines.push(`## Open questions for the platform-team talk${agreedMark('openQuestions')}`, '');
   if (doc.openQuestions.length === 0) lines.push('_(none yet)_');
   else doc.openQuestions.forEach(q => lines.push(`- ${q}`));
   lines.push('');
