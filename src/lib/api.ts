@@ -249,7 +249,8 @@ export interface ApiFeatureListEntry {
 export interface ApiFeatureSection { status: DndStatus; features: ApiFeatureListEntry[] }
 export interface DiscoveryListPayload { sections: ApiFeatureSection[] }
 
-export interface ApiDiscoveryItem { text: string; tags: ('diff'|'risk'|'fact'|'option')[] }
+export type ApiDiscoveryTag = 'diff'|'risk'|'fact'|'option'|'dep'|'mitigation';
+export interface ApiDiscoveryItem { text: string; tags: ApiDiscoveryTag[] }
 export interface ApiDiscoveryGroup { name: string; items: ApiDiscoveryItem[] }
 export interface ApiDiscoveryDoc {
   problem: string;
@@ -258,6 +259,10 @@ export interface ApiDiscoveryDoc {
   lanes: { ours: string; techLead: string };
   demo: { status: 'none'|'scheduled'|'built'; shape: string; date: string; notes: string };
   openQuestions: string[];
+  /** "What we don't accept as-is" — pushback for the product talk. Older payloads omit it. */
+  pushback?: string[];
+  /** Parts USER agreed after a walk-through (keys like 'flow', 'group:<name>'). Older payloads omit it. */
+  agreed?: string[];
 }
 export interface ApiDiscoveryChild {
   id: number;

@@ -64,6 +64,34 @@ describe('parseDiscoveryDoc', () => {
     expect(e.flow).toEqual([]);
     expect(e.groups).toEqual([]);
     expect(e.demo.status).toBe('none');
+    expect(e.pushback).toEqual([]);
+    expect(e.agreed).toEqual([]);
+  });
+
+  it('keeps the new dep and mitigation tags, still drops unknown ones', () => {
+    const doc = {
+      problem: 'x', flow: [], groups: [
+        { name: 'g', items: [
+          { text: 'needs platform-team access first', tags: ['dep'] },
+          { text: 'start with one shared app', tags: ['mitigation', 'bogus'] },
+        ] },
+      ], lanes: { ours: '', techLead: '' },
+      demo: { status: 'none', shape: '', date: '' }, openQuestions: [],
+    };
+    const parsed = parseDiscoveryDoc(JSON.stringify(doc));
+    expect(parsed!.groups[0].items[0].tags).toEqual(['dep']);
+    expect(parsed!.groups[0].items[1].tags).toEqual(['mitigation']);
+  });
+
+  it('reads pushback and agreed, defaulting to empty arrays', () => {
+    const withBoth = parseDiscoveryDoc(JSON.stringify({
+      pushback: ['this bundles two features', 7], agreed: ['problem', 'flow'],
+    }));
+    expect(withBoth!.pushback).toEqual(['this bundles two features']); // non-string dropped
+    expect(withBoth!.agreed).toEqual(['problem', 'flow']);
+    const without = parseDiscoveryDoc('{}');
+    expect(without!.pushback).toEqual([]);
+    expect(without!.agreed).toEqual([]);
   });
 });
 
@@ -108,9 +136,89 @@ describe('discoveryFinishedCheck', () => {
     doc.groups = [{ name: 'g', items: [
       { text: 'a', tags: ['diff'] }, { text: 'b', tags: ['risk'] }, { text: 'c', tags: ['option'] },
     ] }];
+    doc.agreed = ['flow', 'group:g'];
     const r = discoveryFinishedCheck(doc);
     expect(r.ok).toBe(true);
     expect(r.missing).toEqual([]);
+    expect(r.unagreed).toEqual([]);
+  });
+});
+
+describe('discoveryFinishedCheck — agreement coverage', () => {
+  // A doc that satisfies the CONTENT gate (flow + one complete group).
+  function contentOkDoc() {
+    const doc = emptyDiscoveryDoc();
+    doc.flow = ['step 1', 'step 2'];
+    doc.groups = [{ name: 'CD pipeline', items: [
+      { text: 'a', tags: ['diff'] }, { text: 'b', tags: ['risk'] }, { text: 'c', tags: ['fact'] },
+    ] }];
+    return doc;
+  }
+
+  it('fails when non-empty parts are not agreed, naming each plainly', () => {
+    const r = discoveryFinishedCheck(contentOkDoc());
+    expect(r.ok).toBe(false);
+    expect(r.unagreed).toContain('the end-to-end flow');
+    expect(r.unagreed).toContain('the group "CD pipeline"');
+  });
+
+  it('passes when every non-empty part is agreed; empty parts need no mark', () => {
+    const doc = contentOkDoc(); // problem, lanes, pushback, openQuestions all empty
+    doc.agreed = ['flow', 'group:CD pipeline'];
+    const r = discoveryFinishedCheck(doc);
+    expect(r.ok).toBe(true);
+    expect(r.missing).toEqual([]);
+    expect(r.unagreed).toEqual([]);
+  });
+
+  it('requires agreement on problem, lanes, pushback, and open questions once they have content', () => {
+    const doc = contentOkDoc();
+    doc.agreed = ['flow', 'group:CD pipeline'];
+    doc.problem = 'Move CD to GitHub.';
+    doc.lanes.ours = 'the flow shape';
+    doc.pushback = ['this is a runbook, not a requirement'];
+    doc.openQuestions = ['who owns the runner?'];
+    const r = discoveryFinishedCheck(doc);
+    expect(r.ok).toBe(false);
+    expect(r.unagreed).toContain('the problem');
+    expect(r.unagreed).toContain('the lanes');
+    expect(r.unagreed).toContain("the list of things we don't accept as-is");
+    expect(r.unagreed).toContain('the open questions');
+  });
+
+  it('a renamed group is not covered by its old mark', () => {
+    const doc = contentOkDoc();
+    doc.agreed = ['flow', 'group:Old name'];
+    const r = discoveryFinishedCheck(doc);
+    expect(r.ok).toBe(false);
+    expect(r.unagreed).toContain('the group "CD pipeline"');
+  });
+
+  it('dep/mitigation items alone still do not complete a group', () => {
+    const doc = emptyDiscoveryDoc();
+    doc.flow = ['step 1'];
+    doc.groups = [{ name: 'g', items: [
+      { text: 'a', tags: ['dep'] }, { text: 'b', tags: ['mitigation'] },
+    ] }];
+    doc.agreed = ['flow', 'group:g'];
+    expect(discoveryFinishedCheck(doc).ok).toBe(false); // no diff/risk/fact-or-option
+  });
+});
+
+describe('renderDiscoveryMarkdown — pushback + agreed marks', () => {
+  it('prints the pushback section only when non-empty, and marks agreed sections', () => {
+    const doc = emptyDiscoveryDoc();
+    doc.problem = 'Move CD to GitHub.';
+    doc.flow = ['step 1'];
+    doc.pushback = ['this bundles two features'];
+    doc.agreed = ['problem', 'pushback'];
+    const md = renderDiscoveryMarkdown(doc, { featureDisplayName: '**F** (#1)' });
+    expect(md).toContain("## What we're solving · agreed ✓");
+    expect(md).toContain("## What we don't accept as-is · agreed ✓");
+    expect(md).toContain('- this bundles two features');
+    expect(md).toContain('## The feature end-to-end\n'); // flow not agreed → no mark
+    const empty = renderDiscoveryMarkdown(emptyDiscoveryDoc(), { featureDisplayName: 'F' });
+    expect(empty).not.toContain("What we don't accept");
   });
 });
 
@@ -174,25 +282,58 @@ describe('discoveryDayNudge', () => {
 describe('discoveryCloseBlockMessage', () => {
   it('never blocks a non-discovery story', () => {
     expect(discoveryCloseBlockMessage({
-      isDiscoveryStory: false, folderPath: null, check: { ok: false, missing: ['x'] },
+      isDiscoveryStory: false, folderPath: null, check: { ok: false, missing: ['x'], unagreed: [] },
     })).toBeNull();
   });
   it('blocks a discovery story with no folder to read', () => {
     const msg = discoveryCloseBlockMessage({
-      isDiscoveryStory: true, folderPath: null, check: { ok: false, missing: ['a discovery doc (none found)'] },
+      isDiscoveryStory: true, folderPath: null,
+      check: { ok: false, missing: ['a discovery doc (none found)'], unagreed: [] },
     });
     expect(msg).toMatch(/discovery/i);
   });
   it('blocks a discovery story whose doc is unfinished, listing the gaps', () => {
     const msg = discoveryCloseBlockMessage({
-      isDiscoveryStory: true, folderPath: '/x', check: { ok: false, missing: ['an end-to-end flow'] },
+      isDiscoveryStory: true, folderPath: '/x', check: { ok: false, missing: ['an end-to-end flow'], unagreed: [] },
     });
     expect(msg).toContain('an end-to-end flow');
   });
   it('lets a finished discovery story close', () => {
     expect(discoveryCloseBlockMessage({
-      isDiscoveryStory: true, folderPath: '/x', check: { ok: true, missing: [] },
+      isDiscoveryStory: true, folderPath: '/x', check: { ok: true, missing: [], unagreed: [] },
     })).toBeNull();
+  });
+
+  it('content gaps only: "still needs" shape, ends with "Fill it in, then close the story."', () => {
+    const msg = discoveryCloseBlockMessage({
+      isDiscoveryStory: true, folderPath: '/x',
+      check: { ok: false, missing: ['an end-to-end flow'], unagreed: [] },
+    });
+    expect(msg).toBe("This discovery isn't finished yet — still needs: an end-to-end flow. Fill it in, then close the story.");
+    expect(msg).toMatch(/Fill it in, then close the story\.$/);
+  });
+
+  it('agreement gaps only: starts "These parts aren\'t agreed yet:", mentions explaining to the user', () => {
+    const msg = discoveryCloseBlockMessage({
+      isDiscoveryStory: true, folderPath: '/x',
+      check: { ok: false, missing: [], unagreed: ['the end-to-end flow', 'the lanes'] },
+    });
+    expect(msg).toMatch(/^These parts aren't agreed yet:/);
+    expect(msg).toContain('Explain each one to the user');
+    expect(msg).not.toContain('pushback');
+  });
+
+  it('mixed: both sentences present, content first, only one "close the story" at the end', () => {
+    const msg = discoveryCloseBlockMessage({
+      isDiscoveryStory: true, folderPath: '/x',
+      check: { ok: false, missing: ['an end-to-end flow'], unagreed: ['the lanes'] },
+    });
+    expect(msg).toBe(
+      "This discovery isn't finished yet — still needs: an end-to-end flow. "
+      + "These parts aren't agreed yet: the lanes. Explain each one to the user in plain words, get their yes, then close the story.",
+    );
+    expect(msg!.indexOf('This discovery')).toBeLessThan(msg!.indexOf("These parts aren't agreed"));
+    expect(msg!.match(/close the story/g)?.length).toBe(1);
   });
 });
 
