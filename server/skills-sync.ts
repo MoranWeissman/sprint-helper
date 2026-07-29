@@ -1,6 +1,6 @@
 /**
- * Managed-skill sync. The three workspace-craft skills (demo, discovery,
- * walkthrough) live as COPIES: seed → every registered workspace → the global
+ * Managed-skill sync. The four workspace-craft skills (demo, design,
+ * discovery, walkthrough) live as COPIES: seed → every registered workspace → the global
  * skills folder. The seed is the only place to EDIT them; the `skills_sync`
  * MCP tool fans the seed version out. A throttled drift check (Task 2) rides
  * the every-tool-response nudge pipe so hand-edited copies can't silently

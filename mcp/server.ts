@@ -1302,8 +1302,8 @@ Moran, by you, by another session, by ADO itself). Sprint-helper is the
 source of truth; memory is not. The cost of an extra read is small; the
 cost of a stale answer is wrong work.
 
-MANAGED SKILLS (\`skills_sync\`): the three workspace-craft skills — demo,
-discovery, walkthrough — live as copies: the seed folder (the source of
+MANAGED SKILLS (\`skills_sync\`): the four workspace-craft skills — demo,
+design, discovery, walkthrough — live as copies: the seed folder (the source of
 truth), every registered workspace's \`.claude/skills\`, and the global
 \`~/.claude/skills/sprint-helper-plus/skills\`. RULES:
   - EDIT AT THE SEED ONLY (\`getSeedPath\` root, \`.claude/skills/<name>\`),
