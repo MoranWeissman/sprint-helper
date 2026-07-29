@@ -175,9 +175,12 @@ rule 4 above, and USER sees every card's ✓ state on the page.
 - SEED discovery skill: the flow above + the `agreed` field in the EXACT
   file shape example.
 
-**Migration:** already-closed discovery stories are untouched (the gate
-only runs at close). An old discovery still open when this ships will
-show all parts unagreed — one quick walk-through with USER marks them.
+**Migration:** already-closed discovery stories are untouched. An old
+discovery still open when this ships shows all parts unagreed — one quick
+walk-through with USER marks them. Note: `finished` (which drives the
+"ready to close" badge and the walkthrough/demo offers) includes the
+agreement check too — so an open old discovery loses its "ready" state
+until the walk-through happens. Designed, not a bug.
 
 **Carries forward:** the design phase (next spec) inherits this exact
 pattern — its parts (stories, plan, estimates) also get explained and
