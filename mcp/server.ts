@@ -85,6 +85,8 @@ import {
 } from '../server/workspace.js';
 import { isDiscoveryStoryTitle, discoveryCloseBlockMessage, discoveryFinishedCheck } from '../server/discovery.js';
 import { readDiscoveryDoc } from '../server/discovery-store.js';
+import { isDesignStoryTitle, designGateMessage } from '../server/design.js';
+import { readDesignDoc, writeDesignDoc, listDesignMeetings } from '../server/design-store.js';
 import {
   createStory,
   createBug,
@@ -398,6 +400,21 @@ WORKSPACE — Moran's home for non-code work (discovery, design, small demos):
     parented under the feature, and pulled into his sprint.
   - This generalizes PLANNING HOME above — a workspace is a planning home he can
     grow feature folders inside.
+
+DESIGN PHASE — the design story per feature ("Design: <feature>", same
+title convention as discovery) holds everything in the feature folder's
+\`design/design.json\`: approach, flows, draft stories (with
+estimateHours), the working plan, open decisions.
+  - Walk it part by part with Moran; get his yes on each part before
+    moving on (\`agreed\` tracks this — same discipline as discovery).
+  - Then hold the design review with the team, record it as a meeting
+    summary, and mark the review done.
+  - Only then call \`design_push_stories\` — it creates every drafted
+    story on the board in one step (Effort in, Story Points derived
+    automatically) and refuses if a part isn't agreed yet, the review
+    isn't recorded, or it already pushed once before.
+  - Close the "Design: ..." story only after the push goes through.
+  - No clock on this phase — no session/timer tracking, same as discovery.
 
 REGARDLESS of whether there's a live session, do a CONTEXT CROSS-CHECK
 by calling \`story_match\` with the chat's cwd:
@@ -1645,6 +1662,20 @@ server.registerTool(
           if (block) return errorResult(block);
         }
       }
+      // Design stories must pass the three ordered gates before they close:
+      // agreed with the user → design review recorded → stories pushed.
+      // Same active-feature guard as the discovery gate above.
+      if (isDesignStoryTitle(d.title)) {
+        const active = getActiveFeature();
+        if (active && d.parent?.id === active.id) {
+          const block = designGateMessage({
+            isDesignStory: true,
+            doc: readDesignDoc(active.folderPath),
+            meetingCount: listDesignMeetings(active.folderPath).length,
+          });
+          if (block) return errorResult(block);
+        }
+      }
       const toState = await setStateBucket(workItemId, 'done');
       invalidateDashboardCache();
       void mirrorSprintSummary();
@@ -1957,6 +1988,59 @@ server.registerTool(
       });
       markSHCreated(created.id, 'story');
       return jsonResult(created);
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  },
+);
+
+server.registerTool(
+  'design_push_stories',
+  {
+    title: 'Push the agreed design stories to the board',
+    description:
+      "Create every story drafted in the active feature's design on the board in one step. Refuses unless every design part is agreed AND the design review is recorded as done — and refuses a second push. Estimates come from the design's estimateHours per story (Effort set once; Story Points derived automatically). Returns the created stories so you can echo their displayName.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const active = getActiveFeature();
+      if (!active) return errorResult('No active feature. Open the feature this design belongs to first.');
+      const doc = readDesignDoc(active.folderPath);
+      if (!doc) return errorResult('This feature has no design yet — nothing to push.');
+      if (doc.pushed.storyIds.length > 0) {
+        return errorResult(`These design stories are already on the board (pushed ${doc.pushed.at}). A second push would duplicate them. To change a story, edit it on the board.`);
+      }
+      const gate = designGateMessage({
+        isDesignStory: true, doc, meetingCount: listDesignMeetings(active.folderPath).length,
+      });
+      // The only gate allowed to remain at push time is the push itself.
+      if (gate && !gate.includes('push')) return errorResult(gate);
+      if (doc.stories.length === 0) return errorResult('The design has no stories drafted — nothing to push.');
+      const created: { id: number; displayName: string }[] = [];
+      try {
+        for (const s of doc.stories) {
+          const made = await createStory({
+            title: s.title,
+            description: `${s.covers}\n\nWhy this estimate: ${s.why}`,
+            effortHours: s.estimateHours,
+            parentFeatureId: active.id,
+          });
+          markSHCreated(made.id, 'story');
+          created.push({ id: made.id, displayName: displayNameFor(made.id, s.title) });
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (created.length > 0) {
+          const names = created.map(c => c.displayName).join(', ');
+          return errorResult(`${msg} Some stories were already created before this failed — tell Moran plainly which ones so nothing gets pushed twice: ${names}.`);
+        }
+        return errorResult(msg);
+      }
+      doc.pushed = { at: new Date().toISOString(), storyIds: created.map(c => c.id) };
+      writeDesignDoc(active.folderPath, doc, { featureDisplayName: displayNameFor(active.id, active.title) });
+      invalidateDashboardCache();
+      return jsonResult({ pushed: created });
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
