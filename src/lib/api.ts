@@ -302,6 +302,41 @@ export interface DiscoveryBoardPayload {
   children: ApiDiscoveryChild[];
 }
 
+/** One story proposed by the design (mirrors server/design.ts DesignStory). */
+export interface ApiDesignStory {
+  title: string;
+  covers: string;
+  estimateHours: number;
+  why: string;
+}
+/** The design source file's shape (mirrors server/design.ts DesignDoc). */
+export interface ApiDesignDoc {
+  approach: { lines: string[]; diagram: string };
+  flows: { name: string; steps: string[]; diagram: string }[];
+  stories: ApiDesignStory[];
+  plan: { step: string; stories: string[]; note: string }[];
+  decisions: { question: string; choice: string; decidedInMeeting: string }[];
+  review: { status: 'none' | 'scheduled' | 'done'; date: string };
+  pushed: { at: string; storyIds: number[] };
+  /** Agree-per-part record. Keys: 'approach','flows','plan','decisions','story:<title>'. */
+  agreed: string[];
+}
+/** Disk-backed design phase for a feature — reads instantly, never waits on the board. */
+export interface DesignPayload {
+  folderPath: string;
+  doc: ApiDesignDoc | null;
+  meetings: ApiDiscoveryMeeting[];
+  diagrams: string[];
+  hasWalkthrough: boolean;
+}
+
+/** The disk-backed design doc — instant, no board dependency. */
+export async function fetchDesign(id: number): Promise<DesignPayload> {
+  const r = await fetch(`/api/discovery/${encodeURIComponent(id)}/design`, { cache: 'no-store' });
+  if (!r.ok) throw new Error(`design doc failed: ${r.status}`);
+  return r.json() as Promise<DesignPayload>;
+}
+
 export async function fetchDiscoveryList(): Promise<DiscoveryListPayload> {
   const r = await fetch('/api/discovery', { cache: 'no-store' });
   if (!r.ok) throw new Error(`discovery list failed: ${r.status}`);

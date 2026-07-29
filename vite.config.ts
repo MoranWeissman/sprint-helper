@@ -426,7 +426,7 @@ function adoApiPlugin() {
         res.setHeader('Cache-Control', 'no-store');
         try {
           const url = new URL(req.url ?? '/', 'http://localhost');
-          const path = url.pathname; // '/' | '' for list, '/426639', '/426639/demo', '/426639/open-folder'
+          const path = url.pathname; // '/' | '' for list, '/426639', '/426639/demo', '/426639/open-folder', '/426639/design', '/426639/diagram/<name>'
           const method = req.method ?? 'GET';
 
           const { getWorkspaces, getActiveFeature } = await import('./server/workspace');
@@ -438,6 +438,7 @@ function adoApiPlugin() {
           const { extractImages, rewriteImageUrls, imagesDir, isSafeImageName } = await import('./server/discovery-images');
           const { isDiscoveryStoryTitle, discoveryDayStage } = await import('./server/discovery');
           const { readdirSync } = await import('node:fs');
+          const { readDesignDoc, listDesignMeetings, listDiagrams, diagramPath } = await import('./server/design-store');
 
           const touched = listTouchedFeatureFolders(
             getWorkspaces().paths,
@@ -480,11 +481,11 @@ function adoApiPlugin() {
             return;
           }
 
-          // ---- DETAIL / ACTIONS (/<id>[/board|/demo|/open-folder|/image/<name>]) ----
-          const m = path.match(/^\/(\d+)(?:\/(board|demo|open-folder|image|html)(?:\/[^/]+)?)?\/?$/);
-          if (!m) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Expected /api/discovery/<id>[/board|/demo|/open-folder|/image/<name>|/html/<kind>]' })); return; }
+          // ---- DETAIL / ACTIONS (/<id>[/board|/demo|/open-folder|/image/<name>|/design|/diagram/<name>]) ----
+          const m = path.match(/^\/(\d+)(?:\/(board|demo|open-folder|image|html|design|diagram)(?:\/[^/]+)?)?\/?$/);
+          if (!m) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Expected /api/discovery/<id>[/board|/demo|/open-folder|/image/<name>|/html/<kind>|/design|/diagram/<name>]' })); return; }
           const id = Number(m[1]);
-          const action = m[2]; // 'board' | 'demo' | 'open-folder' | 'image' | 'html' | undefined
+          const action = m[2]; // 'board' | 'demo' | 'open-folder' | 'image' | 'html' | 'design' | 'diagram' | undefined
           const feature = touched.find(f => f.id === id);
           if (!feature) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Not a touched feature' })); return; }
           const folderPath = feature.folderPath;
@@ -567,13 +568,45 @@ function adoApiPlugin() {
             if (method !== 'GET') { res.statusCode = 405; res.end(JSON.stringify({ error: 'GET only' })); return; }
             const kindMatch = path.match(/\/html\/([^/]+)$/);
             const kind = kindMatch ? decodeURIComponent(kindMatch[1]) : '';
-            if (kind !== 'walkthrough' && kind !== 'demo') {
-              res.statusCode = 400; res.end(JSON.stringify({ error: 'kind must be walkthrough | demo' })); return;
+            if (kind !== 'walkthrough' && kind !== 'demo' && kind !== 'design-walkthrough') {
+              res.statusCode = 400; res.end(JSON.stringify({ error: 'kind must be walkthrough | demo | design-walkthrough' })); return;
             }
             const { existsSync, readFileSync } = await import('node:fs');
             const file = htmlArtifactPath(folderPath, kind);
             if (!existsSync(file)) { res.statusCode = 404; res.end(JSON.stringify({ error: 'not built' })); return; }
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.end(readFileSync(file));
+            return;
+          }
+
+          // DESIGN — disk only, same discipline as the top-level discovery doc:
+          // this must never wait on ADO. Reads the feature's `design/` subfolder
+          // (design.json, meeting summaries, diagram names, whether the
+          // walkthrough HTML was built) so the Design tab loads instantly.
+          if (action === 'design') {
+            if (method !== 'GET') { res.statusCode = 405; res.end(JSON.stringify({ error: 'GET only' })); return; }
+            res.end(JSON.stringify({
+              folderPath,
+              doc: readDesignDoc(folderPath),
+              meetings: listDesignMeetings(folderPath),
+              diagrams: listDiagrams(folderPath),
+              hasWalkthrough: hasHtmlArtifact(folderPath, 'design-walkthrough'),
+            }));
+            return;
+          }
+
+          // DIAGRAM — serve an SVG built during the design phase, from
+          // `design/diagrams/`. Same shape as IMAGE above: a bad/unsafe name
+          // (path traversal) or a missing file both come back as a 404.
+          const diagramMatch = action === 'diagram' ? path.match(/\/diagram\/([^/]+)$/) : null;
+          if (action === 'diagram') {
+            if (method !== 'GET') { res.statusCode = 405; res.end(JSON.stringify({ error: 'GET only' })); return; }
+            const name = diagramMatch ? decodeURIComponent(diagramMatch[1]) : '';
+            const file = diagramPath(folderPath, name);
+            const { existsSync, readFileSync } = await import('node:fs');
+            if (!file || !existsSync(file)) { res.statusCode = 404; res.end(JSON.stringify({ error: 'not found' })); return; }
+            res.setHeader('Content-Type', 'image/svg+xml');
+            res.setHeader('Cache-Control', 'max-age=86400');
             res.end(readFileSync(file));
             return;
           }
