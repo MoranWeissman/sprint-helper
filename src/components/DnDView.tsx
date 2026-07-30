@@ -703,6 +703,14 @@ function DiscoveryFacet(props: {
   );
 }
 
+/** Bold the first sentence of a long text row so the eye catches each row's
+ *  point without reading it all. A single-sentence row renders unchanged. */
+function leadSentence(s: string): JSX.Element {
+  const m = s.match(/^(.+?[.!?])\s+(.+)$/s);
+  if (!m) return <>{s}</>;
+  return <><strong>{m[1]}</strong> {m[2]}</>;
+}
+
 /** The agree-per-part state of one Discovery card. Calm: the ✓ is quiet
  *  sage, the absence is muted text — never an alarm. */
 function AgreedMark(props: { on: boolean }): JSX.Element {
@@ -917,7 +925,13 @@ function DesignReview(props: { doc: ApiDesignDoc | null; diagrams: string[]; fea
       {partCard('The approach', approachPresent && mark('approach'), doc.approach.lines.length, (
         <>
           {doc.approach.lines.length > 0
-            ? <ul className="dnd-plain-list">{doc.approach.lines.map((l, i) => <li key={i}>{l}</li>)}</ul>
+            ? (
+              <ul className="dnd-items">
+                {doc.approach.lines.map((l, i) => (
+                  <li key={i} className="dnd-item"><span className="dnd-item-main">{leadSentence(l)}</span></li>
+                ))}
+              </ul>
+            )
             : <p className="dnd-muted">Not filled in yet.</p>}
           {doc.approach.diagram && diagramImg(doc.approach.diagram)}
         </>
