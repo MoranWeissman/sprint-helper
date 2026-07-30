@@ -161,3 +161,35 @@ describe('renderDesignMarkdown', () => {
     expect(md).toContain('not decided yet');
   });
 });
+
+describe('outOfScope — the "not in this design" list', () => {
+  it('parses the list; missing field stays an empty list (old files valid)', () => {
+    const withIt = parseDesignDoc(JSON.stringify({ outOfScope: ['helm chart layout', 7, 'app configuration'] }));
+    expect(withIt?.outOfScope).toEqual(['helm chart layout', 'app configuration']);
+    const without = parseDesignDoc(JSON.stringify({ approach: { lines: ['x'] } }));
+    expect(without?.outOfScope).toEqual([]);
+  });
+
+  it('a non-empty list needs its agreed key; empty needs nothing', () => {
+    const d = agreedDoc();
+    d.outOfScope = ['helm chart layout'];
+    const missing = designAgreementCheck(d);
+    expect(missing.ok).toBe(false);
+    expect(missing.unagreed).toContain('the "not in this design" list');
+    d.agreed.push('outOfScope');
+    expect(designAgreementCheck(d).ok).toBe(true);
+    const empty = agreedDoc();
+    expect(designAgreementCheck(empty).ok).toBe(true);
+  });
+
+  it('renders its own markdown section, marked when agreed', () => {
+    const d = agreedDoc();
+    d.outOfScope = ['helm chart layout'];
+    d.agreed.push('outOfScope');
+    const md = renderDesignMarkdown(d, { featureDisplayName: '**F** (#1)' });
+    expect(md).toContain('## Not in this design · agreed ✓');
+    expect(md).toContain('- helm chart layout');
+    const none = renderDesignMarkdown(agreedDoc(), { featureDisplayName: '**F** (#1)' });
+    expect(none).toContain('_(nothing cut)_');
+  });
+});

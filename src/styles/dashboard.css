@@ -5532,6 +5532,15 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 .dnd-story-lead { font-size: 14.5px; color: var(--ink-2); line-height: 1.5; max-width: 68ch; }
 .dnd-sub[open] .dnd-story-lead { display: none; }
 
+/* Design Review opens like a review should: what it's about, then the big
+   picture, then the parts. The kicker is a small accent caption, never gray. */
+.dnd-kicker {
+  display: block; font-size: 12.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; font-weight: 600; color: var(--accent);
+  margin-bottom: 8px;
+}
+.dnd-design-intro { margin-bottom: 14px; }
+
 /* Design facet — architecture pictures + the per-story hour chip. */
 /* Design diagrams are SVGs with a viewBox and no fixed size — an explicit
    width makes every browser scale the drawing to fit the card instead of

@@ -10,6 +10,9 @@ export interface DesignStory { title: string; covers: string; estimateHours: num
 
 export interface DesignDoc {
   approach: { lines: string[]; diagram: string };
+  /** "Not in this design" — deliberate scope cuts, named up front so the
+   *  review doesn't relitigate them. Empty = nothing was cut. */
+  outOfScope: string[];
   flows: { name: string; steps: string[]; diagram: string }[];
   stories: DesignStory[];
   plan: { step: string; stories: string[]; note: string }[];
@@ -33,6 +36,7 @@ const obj = (v: unknown): Record<string, unknown> =>
 export function emptyDesignDoc(): DesignDoc {
   return {
     approach: { lines: [], diagram: '' },
+    outOfScope: [],
     flows: [], stories: [], plan: [], decisions: [],
     review: { status: 'none', date: '' },
     pushed: { at: '', storyIds: [] },
@@ -58,6 +62,7 @@ export function parseDesignDoc(raw: string | null | undefined): DesignDoc | null
   const pushed = obj(o.pushed);
   return {
     approach: { lines: strArray(approach.lines), diagram: str(approach.diagram) },
+    outOfScope: strArray(o.outOfScope),
     flows: Array.isArray(o.flows) ? o.flows.map(f => {
       const fo = obj(f);
       return typeof fo.name === 'string'
@@ -91,6 +96,7 @@ export function designAgreementCheck(doc: DesignDoc): { ok: boolean; unagreed: s
   const unagreed: string[] = [];
   const parts: { key: string; present: boolean; label: string }[] = [
     { key: 'approach', present: doc.approach.lines.length > 0 || doc.approach.diagram.trim() !== '', label: 'the approach' },
+    { key: 'outOfScope', present: doc.outOfScope.length > 0, label: 'the "not in this design" list' },
     { key: 'flows', present: doc.flows.length > 0, label: 'the flows' },
     ...doc.stories.map(s => ({ key: `story:${s.title}`, present: true, label: `the story "${s.title}"` })),
     { key: 'plan', present: doc.plan.length > 0, label: 'the working plan' },
@@ -155,6 +161,10 @@ export function renderDesignMarkdown(
   if (doc.approach.lines.length === 0) lines.push('_(not filled in)_');
   else doc.approach.lines.forEach(l => lines.push(`- ${l}`));
   if (doc.approach.diagram) lines.push('', `Picture: ${doc.approach.diagram}`);
+  lines.push('');
+  lines.push(`## Not in this design${mark('outOfScope')}`, '');
+  if (doc.outOfScope.length === 0) lines.push('_(nothing cut)_');
+  else doc.outOfScope.forEach(x => lines.push(`- ${x}`));
   lines.push('');
   lines.push(`## The flows${mark('flows')}`, '');
   if (doc.flows.length === 0) lines.push('_(none yet)_', '');

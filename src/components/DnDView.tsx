@@ -877,7 +877,7 @@ function DesignFacet(props: {
 
   return (
     <div className="dnd-discovery-wrap">
-      {sub === 'review' && <DesignReview doc={payload.doc ?? null} diagrams={diagrams} featureId={featureId} />}
+      {sub === 'review' && <DesignReview doc={payload.doc ?? null} problem={payload.problem ?? ''} diagrams={diagrams} featureId={featureId} />}
       {sub === 'meetings' && <MeetingsFacet meetings={meetings} />}
       {sub === 'walkthrough' && (
         payload.hasWalkthrough
@@ -891,8 +891,8 @@ function DesignFacet(props: {
 /** The gate-progress line + the design doc's sections, in review order:
  *  approach → flows → stories → working plan → open decisions. Same
  *  collapsible-card and AgreedMark anatomy as DiscoveryReview. */
-function DesignReview(props: { doc: ApiDesignDoc | null; diagrams: string[]; featureId: number }): JSX.Element {
-  const { doc, diagrams, featureId } = props;
+function DesignReview(props: { doc: ApiDesignDoc | null; problem: string; diagrams: string[]; featureId: number }): JSX.Element {
+  const { doc, problem, diagrams, featureId } = props;
   if (!doc) {
     return (
       <div className="dnd-placeholder">
@@ -912,8 +912,10 @@ function DesignReview(props: { doc: ApiDesignDoc | null; diagrams: string[]; fea
 
   // Same present-parts logic as the server's designAgreementCheck: every
   // non-empty part plus every story needs its key in `agreed` to count.
+  const outOfScope = doc.outOfScope ?? [];
   const parts = [
     { key: 'approach', present: approachPresent },
+    { key: 'outOfScope', present: outOfScope.length > 0 },
     { key: 'flows', present: flowsPresent },
     ...doc.stories.map(s => ({ key: `story:${s.title}`, present: true })),
     { key: 'plan', present: planPresent },
@@ -954,19 +956,43 @@ function DesignReview(props: { doc: ApiDesignDoc | null; diagrams: string[]; fea
         Parts agreed: {agreedCount} of {presentParts.length} · review: {doc.review.status} · stories pushed: {pushedLabel}
       </p>
 
+      {problem.trim() !== '' && (
+        <div className="dnd-problem dnd-design-intro">
+          <span className="dnd-kicker">What this is about — the need, from the discovery</span>
+          {problem}
+        </div>
+      )}
+
+      {doc.approach.diagram && diagramImg(doc.approach.diagram) && (
+        <details open className="dnd-group dnd-bigpic">
+          <summary className="dnd-group-sum">
+            <span className="dnd-group-chev" aria-hidden="true" />
+            <span className="dnd-group-name">The big picture</span>
+          </summary>
+          <div className="dnd-ov-body">
+            {diagramImg(doc.approach.diagram)}
+          </div>
+        </details>
+      )}
+
       {partCard('The approach', approachPresent && mark('approach'), doc.approach.lines.length, (
-        <>
-          {doc.approach.lines.length > 0
-            ? (
-              <ul className="dnd-items">
-                {doc.approach.lines.map((l, i) => (
-                  <li key={i} className="dnd-item"><span className="dnd-item-main">{leadSentence(l)}</span></li>
-                ))}
-              </ul>
-            )
-            : <p className="dnd-muted">Not filled in yet.</p>}
-          {doc.approach.diagram && diagramImg(doc.approach.diagram)}
-        </>
+        doc.approach.lines.length > 0
+          ? (
+            <ul className="dnd-items">
+              {doc.approach.lines.map((l, i) => (
+                <li key={i} className="dnd-item"><span className="dnd-item-main">{leadSentence(l)}</span></li>
+              ))}
+            </ul>
+          )
+          : <p className="dnd-muted">Not filled in yet.</p>
+      ))}
+
+      {outOfScope.length > 0 && partCard('Not in this design', mark('outOfScope'), outOfScope.length, (
+        <ul className="dnd-items">
+          {outOfScope.map((x, i) => (
+            <li key={i} className="dnd-item"><span className="dnd-item-main">{leadSentence(x)}</span></li>
+          ))}
+        </ul>
       ))}
 
       {partCard('The flows', flowsPresent && mark('flows'), doc.flows.length, (

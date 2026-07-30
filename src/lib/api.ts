@@ -312,6 +312,8 @@ export interface ApiDesignStory {
 /** The design source file's shape (mirrors server/design.ts DesignDoc). */
 export interface ApiDesignDoc {
   approach: { lines: string[]; diagram: string };
+  /** "Not in this design" — deliberate scope cuts. Optional: older servers omit it. */
+  outOfScope?: string[];
   flows: { name: string; steps: string[]; diagram: string }[];
   stories: ApiDesignStory[];
   plan: { step: string; stories: string[]; note: string }[];
@@ -325,6 +327,8 @@ export interface ApiDesignDoc {
 export interface DesignPayload {
   folderPath: string;
   doc: ApiDesignDoc | null;
+  /** The discovery's problem line — the review's opening. Optional: older servers omit it. */
+  problem?: string;
   meetings: ApiDiscoveryMeeting[];
   diagrams: string[];
   hasWalkthrough: boolean;

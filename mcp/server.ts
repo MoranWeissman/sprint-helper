@@ -403,8 +403,9 @@ WORKSPACE — Moran's home for non-code work (discovery, design, small demos):
 
 DESIGN PHASE — the design story per feature ("Design: <feature>", same
 title convention as discovery) holds everything in the feature folder's
-\`design/design.json\`: approach, flows, draft stories (with
-estimateHours), the working plan, open decisions.
+\`design/design.json\`: approach, the "not in this design" list
+(outOfScope), flows, draft stories (with estimateHours), the working
+plan, open decisions.
   - Walk it part by part with Moran; get his yes on each part before
     moving on (\`agreed\` tracks this — same discipline as discovery).
   - Then hold the design review with the team, record it as a meeting

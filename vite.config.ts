@@ -588,6 +588,9 @@ function adoApiPlugin() {
             res.end(JSON.stringify({
               folderPath,
               doc: readDesignDoc(folderPath),
+              // The review opens with WHAT this is about — that text lives in
+              // the discovery, so the design page borrows it (never rewrites it).
+              problem: readDiscoveryDoc(folderPath)?.problem ?? '',
               meetings: listDesignMeetings(folderPath),
               diagrams: listDiagrams(folderPath),
               hasWalkthrough: hasHtmlArtifact(folderPath, 'design-walkthrough'),
