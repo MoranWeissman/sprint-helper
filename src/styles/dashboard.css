@@ -5509,7 +5509,14 @@ button.r21-standup-item-head.is-toggle:hover .r21-standup-item-title { color: va
 }
 
 /* Design facet — architecture pictures + the per-story hour chip. */
-.dnd-diagram { max-width: 100%; border: 1px solid var(--line-hair); border-radius: 10px; background: var(--surface-2); }
+/* Design diagrams are SVGs with a viewBox and no fixed size — an explicit
+   width makes every browser scale the drawing to fit the card instead of
+   guessing an intrinsic size (guessing is what cut the picture off). */
+.dnd-diagram {
+  display: block; width: 100%; max-width: 900px; height: auto;
+  margin-top: 12px;
+  border: 1px solid var(--line-hair); border-radius: 10px; background: var(--surface-2);
+}
 .dnd-hours { font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
 
 /* Overview facet */

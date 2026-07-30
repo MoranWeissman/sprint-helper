@@ -888,79 +888,110 @@ function DesignReview(props: { doc: ApiDesignDoc | null; diagrams: string[]; fea
       ? <img src={`/api/discovery/${featureId}/diagram/${name}`} className="dnd-diagram" alt={alt} />
       : null;
 
+  // Each part is one collapsible card, closed by default — the page opens as
+  // five calm rows (same rule as the Discovery cards: the user decides what
+  // to open). The count chip on a closed card says how much is inside.
+  const partCard = (
+    label: string,
+    markNode: JSX.Element | false | null,
+    count: number | null,
+    body: JSX.Element,
+  ) => (
+    <details className="dnd-group">
+      <summary className="dnd-group-sum">
+        <span className="dnd-group-chev" aria-hidden="true" />
+        <span className="dnd-group-name">{label}</span>
+        {markNode}
+        {count !== null && <span className="dnd-group-count">{count}</span>}
+      </summary>
+      <div className="dnd-ov-body">{body}</div>
+    </details>
+  );
+
   return (
     <div className="dnd-discovery">
       <p className="dnd-section-note">
         Parts agreed: {agreedCount} of {presentParts.length} · review: {doc.review.status} · stories pushed: {pushedLabel}
       </p>
 
-      <h2 className="dnd-h2">The approach {approachPresent && mark('approach')}</h2>
-      {doc.approach.lines.length > 0
-        ? <ul className="dnd-plain-list">{doc.approach.lines.map((l, i) => <li key={i}>{l}</li>)}</ul>
-        : <p className="dnd-muted">Not filled in yet.</p>}
-      {doc.approach.diagram && diagramImg(doc.approach.diagram)}
+      {partCard('The approach', approachPresent && mark('approach'), doc.approach.lines.length, (
+        <>
+          {doc.approach.lines.length > 0
+            ? <ul className="dnd-plain-list">{doc.approach.lines.map((l, i) => <li key={i}>{l}</li>)}</ul>
+            : <p className="dnd-muted">Not filled in yet.</p>}
+          {doc.approach.diagram && diagramImg(doc.approach.diagram)}
+        </>
+      ))}
 
-      <h2 className="dnd-h2">The flows {flowsPresent && mark('flows')}</h2>
-      {doc.flows.length === 0
-        ? <p className="dnd-muted">None yet.</p>
-        : doc.flows.map((f, fi) => (
-          <details key={fi} className="dnd-group">
-            <summary className="dnd-group-sum">
-              <span className="dnd-group-chev" aria-hidden="true" />
-              <span className="dnd-group-name">{f.name}</span>
-            </summary>
-            <div className="dnd-ov-body">
-              <ol className="dnd-flow">{f.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
-              {f.diagram && diagramImg(f.diagram, f.name)}
-            </div>
-          </details>
-        ))}
+      {partCard('The flows', flowsPresent && mark('flows'), doc.flows.length, (
+        doc.flows.length === 0
+          ? <p className="dnd-muted">None yet.</p>
+          : <>
+              {doc.flows.map((f, fi) => (
+                <details key={fi} className="dnd-sub">
+                  <summary className="dnd-sub-sum">
+                    <span className="dnd-group-chev" aria-hidden="true" />
+                    <span className="dnd-sub-label">{f.name}</span>
+                  </summary>
+                  <div className="dnd-sub-body">
+                    <ol className="dnd-flow">{f.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
+                    {f.diagram && diagramImg(f.diagram, f.name)}
+                  </div>
+                </details>
+              ))}
+            </>
+      ))}
 
-      <h2 className="dnd-h2">The stories</h2>
-      {doc.stories.length === 0
-        ? <p className="dnd-muted">None yet.</p>
-        : doc.stories.map((s, si) => (
-          <details key={si} className="dnd-group">
-            <summary className="dnd-group-sum">
-              <span className="dnd-group-chev" aria-hidden="true" />
-              <span className="dnd-group-name">{s.title}</span>
-              <span className="dnd-hours">{s.estimateHours}h</span>
-              <AgreedMark on={agreed.includes(`story:${s.title}`)} />
-            </summary>
-            <div className="dnd-ov-body">
-              <p>{s.covers || '—'}</p>
-              <p className="dnd-muted">Why this estimate: {s.why || '—'}</p>
-            </div>
-          </details>
-        ))}
+      {partCard('The stories', null, doc.stories.length, (
+        doc.stories.length === 0
+          ? <p className="dnd-muted">None yet.</p>
+          : <>
+              {doc.stories.map((s, si) => (
+                <details key={si} className="dnd-sub">
+                  <summary className="dnd-sub-sum">
+                    <span className="dnd-group-chev" aria-hidden="true" />
+                    <span className="dnd-sub-label">{s.title}</span>
+                    <span className="dnd-hours">{s.estimateHours}h</span>
+                    <AgreedMark on={agreed.includes(`story:${s.title}`)} />
+                  </summary>
+                  <div className="dnd-sub-body">
+                    <p>{s.covers || '—'}</p>
+                    <p className="dnd-muted">Why this estimate: {s.why || '—'}</p>
+                  </div>
+                </details>
+              ))}
+            </>
+      ))}
 
-      <h2 className="dnd-h2">The working plan {planPresent && mark('plan')}</h2>
-      {doc.plan.length === 0
-        ? <p className="dnd-muted">None yet.</p>
-        : (
-          <ol className="dnd-flow">
-            {doc.plan.map((p, i) => (
-              <li key={i}>
-                {p.step}
-                {p.stories.length > 0 && <> — {p.stories.join(', ')}</>}
-                {p.note && <> ({p.note})</>}
-              </li>
-            ))}
-          </ol>
-        )}
+      {partCard('The working plan', planPresent && mark('plan'), doc.plan.length, (
+        doc.plan.length === 0
+          ? <p className="dnd-muted">None yet.</p>
+          : (
+            <ol className="dnd-flow">
+              {doc.plan.map((p, i) => (
+                <li key={i}>
+                  {p.step}
+                  {p.stories.length > 0 && <> — {p.stories.join(', ')}</>}
+                  {p.note && <> ({p.note})</>}
+                </li>
+              ))}
+            </ol>
+          )
+      ))}
 
-      <h2 className="dnd-h2">Open decisions {decisionsPresent && mark('decisions')}</h2>
-      {doc.decisions.length === 0
-        ? <p className="dnd-muted">None noted.</p>
-        : (
-          <ul className="dnd-qs">
-            {doc.decisions.map((d, i) => (
-              <li key={i}>
-                {d.question} → {d.choice ? d.choice : <span className="dnd-muted">not decided yet</span>}
-              </li>
-            ))}
-          </ul>
-        )}
+      {partCard('Open decisions', decisionsPresent && mark('decisions'), doc.decisions.length, (
+        doc.decisions.length === 0
+          ? <p className="dnd-muted">None noted.</p>
+          : (
+            <ul className="dnd-qs">
+              {doc.decisions.map((d, i) => (
+                <li key={i}>
+                  {d.question} → {d.choice ? d.choice : <span className="dnd-muted">not decided yet</span>}
+                </li>
+              ))}
+            </ul>
+          )
+      ))}
     </div>
   );
 }
