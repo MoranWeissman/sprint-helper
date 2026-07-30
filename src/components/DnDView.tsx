@@ -703,12 +703,44 @@ function DiscoveryFacet(props: {
   );
 }
 
+/** Split a text into its first sentence and the rest (rest null when the
+ *  whole text is one sentence). The design skill's writing rule makes the
+ *  first sentence work alone — the UI leans on that for folding. */
+function splitLead(s: string): { lead: string; rest: string | null } {
+  const m = s.match(/^(.+?[.!?])\s+(.+)$/s);
+  return m ? { lead: m[1], rest: m[2] } : { lead: s, rest: null };
+}
+
 /** Bold the first sentence of a long text row so the eye catches each row's
  *  point without reading it all. A single-sentence row renders unchanged. */
 function leadSentence(s: string): JSX.Element {
-  const m = s.match(/^(.+?[.!?])\s+(.+)$/s);
-  if (!m) return <>{s}</>;
-  return <><strong>{m[1]}</strong> {m[2]}</>;
+  const { lead, rest } = splitLead(s);
+  if (rest === null) return <>{lead}</>;
+  return <><strong>{lead}</strong> {rest}</>;
+}
+
+/** First sentence only, with a "show more" button that reveals the rest.
+ *  One-sentence texts render plain — nothing to fold. */
+function FoldableText(props: { text: string }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const { lead, rest } = splitLead(props.text);
+  if (rest === null) return <p className="dnd-fold-lead">{lead}</p>;
+  return (
+    <div className="dnd-fold">
+      <p className="dnd-fold-lead">
+        {lead}
+        {!open && (
+          <button type="button" className="dnd-fold-btn" onClick={() => setOpen(true)}>show more</button>
+        )}
+      </p>
+      {open && (
+        <>
+          <p className="dnd-fold-rest">{rest}</p>
+          <button type="button" className="dnd-fold-btn" onClick={() => setOpen(false)}>show less</button>
+        </>
+      )}
+    </div>
+  );
 }
 
 /** The agree-per-part state of one Discovery card. Calm: the ✓ is quiet
@@ -962,9 +994,14 @@ function DesignReview(props: { doc: ApiDesignDoc | null; diagrams: string[]; fea
           : <>
               {doc.stories.map((s, si) => (
                 <details key={si} className="dnd-sub">
-                  <summary className="dnd-sub-sum">
+                  <summary className="dnd-sub-sum dnd-story-sum">
                     <span className="dnd-group-chev" aria-hidden="true" />
-                    <span className="dnd-sub-label">{s.title}</span>
+                    <span className="dnd-story-main">
+                      <span className="dnd-sub-label">{s.title}</span>
+                      {s.covers.trim() !== '' && (
+                        <span className="dnd-story-lead">{splitLead(s.covers).lead}</span>
+                      )}
+                    </span>
                     <span className="dnd-hours">{s.estimateHours}h</span>
                     <AgreedMark on={agreed.includes(`story:${s.title}`)} />
                   </summary>
@@ -1000,7 +1037,10 @@ function DesignReview(props: { doc: ApiDesignDoc | null; diagrams: string[]; fea
             <ul className="dnd-qs">
               {doc.decisions.map((d, i) => (
                 <li key={i}>
-                  {d.question} → {d.choice ? d.choice : <span className="dnd-muted">not decided yet</span>}
+                  <div className="dnd-q">{d.question}</div>
+                  {d.choice
+                    ? <FoldableText text={d.choice} />
+                    : <p className="dnd-muted">not decided yet</p>}
                 </li>
               ))}
             </ul>
